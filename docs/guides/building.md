@@ -219,7 +219,7 @@ endpoints/backlinks/last/shared nodes, list and Collection cycles, reader-error
 propagation and exact visit/depth limits. A 256-child chain exercises the
 explicit DFS stack at the exact depth and one smaller. Every failure requires
 the exact fatal, non-recoverable code and payload offset/block index. This
-selects saved membership, not data/instance references, render or
+selects saved membership, not instance references, render or
 view-layer visibility, object values, transforms, meshes or a populated IR.
 
 The same selection also checks the
@@ -233,6 +233,18 @@ budgets succeed and one-smaller budgets fail. Parent-only Objects are validated
 without adding them to membership; returned parent indices address the caller's
 blocks, not its selected Object vector or IR. Nontrivial parenting remains
 synthetic evidence, not Blender-written transform or hierarchy equivalence.
+
+The same test exercises the
+[saved data-reference boundary](../design/DESIGN_POLICY.md#525-saved-object-data-reference-boundary).
+Both normal-save corpus files resolve Camera/Cube/Light data to Camera/Mesh/Lamp
+IDs with `CA`/`ME`/`LA` codes. The 4.5 `void *data` and 5.2 `ID *data`
+declarations are checked through SDNA. Every corpus Object has null/interior/
+absent data-pointer mutations. Four synthetic layouts cover shared and
+parent-only data, reordered indices, malformed pointer/ID shapes, invalid
+targets, linked data, exact visit budgets and Object/data visit deduplication.
+Returned data indices refer to the caller's blocks. This is generic ID-edge
+validation: null is allowed without checking `Object.type`, data-internal
+references are not followed and no Mesh values or Scene IR are populated.
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines matrix storage and ownership; supported scope is in the

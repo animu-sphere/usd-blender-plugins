@@ -156,7 +156,9 @@ authored-stage support. The importer remains header-only.
 | Collection/ListBase reference, cycle and explicit traversal-budget diagnostics | supported | null/absent/interior/wrong-type/count targets, linked IDs, invalid names, endpoint/backlink/node-sharing errors, list/Collection cycles, exact visit/depth limits and 256-child chains in `blendScene.ir` | Phase 2 |
 | saved Object parent references and optional parent block indices | supported | null parents in both normal-save corpus files; synthetic selected/unselected/shared parents and block reordering across all four layouts in `blendScene.ir` | Phase 2 |
 | parent-reference, cycle and explicit traversal-budget diagnostics | supported | synthetic absent/interior/wrong-code/type/count references, linked parents, invalid names/SDNA shapes, self/ancestor cycles and 256-parent chains at exact visit/depth limits; every corpus Object has self/interior/absent pointer mutations in `blendScene.ir` | Phase 2 |
-| native Object value decoding and data/instance-reference validation | — | | Phase 2 |
+| saved Object data ID references and optional data block indices | supported | both normal-save corpus files resolve Camera/Cube/Light to `CA`/Camera, `ME`/Mesh and `LA`/Lamp; 4.5 stores `void *data`, 5.2 stores `ID *data`; synthetic null/shared/parent-only/reordered data across all four layouts in `blendScene.ir` | Phase 2 |
+| data ID-reference, linked-target and explicit visit-budget diagnostics | supported | synthetic absent/interior/metadata/DATA/wrong-count targets, malformed member/ID shapes, linked data, invalid names, exact/one-smaller budgets and Object/data visit deduplication; every corpus Object has null/interior/absent data-pointer mutations in `blendScene.ir` | Phase 2 |
+| native Object values, type-specific data requirements and instance-reference validation | — | | Phase 2 |
 | parent-relative transforms, topology validation, normals and UV decoding | — | | Phase 2 |
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
@@ -185,7 +187,8 @@ results. It retains each reachable Object once in saved discovery order,
 including Camera and Light records without decoding their values. It returns
 owning raw names and caller-sequence indices, not object transforms, meshes,
 visibility, evaluated/view-layer state, Collection instances or a populated IR.
-Data/instance references are not followed or validated. Collection/Object linked
+Data references are separately validated below; instance references are not
+followed or validated. Collection/Object linked
 IDs fail without external-file access. Real-file membership evidence is
 64-bit little-endian only; other
 layouts, nested/shared graphs and malformed cases have synthetic evidence.
@@ -195,7 +198,18 @@ validates selected Objects' saved parent chains with the same explicit budgets.
 Parent-only Objects count once but do not join membership. Optional parent
 indices belong to the caller's blocks, not the selected Object vector or IR.
 Completed chains are shared; depth limits bound active unfinished expansion,
-not the longest complete path. Unreachable Objects outside membership and its
-ancestors remain unvalidated. Real-file evidence covers null parents and
+not the longest complete path. Objects outside membership, its ancestors and
+immediate data targets remain unvalidated. Real-file evidence covers null parents and
 mutated invalid pointers only; nontrivial parenting is synthetic. No transform,
 parenting-mode or Blender-oracle equivalence is established.
+
+The [data-reference boundary](../design/DESIGN_POLICY.md#525-saved-object-data-reference-boundary)
+validates the immediate generic ID target for selected and parent-only Objects,
+retaining an optional caller-block index. Null is allowed; shared data consumes
+one visit, including deduplication against reached Objects. Linked IDs fail
+without external access. It does not enforce `Object.type`-specific data
+requirements or follow data-internal references, so neither a null mesh data
+pointer nor an otherwise valid local ID of the wrong semantic type is rejected.
+No Mesh values, data-cycle policy, instance graph or populated IR is added.
+Real data-edge evidence remains 64-bit little-endian; sharing, parent-only
+targets, budgets and other layouts have synthetic evidence.

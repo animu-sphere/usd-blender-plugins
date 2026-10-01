@@ -386,7 +386,9 @@ then walks `Scene.master_collection`. It returns `Result<SelectedSceneObjects>`:
 the owning `SelectedScene` and a vector of `SelectedObject` records containing
 caller-sequence `blockIndex` values and owning, prefix-stripped raw `sourceName`
 bytes, plus optional `parentBlockIndex` values validated under the
-[parent-reference boundary](#524-saved-object-parent-reference-boundary).
+[parent-reference boundary](#524-saved-object-parent-reference-boundary)
+and optional `dataBlockIndex` values under the
+[data-reference boundary](#525-saved-object-data-reference-boundary).
 It does not publish an object/mesh Scene IR. Input matching, full-file,
 block and schema budgets remain the caller's responsibility; the pointer map
 still validates duplicate saved addresses across the entire supplied sequence.
@@ -414,7 +416,8 @@ of block enumeration, not a deterministic identifier or sibling-name policy.
 Both `SceneTraversalLimits` fields are required and positive; zero-initialized
 limits are invalid. `maxVisited` counts each distinct expanded Collection,
 each traversed list node and each distinct Object, including parent-only
-Objects, excluding Scene/GLOB and pointer-map construction. `maxDepth` bounds
+Objects, plus distinct data targets under the data-reference boundary,
+excluding Scene/GLOB selection and pointer-map construction. `maxDepth` bounds
 the active DFS Collection stack and the separate active parent chain,
 with the master at depth one, not the longest path through a shared DAG.
 Exactly sufficient budgets succeed; exceeding them returns fatal
@@ -426,11 +429,12 @@ offset and index. Unresolved list heads use Collection context; unresolved
 `next` pointers use the previous list node. Collection cycles/depth limits
 identify the referring Collection. Invalid limits and allocation failures
 have no source context. Reader failures retain their existing codes/context.
-No other Scene, unreachable Collection or Object outside membership and its
-parent chains is semantically inspected.
+Records outside the selected Scene, membership, parent chains and immediate
+data targets are not semantically inspected.
 This is saved membership, not evaluated/view-layer/render visibility: data
-and instance-Collection references, transforms, geometry and object types
-are not decoded or validated. Backend `Decode`, populated Scene IR and USD
+references are separately validated below; instance-Collection references,
+transforms, geometry and object types are not decoded or validated.
+Backend `Decode`, populated Scene IR and USD
 integration remain separate work. Fixture-backed scope is in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 
@@ -466,12 +470,45 @@ Unresolved parents use the referring Object's payload offset and block index;
 invalid targets use target context. Cycle, parent-depth and parent-only visit
 failures identify the referring Object. Existing selection/membership/reader
 errors are preserved. Unreachable Objects unrelated to membership or its
-ancestors are not semantically validated. This validates saved parent edges
+ancestors or immediate data targets are not semantically validated.
+This validates saved parent edges
 only: parenting mode, bone/vertex targets, parent inverse, local/world matrices,
-render visibility, data/instance references and IR/USD hierarchy authoring
+render visibility, instance references and IR/USD hierarchy authoring
 remain separate work. Both normal-save corpus files provide null-parent
 evidence and mutated-pointer regressions, not Blender-written nontrivial
 parenting or transform-oracle evidence; nontrivial chains use synthetic inputs.
+
+### 5.2.5 Saved Object data-reference boundary
+
+During parent-chain validation, `SelectSceneObjects` also checks every selected
+or parent-only Object's scalar `data` pointer. Its SDNA declaration must be
+`void *` or `ID *`; both are accepted based on the stored schema rather than
+host layout. A null value is retained as no target. Every nonzero value must
+resolve exactly to one ID block: two uppercase ASCII letters followed by two
+NUL bytes, count one, a valid SDNA value containing scalar embedded `ID`,
+null scalar `Library *ID.lib` and a terminated one-dimensional one-byte
+`char` name whose prefix matches that target's block code. Linked data fails
+without loading external files. Reader binding/member errors are preserved.
+
+`SelectedObject.dataBlockIndex` is the optional immediate data target's index
+in the caller's block sequence, not a selected Object or Scene IR index.
+Parent-only data targets are validated but not published as membership.
+No data names or geometry are published. Shared targets are validated once;
+`maxVisited` counts the union of reached Objects and data targets once each,
+in addition to expanded Collections and list nodes. Data targets do not extend
+the parent-depth bound. Exactly sufficient budgets succeed without production
+defaults. Missing/interior addresses and data visit exhaustion use referring
+Object context; invalid or linked targets use target context. Invalid shapes
+fail with `BLEND_SCENE_REFERENCE_INVALID`, with no partial selection.
+
+This is generic ID-edge validation, not `Object.type` decoding or enforcement
+of a type-to-data mapping. It permits null even for a stored mesh Object and
+does not reject an otherwise valid local ID solely because that Object kind
+would require another data type. Data-internal references are not followed;
+data cycles, instance Collections, Mesh storage and geometry, Object values,
+populated Scene IR and USD authoring remain separate work. The importer and
+inspection tool do not consume this selection API. Fixture-backed scope is in
+the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 
 ### 5.3 `usdBlendFileFormat` — the importer
 

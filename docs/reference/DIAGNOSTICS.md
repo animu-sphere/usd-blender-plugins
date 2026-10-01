@@ -110,15 +110,15 @@ Fixture paths are relative to
 | `BLEND_POINTER_ALLOCATION` | Fatal | no | pointer entries or the unresolved diagnostic cannot be allocated | implemented; allocation failure unverified |
 | `BLEND_SCENE_GLOBAL_INVALID` | Fatal | no | GLOB is missing, duplicated or not one FileGlobal | synthetic GLOB absence/count/type cases in `blendScene.ir` |
 | `BLEND_SCENE_ACTIVE_MISSING` | Fatal | no | FileGlobal.curscene is null; no implicit Scene fallback | Scene-only `empty.blend` and synthetic null pointers in `blendScene.ir` |
-| `BLEND_SCENE_REFERENCE_INVALID` | Fatal | no | a required Scene/Collection/list/Object reference or nonzero Object parent, target code/type/count or semantic member type is incompatible | null/absent/interior/metadata pointers, wrong pointer types and targets, synthetic parent errors and corpus parent mutations in `blendScene.ir` |
-| `BLEND_SCENE_LINKED_UNSUPPORTED` | Fatal | no | a selected Scene or reached Collection/Object has nonzero ID.lib; external data is not followed | synthetic linked Scene/Collection/Object IDs in `blendScene.ir` |
-| `BLEND_SCENE_NAME_INVALID` | Fatal | no | a selected Scene/Collection/Object ID.name is not a terminated SC/GR/OB-prefixed one-byte char array | synthetic invalid Scene/Collection/Object prefixes and Scene terminators in `blendScene.ir` |
+| `BLEND_SCENE_REFERENCE_INVALID` | Fatal | no | a required Scene/Collection/list/Object reference, nonzero Object parent/data, target code/type/count or semantic member shape is incompatible | null/absent/interior/metadata pointers, wrong pointer types and targets, synthetic parent/data errors and corpus pointer mutations in `blendScene.ir` |
+| `BLEND_SCENE_LINKED_UNSUPPORTED` | Fatal | no | a selected Scene or reached Collection/Object/data ID has nonzero ID.lib; external data is not followed | synthetic linked Scene/Collection/Object/data IDs in `blendScene.ir` |
+| `BLEND_SCENE_NAME_INVALID` | Fatal | no | a selected Scene/Collection/Object/data ID.name is not a terminated, correctly prefixed one-byte char array | synthetic invalid Scene/Collection/Object/data prefixes and Scene/data terminators in `blendScene.ir` |
 | `BLEND_SCENE_LIMITS` | Fatal | no | Object selection receives a zero visit or depth limit | both missing limits in `blendScene.ir` |
-| `BLEND_SCENE_VISIT_LIMIT` | Fatal | no | the next Collection/list node/unique Object, including parent-only Objects, would exceed the caller's visit limit | exact and one-smaller budgets across all four layouts in `blendScene.ir` |
+| `BLEND_SCENE_VISIT_LIMIT` | Fatal | no | the next Collection/list node or unique Object/data target, including parent-only Objects and their data, would exceed the caller's visit limit | exact and one-smaller budgets, shared-data and Object/data visit deduplication across all four layouts in `blendScene.ir` |
 | `BLEND_SCENE_DEPTH_LIMIT` | Fatal | no | the next Collection or unfinished Object parent expansion would exceed the caller's separate active stack/chain limit | two-level, 256-child and 256-parent chains at exact and one-smaller limits in `blendScene.ir` |
 | `BLEND_SCENE_LIST_INVALID` | Fatal | no | ListBase endpoints, prev backlinks, terminal last or exclusive list-node ownership disagree | endpoint/backlink/last and shared-node cases across all four layouts in `blendScene.ir` |
 | `BLEND_SCENE_CYCLE` | Fatal | no | a next chain repeats a node, a child Collection refers to an active Collection, or an Object parent refers to an active ancestor | list, self/ancestor Collection and Object cycles across all four layouts; self-parent corpus mutations in `blendScene.ir` |
-| `BLEND_SCENE_ALLOCATION` | Fatal | no | scene selection, Collection traversal or parent validation cannot allocate | implemented; allocation failure injection unverified |
+| `BLEND_SCENE_ALLOCATION` | Fatal | no | scene selection, Collection traversal or Object parent/data validation cannot allocate | implemented; allocation failure injection unverified |
 | `BLEND_SCENE_UNIT_SCALE_INVALID` | Fatal | no | the source unit scale is zero, negative or nonfinite | `UnitConversion` constructor and saved Scene selection cases in `blendScene.ir` |
 | `BLEND_SCENE_UNIT_VALUE_INVALID` | Fatal | no | a source distance is nonfinite or its conversion to meters overflows | scalar, position and translation cases in `blendScene.ir` |
 | `BLEND_SCENE_UNIT_TRANSFORM_INVALID` | Fatal | no | unit conversion receives a non-affine mesh/empty world matrix | projective matrix in `blendScene.ir` |
@@ -167,6 +167,13 @@ parents, cycles, parent-depth failures and parent-only visit failures use the
 referring Object's context; invalid parent targets use target context. Null
 parents are valid roots. Reader failures retain their codes and offsets. See
 the [parent-reference boundary](../design/DESIGN_POLICY.md#524-saved-object-parent-reference-boundary).
+
+Data validation returns no partial selection. Unresolved nonzero data pointers,
+invalid pointer shapes and new-data visit exhaustion use referring Object
+context; invalid/linked data targets use target context. A null data pointer
+is allowed without Object type-specific policy. Reader failures retain their
+codes and offsets. See the
+[data-reference boundary](../design/DESIGN_POLICY.md#525-saved-object-data-reference-boundary).
 
 The standalone `UnitConversion` helper throws `std::invalid_argument` for
 invalid input or `std::overflow_error` for meter-conversion overflow, with the

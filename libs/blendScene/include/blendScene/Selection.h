@@ -23,6 +23,7 @@ struct SelectedObject {
   std::uint32_t blockIndex;
   std::string sourceName;
   std::optional<std::uint32_t> parentBlockIndex;
+  std::optional<std::uint32_t> dataBlockIndex;
 };
 
 struct SelectedSceneObjects {
