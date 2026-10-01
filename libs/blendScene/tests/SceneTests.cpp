@@ -1,5 +1,8 @@
 #include <blendScene/Scene.h>
+#include <blendScene/Selection.h>
 
+#include <algorithm>
+#include <bit>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -229,13 +232,198 @@ void CheckScene() {
       "Source metadata is independent of basis conversion");
 }
 
+void StoreBits(std::vector<std::byte>& bytes, std::size_t offset,
+    std::uint64_t value, std::size_t width, blend::ByteOrder order) {
+  for (std::size_t index = 0; index < width; ++index) {
+    const auto shift = 8 * (order == blend::ByteOrder::Little ? index : width - index - 1);
+    bytes.at(offset + index) = static_cast<std::byte>((value >> shift) & 255);
+  }
 }
 
-int main() {
+void CheckSelectionLayouts() {
+  for (const std::uint8_t width : {4, 8}) {
+    for (const auto order : {blend::ByteOrder::Little, blend::ByteOrder::Big}) {
+      const blend::Header header{width, order, 405};
+      const auto idSize = static_cast<std::uint16_t>(16 + width);
+      const auto sceneSize = static_cast<std::uint16_t>(idSize + 4);
+      blend::DnaSchema schema;
+      schema.names = {"name[16]", "*lib", "scale_length", "id", "unit", "*curscene"};
+      schema.types = {{"char", 1}, {"float", 4}, {"Library", 0}, {"ID", idSize},
+          {"UnitSettings", 4}, {"Scene", sceneSize}, {"FileGlobal", width}};
+      schema.structs = {{3, {{0, 0, "name", 0, {16}, 0, 16},
+                                {2, 1, "lib", 1, {}, 16, width}}},
+          {4, {{1, 2, "scale_length", 0, {}, 0, 4}}},
+          {5, {{3, 3, "id", 0, {}, 0, idSize},
+                  {4, 4, "unit", 0, {}, idSize, 4}}},
+          {6, {{5, 5, "curscene", 1, {}, 0, width}}}};
+      std::vector<std::byte> bytes(width + 2 * sceneSize);
+      StoreBits(bytes, 0, 100, width, order);
+      for (const std::size_t offset : {static_cast<std::size_t>(width),
+               static_cast<std::size_t>(width + sceneSize)}) {
+        const std::string_view name = offset == width ? "SCChosen" : "SCOther";
+        for (std::size_t index = 0; index < name.size(); ++index) {
+          bytes[offset + index] = static_cast<std::byte>(name[index]);
+        }
+        StoreBits(bytes, offset + idSize, std::bit_cast<std::uint32_t>(0.01f), 4, order);
+      }
+      const std::vector<blend::BlendBlock> blocks = {
+          {{'G', 'L', 'O', 'B'}, width, 16, 3, 1, 0},
+          {{'S', 'C', 0, 0}, sceneSize, 100, 2, 1, width},
+          {{'S', 'C', 0, 0}, sceneSize, 200, 2, 1, static_cast<std::uint64_t>(width + sceneSize)}};
+      auto select = [&](const auto& input, const auto& records, const auto& dna) {
+        return blend::SelectScene(input, records, dna, header);
+      };
+      const auto selected = select(bytes, blocks, schema);
+      Require(selected.HasValue() && selected.GetValue().blockIndex == 1 &&
+                  selected.GetValue().metadata.sourceScene == "Chosen" &&
+                  selected.GetValue().metadata.sourceVersion == "4.5" &&
+                  selected.GetValue().metadata.sourceUnitScale == static_cast<double>(0.01f),
+          "Scene selection uses saved pointers, byte order and SDNA offsets");
+      auto alternate = bytes;
+      StoreBits(alternate, 0, 200, width, order);
+      const auto other = select(alternate, blocks, schema);
+      Require(other.HasValue() && other.GetValue().blockIndex == 2 &&
+                  other.GetValue().metadata.sourceScene == "Other",
+          "Saved selection does not choose the first Scene in the file");
+      auto failure = [&](const auto& input, const auto& records, const auto& dna,
+                         std::string_view code, std::optional<std::uint32_t> index) {
+        const auto result = select(input, records, dna);
+        Require(!result.HasValue(), "Malformed scene selection fails");
+        const auto& error = result.GetError();
+        Require(error.code == code && error.severity == blend::Severity::Fatal &&
+                    !error.recoverable && error.blockIndex == index &&
+                    error.byteOffset == (index ? std::optional<std::uint64_t>(records[*index].offset)
+                                               : std::nullopt),
+            "Scene selection failure has exact code and block context");
+      };
+      for (const std::uint64_t address : {0, 101, 999, 16}) {
+        auto changed = bytes;
+        StoreBits(changed, 0, address, width, order);
+        failure(changed, blocks, schema,
+            address == 0 ? "BLEND_SCENE_ACTIVE_MISSING" : "BLEND_SCENE_REFERENCE_INVALID", 0);
+      }
+      auto records = blocks;
+      records.erase(records.begin());
+      failure(bytes, records, schema, "BLEND_SCENE_GLOBAL_INVALID", std::nullopt);
+      records = blocks;
+      records.push_back(blocks[0]);
+      failure(bytes, records, schema, "BLEND_SCENE_GLOBAL_INVALID", 3);
+      records = blocks;
+      records[0].count = 2;
+      failure(bytes, records, schema, "BLEND_SCENE_GLOBAL_INVALID", 0);
+      records = blocks;
+      records[0].sdnaIndex = 0;
+      records[0].length = idSize;
+      failure(bytes, records, schema, "BLEND_SCENE_GLOBAL_INVALID", 0);
+      for (const auto code : {std::array<char, 4>{'D', 'A', 'T', 'A'},
+               std::array<char, 4>{'O', 'B', 0, 0}}) {
+        records = blocks;
+        records[1].code = code;
+        failure(bytes, records, schema, "BLEND_SCENE_REFERENCE_INVALID", 1);
+      }
+      records = blocks;
+      records[1].count = 2;
+      failure(bytes, records, schema, "BLEND_SCENE_REFERENCE_INVALID", 1);
+      records = blocks;
+      records[1].sdnaIndex = 0;
+      records[1].length = idSize;
+      failure(bytes, records, schema, "BLEND_SCENE_REFERENCE_INVALID", 1);
+      records = blocks;
+      records[1].sdnaIndex = static_cast<std::uint32_t>(schema.structs.size());
+      failure(bytes, records, schema, "BLEND_DNA_INDEX", 1);
+      records = blocks;
+      records[1].length -= 1;
+      failure(bytes, records, schema, "BLEND_DNA_SIZE", 1);
+      records = blocks;
+      records[2].oldAddress = 100;
+      failure(bytes, records, schema, "BLEND_POINTER_DUPLICATE", 2);
+      auto changed = bytes;
+      StoreBits(changed, width + 16, 999, width, order);
+      failure(changed, blocks, schema, "BLEND_SCENE_LINKED_UNSUPPORTED", 1);
+      for (const float scale : {0.0f, -1.0f,
+               std::numeric_limits<float>::infinity(),
+               std::numeric_limits<float>::quiet_NaN()}) {
+        changed = bytes;
+        StoreBits(changed, width + idSize, std::bit_cast<std::uint32_t>(scale), 4, order);
+        failure(changed, blocks, schema, "BLEND_SCENE_UNIT_SCALE_INVALID", 1);
+      }
+      changed = bytes;
+      changed[width] = std::byte{'O'};
+      failure(changed, blocks, schema, "BLEND_SCENE_NAME_INVALID", 1);
+      changed = bytes;
+      std::fill_n(changed.begin() + width, 16, std::byte{'X'});
+      changed[width] = std::byte{'S'};
+      changed[width + 1] = std::byte{'C'};
+      failure(changed, blocks, schema, "BLEND_SCENE_NAME_INVALID", 1);
+      auto dna = schema;
+      dna.structs[3].members[0].typeIndex = 2;
+      failure(bytes, blocks, dna, "BLEND_SCENE_REFERENCE_INVALID", 0);
+      dna = schema;
+      dna.structs[2].members.pop_back();
+      failure(bytes, blocks, dna, "BLEND_DNA_MEMBER", 1);
+      changed = bytes;
+      StoreBits(changed, width + sceneSize + idSize, 0, 4, order);
+      Require(select(changed, blocks, schema).HasValue(),
+          "Other scenes are not selected or semantically decoded");
+      StoreBits(changed, 0, 200, width, order);
+      failure(changed, blocks, schema, "BLEND_SCENE_UNIT_SCALE_INVALID", 2);
+      records = blocks;
+      std::swap(records[0], records[1]);
+      const auto reordered = select(bytes, records, schema);
+      Require(reordered.HasValue() && reordered.GetValue().blockIndex == 0 &&
+                  reordered.GetValue().metadata.sourceScene == "Chosen",
+          "Saved scene selection is independent of block enumeration order");
+      bytes[width + 2] = std::byte{'X'};
+      schema.types[5].name = "Changed";
+      Require(selected.GetValue().metadata.sourceScene == "Chosen",
+          "Selected scene metadata owns its source strings");
+    }
+  }
+}
+
+void CheckSelectedScene(const char* path, bool hasSavedScene) {
+  blend::FileByteSource source(path);
+  Require(source.IsOpen(), "Scene selection fixture opens");
+  const auto decoded = blend::ReadFileBytes(source, {1024 * 1024, 2 * 1024 * 1024, 16, 23});
+  Require(decoded.HasValue(), "Scene selection fixture decodes");
+  blend::MemoryByteSource memory(decoded.GetValue());
+  const auto header = blend::ReadHeader(memory);
+  const auto blocks = blend::ReadBlocks(memory, 10000);
+  Require(header.HasValue() && blocks.HasValue(), "Scene selection container reads");
+  const auto dna = std::find_if(blocks.GetValue().begin(), blocks.GetValue().end(),
+      [](const auto& block) { return block.code == std::array<char, 4>{'D', 'N', 'A', '1'}; });
+  Require(dna != blocks.GetValue().end(), "Scene selection fixture has DNA1");
+  const auto schema = blend::ReadDna(
+      std::span<const std::byte>(decoded.GetValue()).subspan(static_cast<std::size_t>(dna->offset), static_cast<std::size_t>(dna->length)),
+      header.GetValue());
+  Require(schema.HasValue(), "Scene selection fixture SDNA reads");
+  const auto selected = blend::SelectScene(decoded.GetValue(), blocks.GetValue(),
+      schema.GetValue(), header.GetValue());
+  if (!hasSavedScene) {
+    Require(!selected.HasValue() && selected.GetError().code == "BLEND_SCENE_ACTIVE_MISSING",
+        "Scene-only library has no implicit fallback");
+    return;
+  }
+  if (!selected.HasValue()) {
+    throw std::runtime_error(selected.GetError().code + ": " + selected.GetError().message);
+  }
+  Require(selected.GetValue().metadata.sourceScene == "Scene" &&
+              selected.GetValue().metadata.sourceVersion == header.GetValue().SourceVersion() &&
+              selected.GetValue().metadata.sourceUnitScale > 0,
+      "Saved active scene metadata is selected through SDNA");
+}
+}
+
+int main(int argc, char** argv) {
   try {
     CheckBasis();
     CheckUnits();
     CheckScene();
+    CheckSelectionLayouts();
+    Require(argc == 4, "Three scene selection fixtures are required");
+    CheckSelectedScene(argv[1], false);
+    CheckSelectedScene(argv[2], true);
+    CheckSelectedScene(argv[3], true);
     std::cout << "Scene IR, coordinate basis and unit checks passed\n";
     return 0;
   } catch (const std::exception& error) {

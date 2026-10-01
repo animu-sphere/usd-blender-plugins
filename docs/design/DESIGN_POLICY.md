@@ -341,6 +341,43 @@ cycles, topology and array sizes before publishing a Scene. This boundary does
 not introduce a native `Decode` or backend implementation. Evidence belongs in
 the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 
+### 5.2.2 Saved-scene selection boundary
+
+`SelectScene(bytes, blocks, schema, header)` in `blendScene/Selection.h`
+consumes the same caller-validated uncompressed bytes, ordered block records,
+SDNA schema and header used by the reader. It returns `Result<SelectedScene>`:
+the selected zero-based `blockIndex` and owning `SceneMetadata`, not a populated
+object/mesh IR. The index belongs to the supplied block sequence; metadata
+strings remain valid after inputs are released. Full-file and block budgets
+remain the caller's responsibility. Selection neither opens another file nor
+finds or verifies the file's DNA1 block count.
+
+Exactly one `GLOB` containing one `FileGlobal` is required. Its scalar
+`Scene *curscene` must resolve through the exact-key pointer map to one `SC`
+block with `Scene` SDNA type. Missing, null, absent/interior, wrong-type and
+multi-element references fail without choosing the first or only Scene.
+In particular, a Scene-only library with null `curscene` has no implicit
+fallback. Pointer-map duplicate validation still applies to all reference
+targets, not just the selected Scene.
+
+The selected Scene must contain scalar embedded `ID` and `UnitSettings`
+members. A nonzero scalar `Library *ID.lib` is reported as a fatal
+`BLEND_SCENE_LINKED_UNSUPPORTED`, not resolved or loaded. `ID.name` must be
+a terminated one-dimensional, one-byte `char` array with the `SC` prefix;
+`sourceScene` copies the bytes after that prefix. This is raw source provenance,
+not UTF-8 validation, normalization or an identifier policy. `sourceVersion`
+comes from the supplied header. `Scene.unit.scale_length` must be finite and
+strictly positive and is retained as `sourceUnitScale`, not applied here.
+
+Semantic errors are fatal, non-recoverable `BLEND_SCENE_*` diagnostics with
+the referring GLOB or selected target's uncompressed payload offset and block
+index. A missing GLOB or allocation failure has no block context. Reader
+`BLEND_DNA_*`, `BLEND_BLOCK_*` and pointer-map errors retain their original
+context. Other scenes are not semantically decoded. No Collection/ListBase
+walk, object graph, unit-normalized geometry, backend `Decode`, Scene IR
+publication or USD authoring is introduced by selection. Fixture-backed scope
+is in the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
+
 ### 5.3 `usdBlendFileFormat` — the importer
 
 The OpenUSD `SdfFileFormat` bundle, scaffolded from OpenStrata's

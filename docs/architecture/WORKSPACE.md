@@ -58,12 +58,19 @@ separate raw references from the ID graph owned by `blendScene`.
 `blendScene` exposes the owning object/mesh Scene IR and the single basis
 conversion through `blendScene/Scene.h`, under the
 [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation).
-Its foundation has no link dependencies; the permitted `blendFile` edge is
-added when native decoding consumes syntax. The root adds it before resolving
-OpenUSD, and its standalone CMake package exports `blendScene::blendScene`.
+Its native saved-scene selection consumes reader syntax through the declared
+`blendFile` edge; the IR header itself still uses only standard C++ types.
+`blendScene/Selection.h` exposes the separate
+[selection boundary](../design/DESIGN_POLICY.md#522-saved-scene-selection-boundary).
+The root adds the library before resolving OpenUSD. Its standalone CMake
+package exports `blendScene::blendScene` with a public `blendFile` dependency
+and resolves that installed package through `find_dependency`; OpenStrata
+builds and installs the descriptor's reader prerequisite automatically.
 Both build modes run the IR and forbidden-include tests, generated link
 metadata and link-boundary checks, and rejection tests. The generated-link
 test helpers are shared with `blendFile`, keeping the existing reader defaults.
+The scene gate additionally allows `blendFile` and rejects OpenUSD, Blender,
+host-backend and unknown libraries; the reader gate still rejects scene links.
 The plugin and inspection tool still consume `blendFile` alone; no new runtime
 consumer edge is implied by registering the library as a workspace member.
 
