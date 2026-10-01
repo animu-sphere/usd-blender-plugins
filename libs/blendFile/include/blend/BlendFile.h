@@ -106,6 +106,17 @@ struct BlendBlock {
 
 Result<std::vector<BlendBlock>> ReadBlocks(ByteSource& source, std::uint64_t maxBlocks);
 
+class PointerMap {
+public:
+  Result<std::optional<std::uint32_t>> Resolve(std::uint64_t oldAddress) const;
+
+private:
+  std::vector<std::pair<std::uint64_t, std::uint32_t>> entries_;
+  friend Result<PointerMap> BuildPointerMap(std::span<const BlendBlock> blocks);
+};
+
+Result<PointerMap> BuildPointerMap(std::span<const BlendBlock> blocks);
+
 struct DnaType {
   std::string name;
   std::uint16_t length;
@@ -135,4 +146,15 @@ struct DnaSchema {
 };
 
 Result<DnaSchema> ReadDna(std::span<const std::byte> payload, const Header& header);
+
+struct RawDatablock {
+  std::uint32_t blockIndex;
+  std::uint64_t oldAddress;
+  std::string typeName;
+  std::string name;
+  bool operator==(const RawDatablock&) const = default;
+};
+
+Result<std::vector<RawDatablock>> ListDatablocks(std::span<const std::byte> bytes,
+    std::span<const BlendBlock> blocks, const DnaSchema& schema);
 }

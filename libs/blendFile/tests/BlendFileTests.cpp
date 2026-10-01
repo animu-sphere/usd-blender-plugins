@@ -17,6 +17,38 @@ void Require(bool condition, const char* message) {
     }
 }
 
+void CheckPointerMap() {
+  std::vector<blend::BlendBlock> blocks{
+      {{'D', 'A', 'T', 'A'}, 4, 0xfffffffffffffff0ULL, 0, 1, 12},
+      {{'D', 'A', 'T', 'A'}, 4, 0x1234, 0, 1, 40},
+      {{'E', 'N', 'D', 'B'}, 0, 0, 0, 0, 68},
+      {{'R', 'E', 'N', 'D'}, 4, 0x1234, 0, 0, 72},
+      {{'G', 'L', 'O', 'B'}, 4, 0x1234, 0, 0, 100},
+      {{'D', 'N', 'A', '1'}, 4, 0x1234, 0, 0, 128}};
+  const auto result = blend::BuildPointerMap(blocks);
+  Require(result.HasValue(), "Pointer map rejected unique addresses");
+  const auto map = result.GetValue();
+  blocks.clear();
+  for (const auto [address, index] : {std::pair{0xfffffffffffffff0ULL, 0U}, std::pair{0x1234ULL, 1U}}) {
+    const auto resolved = map.Resolve(address);
+    Require(resolved.HasValue() && resolved.GetValue() == index && resolved.Diagnostics().empty(), "Pointer resolution differs");
+  }
+  const auto null = map.Resolve(0);
+  Require(null.HasValue() && !null.GetValue() && null.Diagnostics().empty(), "Null pointer must not warn");
+  const auto missing = map.Resolve(0x1235);
+  Require(missing.HasValue() && !missing.GetValue() && missing.Diagnostics().size() == 1 &&
+              missing.Diagnostics()[0].code == "BLEND_POINTER_UNRESOLVED" &&
+              missing.Diagnostics()[0].severity == blend::Severity::Warning && missing.Diagnostics()[0].recoverable,
+      "Unresolved pointer must warn and become null");
+  blocks = {{{'D', 'A', 'T', 'A'}, 4, 7, 0, 1, 12}, {{'D', 'A', 'T', 'A'}, 4, 7, 0, 1, 40}};
+  const auto duplicate = blend::BuildPointerMap(blocks);
+  Require(!duplicate.HasValue() && duplicate.GetError().code == "BLEND_POINTER_DUPLICATE" &&
+              duplicate.GetError().byteOffset == 40 && duplicate.GetError().blockIndex == 1,
+      "Duplicate address must fail with block context");
+  blocks[0].oldAddress = blocks[1].oldAddress = 0;
+  Require(blend::BuildPointerMap(blocks).HasValue() && blend::BuildPointerMap({}).HasValue(), "Zero addresses or empty map rejected");
+}
+
 void CheckZlibDecoder() {
   Require(std::string_view(zlibVersion()) == "1.3.2", "Wrong vendored zlib version");
   std::array<Bytef, 25> compressed{
@@ -268,6 +300,24 @@ void CheckFileFixture(const std::filesystem::path& path, bool compressed,
   const auto& bytes = decoded.GetValue();
   const auto blocks = blend::ReadBlocks(memory, 10000);
   Require(blocks.HasValue(), "SDNA fixture block enumeration failed");
+  const auto pointers = blend::BuildPointerMap(blocks.GetValue());
+  if (!pointers.HasValue()) {
+    std::cerr << pointers.GetError().code << ": " << pointers.GetError().message << '\n';
+  }
+  Require(pointers.HasValue(), "Real-file pointer map rejected");
+  for (std::size_t index = 0; index < blocks.GetValue().size(); ++index) {
+    const auto& candidate = blocks.GetValue()[index];
+    const bool id = candidate.code[0] >= 'A' && candidate.code[0] <= 'Z' && candidate.code[1] >= 'A' && candidate.code[1] <= 'Z' &&
+                    candidate.code[2] == '\0' && candidate.code[3] == '\0';
+    if (!id && candidate.code != std::array{'D', 'A', 'T', 'A'}) {
+      continue;
+    }
+    const auto address = candidate.oldAddress;
+    const auto resolved = pointers.GetValue().Resolve(address);
+    Require(resolved.HasValue() && resolved.Diagnostics().empty() &&
+                (address == 0 ? !resolved.GetValue() : resolved.GetValue() == index),
+        "Real-file old address did not resolve to its block");
+  }
   std::size_t dnaCount = 0;
   for (const auto& block : blocks.GetValue()) {
     if (block.code != std::array<char, 4>{'D', 'N', 'A', '1'}) {
@@ -296,6 +346,39 @@ void CheckFileFixture(const std::filesystem::path& path, bool compressed,
     }
     Require(schema.FindStruct("Scene") != nullptr && schema.FindStruct("Object") != nullptr,
         "Real-file SDNA is missing core structures");
+    const auto datablocks = blend::ListDatablocks(bytes, blocks.GetValue(), schema);
+    if (!datablocks.HasValue()) {
+      std::cerr << datablocks.GetError().code << ": " << datablocks.GetError().message << '\n';
+    }
+    Require(datablocks.HasValue(), "Real-file ID enumeration rejected");
+    std::size_t expectedIds = 0;
+    for (const auto& candidate : blocks.GetValue()) {
+      if (candidate.code[0] >= 'A' && candidate.code[0] <= 'Z' && candidate.code[1] >= 'A' && candidate.code[1] <= 'Z' &&
+          candidate.code[2] == '\0' && candidate.code[3] == '\0') {
+        ++expectedIds;
+      }
+    }
+    Require(datablocks.GetValue().size() == expectedIds && expectedIds > 0, "Not every real-file ID block was listed");
+    Require(std::any_of(datablocks.GetValue().begin(), datablocks.GetValue().end(), [](const blend::RawDatablock& value) {
+      return value.typeName == "Scene" && value.name == "SCScene";
+    }),
+        "Known Scene type and name were not preserved");
+    if (path.filename() == "empty.blend") {
+      Require(expectedIds == 1, "Generated empty scene must contain only its Scene ID");
+    }
+    for (const auto& value : datablocks.GetValue()) {
+      const auto& candidate = blocks.GetValue()[value.blockIndex];
+      Require(value.oldAddress == candidate.oldAddress && !value.typeName.empty() && value.name.size() >= 2 &&
+                  value.typeName == schema.types[schema.structs[candidate.sdnaIndex].typeIndex].name,
+          "Real-file raw datablock identity differs");
+    }
+    if (path.filename() != "empty.blend") {
+      Require(std::any_of(datablocks.GetValue().begin(), datablocks.GetValue().end(), [&](const blend::RawDatablock& value) {
+        return blocks.GetValue()[value.blockIndex].code == std::array{'S', 'N', '\0', '\0'} &&
+               value.typeName == "bScreen" && value.name.starts_with("SR");
+      }),
+          "Screen block code and stored name prefix distinction was lost");
+    }
   }
   Require(dnaCount == 1, "Fixture must contain exactly one DNA1 block");
   const std::string_view text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
@@ -362,6 +445,123 @@ void ExpectDnaError(std::string_view text, bool little, std::uint8_t pointerSize
   Require(result.GetError().severity == blend::Severity::Fatal && !result.GetError().recoverable &&
               result.GetError().byteOffset && *result.GetError().byteOffset <= text.size(),
       "Wrong SDNA diagnostic severity or payload-relative location");
+}
+
+void CheckDatablocks() {
+  for (const bool little : {false, true}) {
+    for (const std::uint8_t pointerSize : {4, 8}) {
+      std::string dnaBytes = "SDNANAME";
+      AppendInteger(dnaBytes, 4, 4, little);
+      for (const auto name : {"*next", "name[8]", "id", "value"}) {
+        dnaBytes += name;
+        dnaBytes.push_back('\0');
+      }
+      dnaBytes.resize((dnaBytes.size() + 3) / 4 * 4, '\0');
+      dnaBytes += "TYPE";
+      AppendInteger(dnaBytes, 4, 4, little);
+      for (const auto type : {"char", "int", "ID", "Object"}) {
+        dnaBytes += type;
+        dnaBytes.push_back('\0');
+      }
+      dnaBytes.resize((dnaBytes.size() + 3) / 4 * 4, '\0');
+      dnaBytes += "TLEN";
+      for (const auto length : {1, 4, pointerSize + 8, pointerSize + 12}) {
+        AppendInteger(dnaBytes, length, 2, little);
+      }
+      dnaBytes += "STRC";
+      AppendInteger(dnaBytes, 2, 4, little);
+      for (const auto value : {2, 2, 2, 0, 0, 1, 3, 2, 2, 2, 1, 3}) {
+        AppendInteger(dnaBytes, value, 2, little);
+      }
+      const auto dna = ParseDna(dnaBytes, little, pointerSize);
+      Require(dna.HasValue(), "Synthetic ID SDNA rejected");
+      auto schema = dna.GetValue();
+      std::string payload;
+      AppendInteger(payload, 0, pointerSize, little);
+      payload.append("OBCube\0\0", 8);
+      AppendInteger(payload, 42, 4, little);
+      std::vector<blend::BlendBlock> blocks{
+          {{'O', 'B', '\0', '\0'}, payload.size(), 0x1234, 1, 1, 0},
+          {{'D', 'A', 'T', 'A'}, 0, 0, 0xffffffff, 0, payload.size()}};
+      const auto list = [&] {
+        return blend::ListDatablocks(std::as_bytes(std::span(payload.data(), payload.size())), blocks, schema);
+      };
+      const auto result = list();
+      Require(result.HasValue() && result.GetValue() == std::vector<blend::RawDatablock>{{0, 0x1234, "Object", "OBCube"}},
+          "Synthetic datablock type, name or identity differs");
+      const auto originalPayload = payload;
+      payload = payload.substr(payload.size() - 4) + payload.substr(0, payload.size() - 4);
+      std::swap(schema.structs[1].members[0], schema.structs[1].members[1]);
+      schema.structs[1].members[0].offset = 0;
+      schema.structs[1].members[1].offset = 4;
+      const auto shifted = list();
+      Require(shifted.HasValue() && shifted.GetValue() == result.GetValue(), "Embedded ID offset was hard-coded");
+      schema = dna.GetValue();
+      payload = originalPayload;
+      payload[pointerSize + 2] = static_cast<char>(0x80);
+      const auto rawName = list();
+      Require(rawName.HasValue() && static_cast<unsigned char>(rawName.GetValue()[0].name[2]) == 0x80 &&
+                  result.GetValue()[0].name == "OBCube",
+          "Raw name bytes were normalized or result borrowed payload storage");
+      payload = originalPayload;
+      const auto expect = [&](std::string_view code) {
+        const auto invalid = list();
+        Require(!invalid.HasValue() && invalid.GetError().code == code && invalid.GetError().blockIndex == 0 &&
+                    invalid.GetError().byteOffset == blocks[0].offset && invalid.GetError().severity == blend::Severity::Fatal &&
+                    !invalid.GetError().recoverable,
+            "Malformed datablock did not fail with expected context");
+      };
+      blocks[0].sdnaIndex = 2;
+      expect("BLEND_DNA_INDEX");
+      blocks[0].sdnaIndex = 1;
+      schema.structs[1].typeIndex = 4;
+      expect("BLEND_DNA_INDEX");
+      schema.structs[1].typeIndex = 3;
+      for (const auto count : {0ULL, 2ULL, std::numeric_limits<unsigned long long>::max()}) {
+        blocks[0].count = count;
+        expect("BLEND_DNA_SIZE");
+      }
+      blocks[0].count = 1;
+      --blocks[0].length;
+      expect("BLEND_DNA_SIZE");
+      blocks[0].length += 2;
+      expect("BLEND_BLOCK_SIZE");
+      --blocks[0].length;
+      blocks[0].offset = std::numeric_limits<std::uint64_t>::max();
+      expect("BLEND_BLOCK_SIZE");
+      blocks[0].offset = 0;
+      schema.structs[1].members[0].pointerLevel = 1;
+      expect("BLEND_DNA_MEMBER");
+      schema.structs[1].members[0].pointerLevel = 0;
+      schema.structs[1].members[0].offset = payload.size();
+      expect("BLEND_DNA_SIZE");
+      schema.structs[1].members[0].offset = 0;
+      schema.structs[0].members[1].typeIndex = 1;
+      expect("BLEND_DNA_MEMBER");
+      schema.structs[0].members[1].typeIndex = 0;
+      schema.structs[0].members[1].offset = payload.size();
+      expect("BLEND_DNA_SIZE");
+      schema.structs[0].members[1].offset = pointerSize;
+      payload[pointerSize] = '\0';
+      expect("BLEND_DNA_NAME");
+      payload[pointerSize] = 'O';
+      payload[pointerSize + 6] = payload[pointerSize + 7] = 'X';
+      expect("BLEND_DNA_NAME");
+      payload.resize(pointerSize + 8);
+      payload[pointerSize + 6] = payload[pointerSize + 7] = '\0';
+      payload[pointerSize] = 'S';
+      payload[pointerSize + 1] = 'R';
+      blocks[0].length = payload.size();
+      blocks[0].code = {'S', 'N', '\0', '\0'};
+      blocks[0].sdnaIndex = 0;
+      const auto screen = list();
+      Require(screen.HasValue() && screen.GetValue()[0].name == "SRCube", "Different block code and ID name prefix rejected");
+      const auto direct = list();
+      Require(direct.HasValue() && direct.GetValue()[0].typeName == "ID", "Direct ID structure rejected");
+      blocks.clear();
+      Require(list().HasValue() && list().GetValue().empty(), "Empty datablock list rejected");
+    }
+  }
 }
 
 void CheckDna() {
@@ -781,6 +981,8 @@ int main(int argumentCount, char** arguments) {
       CheckGzipHeaders();
       CheckFileBytes();
       CheckDna();
+      CheckPointerMap();
+      CheckDatablocks();
       CheckFileFixture(arguments[2], true);
       CheckFileFixture(arguments[3], false);
       CheckFileFixture(arguments[4], false, 405, 12);

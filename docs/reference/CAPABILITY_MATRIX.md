@@ -44,6 +44,9 @@ No row says "supported" without a fixture.
 | full-file input, output, ratio and window limits | supported | exact byte/ratio boundaries, high-ratio streams, oversized windows and invalid limits in `blendFile.header` | Phase 1 |
 | SDNA tables, member layouts and name lookup | supported | all structures in `empty.blend` and both real corpus files; synthetic 32/64-bit, little/big-endian schemas, arrays, function pointers and empty structures in `blendFile.header` | Phase 1 |
 | SDNA malformed-input diagnostics | supported | all short payload prefixes, invalid sections/counts/indices/names, duplicate records, size mismatches, overflowing arrays and trailing bytes in `blendFile.header` | Phase 1 |
+| saved-address pointer map (ID and DATA; exact keys only) | supported | all reference-target addresses in `empty.blend` and both corpus files; synthetic null, unresolved, duplicate, metadata-collision and 64-bit keys in `blendFile.header` | Phase 1 |
+| raw ID datablock type/name enumeration | supported | every ID block in `empty.blend` and both corpus files; synthetic 32/64-bit, little/big-endian layouts, embedded ID offsets and raw name bytes in `blendFile.header` | Phase 1 |
+| raw ID range, index, count and name diagnostics | supported | synthetic out-of-range payloads/indices, size/count mismatches, invalid embedded members and unterminated names in `blendFile.header` | Phase 1 |
 | `blend_inspect` | — | | Phase 1 |
 
 Full-stream byte reading validates compression and the decoded header, not
@@ -67,6 +70,16 @@ validate other blocks against the schema, reconstruct pointers or read scene
 values. Real-file SDNA evidence is limited to 64-bit little-endian files;
 the other layouts have synthetic evidence only. Blender-version and scene
 compatibility remain unclaimed, and the importer remains header-only.
+
+`BuildPointerMap` and `ListDatablocks` separately provide
+[exact-key resolution](../design/BLEND_CONTRACT.md#81-pointer-map-boundary) and
+[raw ID records](../design/BLEND_CONTRACT.md#82-raw-datablock-boundary).
+Metadata blocks do not enter the pointer map. Names retain their stored
+two-byte prefixes, which can differ from block codes (`SN`/`SR` screens).
+No pointer-valued members, linked libraries, lists or scene graphs are decoded;
+non-ID payloads are not checked against SDNA. Real-file evidence remains
+64-bit little-endian, and other layouts have synthetic evidence. The importer
+continues to read headers only.
 
 ## 2. Blender versions
 

@@ -17,6 +17,11 @@ Diagnostic Fatal(const char* code, const char* message, std::uint64_t offset) {
     return Diagnostic{code, Severity::Fatal, message, offset, std::nullopt, {}, false};
 }
 
+bool IsIdBlock(const BlendBlock& block) {
+  return block.code[0] >= 'A' && block.code[0] <= 'Z' && block.code[1] >= 'A' && block.code[1] <= 'Z' &&
+         block.code[2] == '\0' && block.code[3] == '\0';
+}
+
 class DnaReader {
 public:
   DnaReader(std::span<const std::byte> bytes, const Header& header) : bytes_(bytes), header_(header) {
@@ -416,6 +421,129 @@ Result<DnaSchema> ReadDna(std::span<const std::byte> payload, const Header& head
     return Result<DnaSchema>(Fatal("BLEND_DNA_ALLOCATION", "Could not allocate SDNA tables", 0));
   } catch (const std::length_error&) {
     return Result<DnaSchema>(Fatal("BLEND_DNA_ALLOCATION", "SDNA tables exceed addressable memory", 0));
+  }
+}
+
+Result<std::vector<RawDatablock>> ListDatablocks(std::span<const std::byte> bytes,
+    std::span<const BlendBlock> blocks, const DnaSchema& schema) {
+  using DatablockResult = Result<std::vector<RawDatablock>>;
+  if (blocks.size() > std::numeric_limits<std::uint32_t>::max()) {
+    return DatablockResult(Fatal("BLEND_BLOCK_COUNT_LIMIT", "Too many blocks for datablock indices", 0));
+  }
+  try {
+    std::vector<RawDatablock> datablocks;
+    for (std::size_t index = 0; index < blocks.size(); ++index) {
+      const auto& block = blocks[index];
+      if (!IsIdBlock(block)) {
+        continue;
+      }
+      const auto fail = [&](const char* code, const char* message) {
+        auto diagnostic = Fatal(code, message, block.offset);
+        diagnostic.blockIndex = static_cast<std::uint32_t>(index);
+        return DatablockResult(std::move(diagnostic));
+      };
+      if (block.offset > bytes.size() || block.length > bytes.size() - block.offset) {
+        return fail("BLEND_BLOCK_SIZE", "ID payload exceeds the supplied bytes");
+      }
+      if (block.sdnaIndex >= schema.structs.size()) {
+        return fail("BLEND_DNA_INDEX", "ID block SDNA index is out of range");
+      }
+      const auto& structure = schema.structs[block.sdnaIndex];
+      if (structure.typeIndex >= schema.types.size()) {
+        return fail("BLEND_DNA_INDEX", "ID structure type index is out of range");
+      }
+      const auto& type = schema.types[structure.typeIndex];
+      if (block.count != 1 || type.length == 0 || block.length != type.length) {
+        return fail("BLEND_DNA_SIZE", "ID block must contain exactly one complete structure");
+      }
+      const auto* idStructure = &structure;
+      std::uint64_t idOffset = 0;
+      if (type.name != "ID") {
+        const auto* idMember = structure.FindMember("id");
+        if (!idMember || idMember->typeIndex >= schema.types.size() ||
+            schema.types[idMember->typeIndex].name != "ID" || idMember->pointerLevel != 0 ||
+            !idMember->arrayDimensions.empty()) {
+          return fail("BLEND_DNA_MEMBER", "ID block has no embedded ID member");
+        }
+        idStructure = schema.FindStruct("ID");
+        if (!idStructure || idMember->offset > block.length || idMember->size > block.length - idMember->offset ||
+            idMember->size != schema.types[idMember->typeIndex].length) {
+          return fail("BLEND_DNA_SIZE", "Embedded ID does not fit the structure");
+        }
+        idOffset = idMember->offset;
+      }
+      const auto* name = idStructure->FindMember("name");
+      if (!name || name->typeIndex >= schema.types.size() || schema.types[name->typeIndex].name != "char" ||
+          schema.types[name->typeIndex].length != 1 || name->pointerLevel != 0 ||
+          name->arrayDimensions.size() != 1 || name->arrayDimensions.front() != name->size || name->size < 3) {
+        return fail("BLEND_DNA_MEMBER", "ID.name must be a bounded char array");
+      }
+      const auto idLength = schema.types[idStructure->typeIndex].length;
+      if (name->offset > idLength || name->size > idLength - name->offset || idOffset > block.length ||
+          name->offset > block.length - idOffset || name->size > block.length - idOffset - name->offset) {
+        return fail("BLEND_DNA_SIZE", "ID.name exceeds its structure or block");
+      }
+      const auto nameBytes = bytes.subspan(static_cast<std::size_t>(block.offset + idOffset + name->offset),
+          static_cast<std::size_t>(name->size));
+      const auto end = std::find(nameBytes.begin(), nameBytes.end(), std::byte{0});
+      if (end == nameBytes.end() || end - nameBytes.begin() < 2) {
+        return fail("BLEND_DNA_NAME", "ID.name is unterminated or lacks its two-byte prefix");
+      }
+      datablocks.push_back(RawDatablock{static_cast<std::uint32_t>(index), block.oldAddress, type.name,
+          std::string(reinterpret_cast<const char*>(nameBytes.data()), static_cast<std::size_t>(end - nameBytes.begin()))});
+    }
+    return DatablockResult(std::move(datablocks));
+  } catch (const std::bad_alloc&) {
+    return DatablockResult(Fatal("BLEND_DNA_ALLOCATION", "Could not allocate raw datablocks", 0));
+  } catch (const std::length_error&) {
+    return DatablockResult(Fatal("BLEND_DNA_ALLOCATION", "Raw datablocks exceed addressable memory", 0));
+  }
+}
+
+Result<PointerMap> BuildPointerMap(std::span<const BlendBlock> blocks) {
+  if (blocks.size() > std::numeric_limits<std::uint32_t>::max()) {
+    return Result<PointerMap>(Fatal("BLEND_POINTER_LIMIT", "Too many blocks for pointer-map indices", 0));
+  }
+  try {
+    PointerMap map;
+    for (std::size_t index = 0; index < blocks.size(); ++index) {
+      if (blocks[index].oldAddress != 0 &&
+          (IsIdBlock(blocks[index]) || blocks[index].code == std::array{'D', 'A', 'T', 'A'})) {
+        map.entries_.emplace_back(blocks[index].oldAddress, static_cast<std::uint32_t>(index));
+      }
+    }
+    std::sort(map.entries_.begin(), map.entries_.end());
+    for (std::size_t index = 1; index < map.entries_.size(); ++index) {
+      if (map.entries_[index - 1].first == map.entries_[index].first) {
+        const auto blockIndex = map.entries_[index].second;
+        auto diagnostic = Fatal("BLEND_POINTER_DUPLICATE", "Old address belongs to more than one block", blocks[blockIndex].offset);
+        diagnostic.blockIndex = blockIndex;
+        return Result<PointerMap>(std::move(diagnostic));
+      }
+    }
+    return Result<PointerMap>(std::move(map));
+  } catch (const std::bad_alloc&) {
+    return Result<PointerMap>(Fatal("BLEND_POINTER_ALLOCATION", "Could not allocate pointer map", 0));
+  } catch (const std::length_error&) {
+    return Result<PointerMap>(Fatal("BLEND_POINTER_ALLOCATION", "Pointer map exceeds addressable memory", 0));
+  }
+}
+
+Result<std::optional<std::uint32_t>> PointerMap::Resolve(std::uint64_t oldAddress) const {
+  using PointerResult = Result<std::optional<std::uint32_t>>;
+  if (oldAddress == 0) {
+    return PointerResult(std::nullopt);
+  }
+  const auto entry = std::lower_bound(entries_.begin(), entries_.end(), oldAddress,
+      [](const auto& value, std::uint64_t address) { return value.first < address; });
+  if (entry != entries_.end() && entry->first == oldAddress) {
+    return PointerResult(entry->second);
+  }
+  try {
+    return PointerResult(std::nullopt, {Diagnostic{"BLEND_POINTER_UNRESOLVED", Severity::Warning,
+                                           "Old address has no matching block", std::nullopt, std::nullopt, {}, true}});
+  } catch (const std::bad_alloc&) {
+    return PointerResult(Fatal("BLEND_POINTER_ALLOCATION", "Could not allocate pointer diagnostic", 0));
   }
 }
 

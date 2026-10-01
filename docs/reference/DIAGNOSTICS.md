@@ -53,7 +53,8 @@ as `TF_RUNTIME_ERROR` and the rest as `TF_WARN`, and authors what it can.
 
 Codes are fatal and non-recoverable unless the table specifies otherwise.
 Block enumeration also returns recoverable `Unsupported` diagnostics for
-unknown codes. Fixture paths are relative to
+unknown codes; unresolved pointers return recoverable `Warning` diagnostics.
+Fixture paths are relative to
 `plugins/usdBlendFileFormat/tests/fixtures/`.
 
 | Code | Severity | Recoverable | Raised when | Evidence |
@@ -83,7 +84,7 @@ unknown codes. Fixture paths are relative to
 | `BLEND_BLOCK_NEGATIVE_LENGTH` | Fatal | no | the signed stored payload length is negative | legacy and format-1 sign-bit cases in `blendFile.header` |
 | `BLEND_BLOCK_NEGATIVE_SDNA` | Fatal | no | the signed stored SDNA index is negative | all block layouts in `blendFile.header` |
 | `BLEND_BLOCK_NEGATIVE_COUNT` | Fatal | no | the signed stored element count is negative | legacy and format-1 sign-bit cases in `blendFile.header` |
-| `BLEND_BLOCK_SIZE` | Fatal | no | a nonnegative declared payload length exceeds the remaining bytes | short payloads and maximum signed lengths in `blendFile.header` |
+| `BLEND_BLOCK_SIZE` | Fatal | no | a declared payload exceeds the source or an ID range exceeds the supplied decoded bytes | short payloads, maximum signed lengths and raw ID range errors in `blendFile.header` |
 | `BLEND_BLOCK_ENDB` | Fatal | no | `ENDB` declares a nonempty payload | synthetic containers in `blendFile.header` |
 | `BLEND_BLOCK_TRAILING` | Fatal | no | bytes or another block follow `ENDB` | trailing byte and duplicate `ENDB` cases in `blendFile.header` |
 | `BLEND_BLOCK_MISSING_ENDB` | Fatal | no | the source ends at a block boundary without `ENDB` | header-only and terminal payload truncations in `blendFile.header` |
@@ -93,12 +94,17 @@ unknown codes. Fixture paths are relative to
 | `BLEND_DNA_TRUNCATED` | Fatal | no | an integer, tag, string terminator, type length or alignment padding is incomplete | short SDNA payload prefixes in `blendFile.header` |
 | `BLEND_DNA_SECTION` | Fatal | no | an SDNA section tag differs from its required identifier | every section tag corrupted in `blendFile.header` |
 | `BLEND_DNA_COUNT` | Fatal | no | a table or member count exceeds remaining records or the index range | oversized NAME/TYPE/STRC and member counts in `blendFile.header` |
-| `BLEND_DNA_INDEX` | Fatal | no | a structure type or member type/name index is out of range | each index kind in `blendFile.header` |
-| `BLEND_DNA_NAME` | Fatal | no | a name is empty or a member declarator is malformed | invalid identifiers, arrays and function pointers in `blendFile.header` |
+| `BLEND_DNA_INDEX` | Fatal | no | a structure type, member type/name or raw ID SDNA index is out of range | each schema index kind and raw ID indices in `blendFile.header` |
+| `BLEND_DNA_NAME` | Fatal | no | a schema name/declarator is malformed, or raw ID.name lacks a bounded terminator or two-byte prefix | invalid identifiers, arrays, function pointers and raw ID names in `blendFile.header` |
 | `BLEND_DNA_DUPLICATE` | Fatal | no | a type name, structure type or member base name is duplicated | each duplicate kind in `blendFile.header` |
-| `BLEND_DNA_SIZE` | Fatal | no | an array dimension/product overflows, a value member has zero size, or member sizes differ from TLEN | array overflow, zero type length and short/long structure lengths in `blendFile.header` |
+| `BLEND_DNA_SIZE` | Fatal | no | schema sizes overflow or differ from TLEN, or an ID count/length/member range is invalid | schema array/length errors and raw ID count/size/member-range errors in `blendFile.header` |
+| `BLEND_DNA_MEMBER` | Fatal | no | a raw ID lacks an embedded ID or bounded char name array of the required type | wrong pointer/member types in `blendFile.header` |
 | `BLEND_DNA_TRAILING` | Fatal | no | bytes remain after the STRC records | trailing payload byte in `blendFile.header` |
-| `BLEND_DNA_ALLOCATION` | Fatal | no | the owning schema cannot be allocated | implemented; allocation failure unverified |
+| `BLEND_DNA_ALLOCATION` | Fatal | no | the owning schema or raw datablock records cannot be allocated | implemented; allocation failure unverified |
+| `BLEND_POINTER_DUPLICATE` | Fatal | no | two reference-target blocks have the same nonzero old address | synthetic duplicate DATA blocks in `blendFile.header`; metadata collisions are excluded |
+| `BLEND_POINTER_UNRESOLVED` | Warning | yes | an exact nonzero old address has no reference-target block; resolution returns null | absent and interior keys in `blendFile.header` |
+| `BLEND_POINTER_LIMIT` | Fatal | no | the input block count exceeds unsigned 32-bit indices | implemented; excessive allocation/count unverified |
+| `BLEND_POINTER_ALLOCATION` | Fatal | no | pointer entries or the unresolved diagnostic cannot be allocated | implemented; allocation failure unverified |
 | `BLEND_HEADER_OPEN_FAILED` | Fatal | no | ArResolver cannot open the resolved asset | implemented; fixture unverified |
 | `BLEND_USD_AUTHORING_FAILED` | Fatal | no | the temporary stage cannot be created | implemented; fixture unverified |
 | `BLEND_USD_READ_FAILED` | Fatal | no | a C++ exception reaches the importer boundary | implemented; fixture unverified |
@@ -106,3 +112,8 @@ unknown codes. Fixture paths are relative to
 `ReadDna` diagnostics use DNA1-payload-relative byte offsets, not file offsets,
 and have no block index. A container caller may attach its block context; see
 the [schema boundary](../design/BLEND_CONTRACT.md#71-schema-decoding-boundary).
+
+`ListDatablocks` errors instead attach the ID payload's uncompressed file
+offset and block index. Pointer-map duplicate errors identify the later
+reference-target block; `Resolve` warnings have no referring-block context.
+See the [raw boundaries](../design/BLEND_CONTRACT.md#81-pointer-map-boundary).
