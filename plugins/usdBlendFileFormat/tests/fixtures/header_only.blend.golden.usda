@@ -1,0 +1,27 @@
+#usda 1.0
+(
+    defaultPrim = "Asset"
+    doc = """Generated from Composed Stage of root layer 
+"""
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "Asset" (
+    customData = {
+        dictionary blend = {
+            string sourceVersion = "4.5"
+            int stageContractVersion = 1
+        }
+    }
+    kind = "component"
+)
+{
+    def Scope "geo"
+    {
+    }
+
+    def Scope "mtl"
+    {
+    }
+}

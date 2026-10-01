@@ -4,8 +4,9 @@ Documentation is organized by responsibility: each category answers one class
 of question. The layout is the one `usd-mmd-plugins`, `usd-vrm-plugins` and
 `open-strata` use, so the repositories read the same way.
 
-**The tree holds the documentation baseline only (2026-10-01).** Nothing is
-implemented yet. Everything in `design/` is intended behavior;
+**Phase 0 implementation is in progress (2026-10-01).** The header reader and
+minimal file-format stage build and test on Windows. The remaining `design/`
+sections describe intended behavior;
 [reference/](reference/) is the only place that says what is implemented.
 
 | Category | Answers | Start here |
@@ -15,8 +16,9 @@ implemented yet. Everything in `design/` is intended behavior;
 | [reference/](reference/) | Facts about the current tree: what is supported, which diagnostics exist. | [CAPABILITY_MATRIX.md](reference/CAPABILITY_MATRIX.md) · [DIAGNOSTICS.md](reference/DIAGNOSTICS.md) |
 | [roadmap/](roadmap/) | What is planned next (incomplete work only), and which release carries it. | [README.md](roadmap/README.md) · [current.md](roadmap/current.md) |
 | [contributing/](contributing/) | How to maintain these documents. | [documentation.md](contributing/documentation.md) |
+| [guides/](guides/) | Commands verified against the implementation. | [building.md](guides/building.md) |
 
-`guides/`, `releases/` and `reports/` are created when they have real content
+`releases/` and `reports/` are created when they have real content
 ([contributing/documentation.md](contributing/documentation.md#category-ownership)).
 
 ## Canonical documents

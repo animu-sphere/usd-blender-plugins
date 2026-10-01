@@ -7,10 +7,9 @@ and the invariants every change preserves. **A structural change that
 contradicts this document changes this document first, in its own pull
 request** — never through a README, a roadmap entry, or code.
 
-Status (2026-10-01): contract **proposed**. No component exists yet; every
-identity below is *reserved* until the Phase that creates it lands (Phases are
-[DESIGN_POLICY.md §14](../design/DESIGN_POLICY.md#14-phases)), and its row then
-records that.
+Status (2026-10-01): Phase 0 **in progress**. `blendFile` and the file-format
+bundle exist; later identities remain reserved. Scope is
+[DESIGN_POLICY.md §14](../design/DESIGN_POLICY.md#14-phases).
 
 The shape follows the `usd-mmd-plugins` and `usd-vrm-plugins` workspace
 contracts on purpose — the same plugin/library split, the same manifests, the
@@ -23,9 +22,9 @@ the repositories alike.
 
 | Identity | Kind | Directory | Manifest | Role | Created in | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `blendFile` | plain static CMake library | `libs/blendFile/` | `openstrata.library.yaml` | `.blend` syntax: `ByteSource`, decompression, header, legacy and Blender 5 blocks, SDNA, datablock access, pointer map, syntax diagnostics. No OpenUSD. | Phase 0 (header), Phase 1 (container, SDNA) | reserved |
+| `blendFile` | plain static CMake library | `libs/blendFile/` | `openstrata.library.yaml` | `.blend` syntax: byte sources, diagnostics and legacy header implemented; remaining syntax planned. No OpenUSD. | Phase 0 (header), Phase 1 (container, SDNA) | header implemented |
 | `blendScene` | plain static CMake library | `libs/blendScene/` | `openstrata.library.yaml` | The Scene IR and the native backend: ID graph, version decoders, the single coordinate conversion, identifiers. No OpenUSD. | Phase 2 | reserved |
-| `usdBlendFileFormat` | plugin bundle (`usd-fileformat`) | `plugins/usdBlendFileFormat/` | `openstrata.plugin.yaml` | `.blend` `SdfFileFormat`: registration, read path, `ArAssetByteSource`, USD authoring (`src/usd/`), source → USD diagnostics. Scaffolded from OpenStrata's `usd-fileformat-cpp` template. | Phase 0 | reserved |
+| `usdBlendFileFormat` | plugin bundle (`usd-fileformat`) | `plugins/usdBlendFileFormat/` | `openstrata.plugin.yaml` | Registration, `ArAssetByteSource`, header validation and the minimal stage. Scaffolded from OpenStrata's `usd-fileformat-cpp` template; scene authoring remains planned. | Phase 0 | minimal stage implemented |
 | `blend_inspect` | CLI executable | `tools/blendInspect/` | `openstrata.tool.yaml` | Reports what a `.blend` contains — header, blocks, SDNA, datablocks, objects — without USD. | Phase 1 | reserved |
 
 ### 1.2 Later, only when their responsibility is real
@@ -86,6 +85,10 @@ guard:
   includes (`pxr/`, Blender headers, a sibling's private headers).
 
 All three run in CI from the Phase that creates the component.
+
+Current gates: `ost plugin test --workspace --graph-only`, the reader's CMake
+link-dependency check, and `blendFile.boundary` include scanning. Generated
+link-line inspection and CI wiring are still pending in Phase 0.
 
 ## 3. Directory layout
 
@@ -182,9 +185,10 @@ ost plugin doctor  plugins/usdBlendFileFormat
 ost plugin test    plugins/usdBlendFileFormat
 ```
 
-These are intended; none has been run, because nothing exists yet. The
-commands that have been run are recorded in `guides/building.md` when Phase 0
-lands.
+Both modes have been built on Windows against OpenUSD 26.08. Exact commands
+and remaining platform gaps are recorded in
+[the build guide](../guides/building.md). The `reader` preset also builds and
+tests `blendFile` without finding OpenUSD.
 
 Rules every `CMakeLists.txt` keeps:
 
@@ -202,16 +206,20 @@ Rules every `CMakeLists.txt` keeps:
 
 | Layer | Where | Proves | Exists |
 | --- | --- | --- | --- |
-| container, SDNA | `libs/blendFile/tests/` | levels 1–2 of [DESIGN_POLICY.md §13](../design/DESIGN_POLICY.md#13-testing-policy) | — |
+| header, byte sources; container and SDNA later | `libs/blendFile/tests/` | levels 1–2 of [DESIGN_POLICY.md §13](../design/DESIGN_POLICY.md#13-testing-policy) | header and byte-source tests |
 | Scene IR | `libs/blendScene/tests/` | level 3, against expected IR | — |
 | authoring | `plugins/usdBlendFileFormat/tests/` | level 4, from IR built in code | — |
-| boundary | each library's `tests/` | §2.3's link-line and include gates | — |
+| boundary | each library's `tests/` | §2.3's link-line and include gates | include gate; generated link-line gate pending |
 | tool | `tools/blendInspect/tests/` | `blend_inspect` against fixtures | — |
 | integration | `tests/integration/` | `Usd.Stage.Open("*.blend")` against [STAGE_CONTRACT.md §17](../design/STAGE_CONTRACT.md#17-validation-checklist) | — |
-| pyramid | the bundle manifest's `tests:` | `ost plugin test` L0–L5 | — |
+| pyramid | the bundle manifest's `tests:` | `ost plugin test` L0–L5 | synthetic header fixtures and golden |
 | installed consumer | `tests/installed_consumer/` | installed packages work from a clean prefix | — |
 | oracle | `tests/integration/` | native IR equals Blender's ([BACKEND_POLICY.md §6](../design/BACKEND_POLICY.md#6-blender-as-a-test-oracle)) | — |
 | fuzz | `libs/blendFile/fuzz/` | malformed input never crashes or over-reads, under ASan and UBSan | — |
+
+`plugins/usdBlendFileFormat/tests/test_stage.py` checks the minimal stage,
+diagnostic codes, deterministic reads and reference composition in the
+OpenStrata runtime session. It does not yet test authoring from Scene IR.
 
 ## 7. Invariants
 

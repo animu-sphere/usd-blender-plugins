@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: Apache-2.0
+#pragma once
+
+#include "pxr/pxr.h"
+#include "pxr/base/tf/staticTokens.h"
+#include "pxr/usd/sdf/fileFormat.h"
+
+PXR_NAMESPACE_OPEN_SCOPE
+
+// The tokens that identify this file format to USD's Sdf layer registry.
+// clang-format off: TfStaticTokens uses a deliberately column-aligned macro body.
+#define USDBLENDFILEFORMAT_FILE_FORMAT_TOKENS \
+    ((Id, "blend"))         \
+    ((Version, "1.0"))              \
+    ((Target, "usd"))              \
+    ((Extension, "blend"))
+// clang-format on
+
+TF_DECLARE_PUBLIC_TOKENS(UsdBlendFileFormatFileFormatTokens, USDBLENDFILEFORMAT_FILE_FORMAT_TOKENS);
+
+/// A minimal SdfFileFormat that reads `.blend` files and translates them
+/// into USD. Replace the body of `Read` with your format's parser.
+class UsdBlendFileFormatFileFormat : public SdfFileFormat {
+public:
+  bool CanRead(const std::string& file) const override;
+  bool Read(SdfLayer* layer, const std::string& resolvedPath, bool metadataOnly) const override;
+  bool WriteToString(
+      const SdfLayer& layer,
+      std::string* str,
+      const std::string& comment = std::string()) const override;
+
+protected:
+  SDF_FILE_FORMAT_FACTORY_ACCESS;
+
+  UsdBlendFileFormatFileFormat();
+  ~UsdBlendFileFormatFileFormat() override;
+};
+
+PXR_NAMESPACE_CLOSE_SCOPE

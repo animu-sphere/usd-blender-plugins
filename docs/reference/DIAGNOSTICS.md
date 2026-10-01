@@ -1,12 +1,11 @@
 # Diagnostics
 
-As of 2026-10-01 no diagnostic is implemented. §1 and §2 are the intended
-record and families from
+As of 2026-10-01 the Phase 0 diagnostic record and header diagnostics exist.
+§1 and §2 describe the record and families from
 [DESIGN_POLICY.md §12](../design/DESIGN_POLICY.md#12-diagnostics), recorded
-here so the first code lands into an agreed shape; §3 lists the codes that
-exist, and is empty.
+here so later code lands into an agreed shape; §3 lists implemented codes.
 
-## 1. The record (intended)
+## 1. The record
 
 ```cpp
 namespace blend {
@@ -53,6 +52,17 @@ as `TF_RUNTIME_ERROR` and the rest as `TF_WARN`, and authors what it can.
 
 ## 3. Implemented codes
 
-None yet. Each code is added here by the change that first raises it, as a row
-of code, severity, recoverable flag, when it is raised, and the fixture that
-proves it.
+All current codes are fatal and non-recoverable. Fixture paths are relative
+to `plugins/usdBlendFileFormat/tests/fixtures/`.
+
+| Code | Severity | Recoverable | Raised when | Evidence |
+| --- | --- | --- | --- | --- |
+| `BLEND_HEADER_TRUNCATED` | Fatal | no | fewer than twelve bytes | `truncated.blend`; all 0-11 byte prefixes in `blendFile.header` |
+| `BLEND_HEADER_READ_FAILED` | Fatal | no | the source reports enough bytes but its read fails | `ShortSource` in `blendFile.header` |
+| `BLEND_HEADER_MAGIC` | Fatal | no | the seven-byte signature differs | `invalid.blend` |
+| `BLEND_HEADER_POINTER_SIZE` | Fatal | no | a legacy pointer marker is neither `_` nor `-` | `pointer_size.blend` |
+| `BLEND_HEADER_ENDIANNESS` | Fatal | no | a byte-order marker is neither `v` nor `V` | `endianness.blend` |
+| `BLEND_HEADER_VERSION` | Fatal | no | a version byte is not an ASCII digit | `version.blend` |
+| `BLEND_HEADER_OPEN_FAILED` | Fatal | no | ArResolver cannot open the resolved asset | implemented; fixture unverified |
+| `BLEND_USD_AUTHORING_FAILED` | Fatal | no | the temporary stage cannot be created | implemented; fixture unverified |
+| `BLEND_USD_READ_FAILED` | Fatal | no | a C++ exception reaches the importer boundary | implemented; fixture unverified |

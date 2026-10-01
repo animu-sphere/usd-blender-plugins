@@ -1,0 +1,12 @@
+[project]
+name = "usd-blender-plugins"
+version = "0.1.0"
+
+[requires]
+platform = "cy2026"
+profile = "usd"
+
+[workspace]
+members = ["libs/blendFile", "plugins/usdBlendFileFormat"]
+release_members = ["usdBlendFileFormat"]
+release_exclude = []

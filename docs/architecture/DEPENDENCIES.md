@@ -1,7 +1,7 @@
 # External dependencies
 
-> Status: **proposed**, 2026-10-01. Nothing is pinned yet; each section becomes
-> binding when the Phase that first uses the dependency lands.
+> Status: OpenUSD and the C++20 toolchain are **accepted**, 2026-10-01.
+> Compression and Blender fixture dependencies remain proposed.
 
 Every external dependency, why it exists, how it is found, and who may use it.
 Dependency edges between components are
@@ -13,11 +13,16 @@ Dependency edges between components are
 | --- | --- |
 | Used by | `usdBlendFileFormat` only |
 | Found as | an installed package, `find_package(pxr CONFIG REQUIRED)`, resolved once at the root |
-| Version | one pinned release (DEP-O1) |
+| Version | OpenStrata verification runtime: 26.08 (DEP-O1 resolved). Plain CMake: the caller's installed SDK, not version-pinned. |
 
 The OpenStrata `usd-fileformat-cpp` template carries an OpenUSD version range
-that is only its scaffold default. The bundle manifest is updated to the
-release this repository pins, and a mismatch is a configure error.
+that is only its scaffold default. The bundle manifest pins the OpenStrata
+verification runtime to 26.08. Plain CMake uses
+`find_package(pxr CONFIG REQUIRED)` without a version constraint, allowing the
+caller to supply another installed SDK. Other releases are not yet verified;
+accepting an SDK at configure time is not a compatibility guarantee. Build
+and load the plugin against the same SDK release, since OpenUSD has no stable
+cross-release C++ ABI.
 
 ## 2. Compression
 
@@ -68,7 +73,7 @@ listed in `THIRD_PARTY_NOTICES.md`.
 `ost` scaffolds, builds, checks, tests and packages the bundle
 ([WORKSPACE.md §5](WORKSPACE.md#5-build-modes)). Nothing in CMake knows it: it
 prepares the dependency prefix that a plain CMake caller would pass. The `ost`
-version used is recorded with the first build guide.
+version used is recorded in [the build guide](../guides/building.md).
 
 ## 6. Toolchain and platforms
 
@@ -87,5 +92,10 @@ reason is recorded.
 
 | Id | Question | Proposed answer | Blocks |
 | --- | --- | --- | --- |
-| DEP-O1 | Which OpenUSD release is pinned? | 26.08, the release the sibling repositories pin, so the bundles compose in one runtime. | Phase 0 |
 | DEP-O2 | Where zlib and Zstandard come from. | Installed packages on `CMAKE_PREFIX_PATH`, provided by OpenStrata artifacts in `ost` builds. | Phase 1 |
+
+### 7.1 Resolved decisions
+
+- **DEP-O1 (2026-10-01):** use OpenUSD 26.08 as the pinned OpenStrata
+  verification runtime. The bundle manifest enforces that runtime choice;
+  plain CMake deliberately does not restrict the caller's SDK version.

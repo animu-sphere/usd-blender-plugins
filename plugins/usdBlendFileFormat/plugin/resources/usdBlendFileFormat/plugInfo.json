@@ -1,0 +1,23 @@
+{
+    "Plugins": [
+        {
+            "Type": "library",
+            "Name": "UsdBlendFileFormatFileFormat",
+            "Root": ".",
+            "LibraryPath": "../../../lib/libUsdBlendFileFormatFileFormat.dll",
+            "ResourcePath": ".",
+            "Info": {
+                "Types": {
+                    "UsdBlendFileFormatFileFormat": {
+                        "bases": ["SdfFileFormat"],
+                        "displayName": "UsdBlendFileFormat File Format",
+                        "extensions": ["blend"],
+                        "formatId": "blend",
+                        "primary": true,
+                        "target": "usd"
+                    }
+                }
+            }
+        }
+    ]
+}

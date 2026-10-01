@@ -1,6 +1,8 @@
 # Blend contract
 
-> Status: **proposed**, 2026-10-01. Nothing here is implemented yet.
+> Status: **proposed**, 2026-10-01. Phase 0 implements byte sources,
+> diagnostics and legacy-header validation; container and scene decoding are
+> not implemented. See [the capability matrix](../reference/CAPABILITY_MATRIX.md).
 >
 > This document owns how `.blend` bytes are read — the container, SDNA and
 > blocks in `blendFile` — and what each source concept becomes in the Scene IR
