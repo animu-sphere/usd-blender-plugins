@@ -53,7 +53,8 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME blendFile.header COMMAND blendFileTests
         "${CMAKE_CURRENT_BINARY_DIR}/header-test.blend"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests/corpus/blender-5.2.2/Untitled.blend")
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests/corpus/blender-5.2.2/Untitled.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests/fixtures/empty.blend")
     add_test(NAME blendFile.boundary COMMAND ${CMAKE_COMMAND}
         -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/Boundary.cmake)

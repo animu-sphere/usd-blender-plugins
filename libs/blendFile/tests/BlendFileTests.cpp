@@ -80,6 +80,199 @@ std::string GzipFrame(std::string_view text) {
   return frame;
 }
 
+constexpr blend::CompressionLimits fileLimits{1024 * 1024, 1024 * 1024, 2048, 23};
+
+blend::Result<std::vector<std::byte>> ParseFile(std::string_view text, blend::CompressionLimits limits = fileLimits) {
+  blend::MemoryByteSource source(std::as_bytes(std::span(text.data(), text.size())));
+  return blend::ReadFileBytes(source, limits);
+}
+
+void ExpectFileError(std::string_view text, std::string_view code, blend::CompressionLimits limits = fileLimits) {
+  const auto result = ParseFile(text, limits);
+  Require(!result.HasValue(), "Expected full-file failure");
+  Require(result.GetError().code == code, "Unexpected full-file diagnostic code");
+  Require(result.GetError().severity == blend::Severity::Fatal && !result.GetError().recoverable &&
+              result.GetError().byteOffset.has_value(),
+      "Expected fatal full-file diagnostic with byte offset");
+}
+
+class FailingFileSource final : public blend::ByteSource {
+public:
+  FailingFileSource(std::string_view bytes, std::uint64_t readableBytes)
+      : source_(std::as_bytes(std::span(bytes.data(), bytes.size()))), readableBytes_(readableBytes) {
+  }
+  std::uint64_t Size() const override {
+    return source_.Size();
+  }
+  bool Read(std::uint64_t offset, std::span<std::byte> destination) override {
+    return offset <= readableBytes_ && destination.size() <= readableBytes_ - offset && source_.Read(offset, destination);
+  }
+
+private:
+  blend::MemoryByteSource source_;
+  std::uint64_t readableBytes_;
+};
+
+void CheckFileBytes() {
+  const std::string modern = "BLENDER17-01v0502";
+  std::string payload = modern;
+  for (std::size_t index = 0; index < 12288; ++index) {
+    payload.push_back(static_cast<char>(index % 256));
+  }
+  std::string zstd;
+  for (std::size_t offset = 0; offset < payload.size(); offset += 255) {
+    zstd += RawZstdFrame(std::string_view(payload).substr(offset, 255));
+  }
+  const auto gzip = GzipFrame(payload);
+  for (const auto& encoded : {payload, gzip, zstd}) {
+    const auto decoded = ParseFile(encoded);
+    Require(decoded.HasValue(), "Full-file bytes rejected");
+    const auto expected = std::as_bytes(std::span(payload.data(), payload.size()));
+    Require(std::equal(decoded.GetValue().begin(), decoded.GetValue().end(), expected.begin(), expected.end()),
+        "Decoded bytes differ from the original");
+    auto exact = fileLimits;
+    exact.maxInputBytes = encoded.size();
+    exact.maxOutputBytes = payload.size();
+    Require(ParseFile(encoded, exact).HasValue(), "Exact full-file byte limits rejected");
+    --exact.maxInputBytes;
+    ExpectFileError(encoded, "BLEND_COMPRESSION_INPUT_LIMIT", exact);
+    exact.maxInputBytes = encoded.size();
+    --exact.maxOutputBytes;
+    ExpectFileError(encoded, "BLEND_COMPRESSION_OUTPUT_LIMIT", exact);
+    for (const std::uint64_t readable : {0, 4096}) {
+      FailingFileSource failed(encoded, readable);
+      const auto result = blend::ReadFileBytes(failed, fileLimits);
+      Require(!result.HasValue() && result.GetError().code == "BLEND_COMPRESSION_READ_FAILED" &&
+                  result.GetError().byteOffset == readable,
+          "Full-file source read failure accepted or misplaced");
+    }
+  }
+  for (const char pointer : {'_', '-'}) {
+    for (const char endian : {'v', 'V'}) {
+      std::string legacy = "BLENDER-v405";
+      legacy[7] = pointer;
+      legacy[8] = endian;
+      for (const auto& encoded : {legacy, GzipFrame(legacy), RawZstdFrame(legacy)}) {
+        Require(ParseFile(encoded).HasValue(), "Full-file legacy header rejected");
+      }
+    }
+  }
+  for (std::size_t split = 0; split <= modern.size(); ++split) {
+    Require(ParseFile(GzipFrame(std::string_view(modern).substr(0, split)) +
+                      GzipFrame(std::string_view(modern).substr(split)))
+                .HasValue(),
+        "Full-file concatenated gzip members rejected");
+    Require(ParseFile(RawZstdFrame(std::string_view(modern).substr(0, split)) +
+                      RawZstdFrame(std::string_view(modern).substr(split)))
+                .HasValue(),
+        "Full-file concatenated Zstandard frames rejected");
+  }
+  const auto shortGzip = GzipFrame(modern);
+  const auto shortZstd = RawZstdFrame(modern);
+  for (const auto& encoded : {shortGzip, shortZstd}) {
+    const auto signatureSize = encoded == shortGzip ? 2u : 4u;
+    for (std::size_t length = signatureSize; length < encoded.size(); ++length) {
+      ExpectFileError(std::string_view(encoded).substr(0, length), "BLEND_COMPRESSION_TRUNCATED");
+    }
+    Require(!ParseFile(encoded + "junk").HasValue(), "Trailing garbage accepted");
+    auto unlimitedRatio = fileLimits;
+    unlimitedRatio.maxExpansionRatio = std::numeric_limits<std::uint64_t>::max();
+    Require(ParseFile(encoded, unlimitedRatio).HasValue(), "Ratio multiplication overflow rejected valid bytes");
+  }
+  for (const std::size_t trailerOffset : {8, 4}) {
+    auto corrupt = shortGzip;
+    corrupt[corrupt.size() - trailerOffset] ^= 1;
+    ExpectFileError(corrupt, "BLEND_COMPRESSION_INVALID");
+  }
+  auto checksummedEmpty = RawZstdFrame({});
+  checksummedEmpty[4] = '\x24';
+  checksummedEmpty.append("\x99\xe9\xd8\x51", 4);
+  Require(ParseFile(shortZstd + checksummedEmpty).HasValue(), "Zstandard checksum rejected");
+  checksummedEmpty.back() ^= 1;
+  ExpectFileError(shortZstd + checksummedEmpty, "BLEND_COMPRESSION_INVALID");
+  auto oversizedWindow = std::string("\x28\xb5\x2f\xfd\x00\x70", 6) + shortZstd.substr(6);
+  ExpectFileError(oversizedWindow, "BLEND_COMPRESSION_WINDOW_LIMIT");
+  auto rle = std::string("\x28\xb5\x2f\xfd\x60\x11\x7f\x88\x00\x00", 10) + modern;
+  rle.append("\x03\x00\x04\x00", 4);
+  const auto inflated = ParseFile(rle);
+  Require(inflated.HasValue() && inflated.GetValue().size() == 32785, "Zstandard RLE bytes rejected");
+  Require(std::all_of(inflated.GetValue().begin() + modern.size(), inflated.GetValue().end(),
+              [](std::byte value) { return value == std::byte{0}; }),
+      "Zstandard buffered output was lost");
+  auto bombLimits = fileLimits;
+  bombLimits.maxExpansionRatio = 1;
+  ExpectFileError(rle, "BLEND_COMPRESSION_RATIO_LIMIT", bombLimits);
+  bombLimits.maxExpansionRatio = fileLimits.maxExpansionRatio;
+  bombLimits.maxOutputBytes = 32784;
+  ExpectFileError(rle, "BLEND_COMPRESSION_OUTPUT_LIMIT", bombLimits);
+  bombLimits.maxOutputBytes = 32785;
+  Require(ParseFile(rle, bombLimits).HasValue(), "Exact Zstandard output budget rejected");
+  ExpectFileError(modern, "BLEND_COMPRESSION_LIMITS", {});
+  for (const auto invalidWindow : {9u, 31u}) {
+    auto limits = fileLimits;
+    limits.maxWindowLog = invalidWindow;
+    ExpectFileError(shortZstd, "BLEND_COMPRESSION_LIMITS", limits);
+  }
+  ExpectFileError(GzipFrame("INVALID-v405"), "BLEND_HEADER_MAGIC");
+  ExpectFileError(GzipFrame("BLENDER17-02v0502"), "BLEND_HEADER_FORMAT_VERSION");
+  ExpectFileError(GzipFrame({}), "BLEND_HEADER_TRUNCATED");
+  for (const auto field : {0, 1, 2}) {
+    auto limits = fileLimits;
+    if (field == 0) {
+      limits.maxInputBytes = 0;
+    } else if (field == 1) {
+      limits.maxOutputBytes = 0;
+    } else {
+      limits.maxExpansionRatio = 0;
+    }
+    ExpectFileError(shortGzip, "BLEND_COMPRESSION_LIMITS", limits);
+  }
+  auto ratioExactFrame = rle;
+  ratioExactFrame[5] = '\x1e';
+  ratioExactFrame[27] = '\x6b';
+  auto ratioExact = fileLimits;
+  ratioExact.maxExpansionRatio = 1058;
+  Require(ParseFile(ratioExactFrame, ratioExact).HasValue(), "Exact expansion ratio rejected");
+  ratioExactFrame[5] = '\x1f';
+  ratioExactFrame[27] = '\x73';
+  ExpectFileError(ratioExactFrame, "BLEND_COMPRESSION_RATIO_LIMIT", ratioExact);
+  auto metadata = gzip;
+  metadata[3] = '\x08';
+  metadata.insert(10, std::string(8192, 'a') + '\0');
+  Require(ParseFile(metadata).HasValue(), "Full-file gzip metadata across chunks rejected");
+}
+
+void CheckFileFixture(const std::filesystem::path& path, bool compressed) {
+  constexpr blend::CompressionLimits limits{64 * 1024 * 1024, 64 * 1024 * 1024, 2048, 23};
+  blend::FileByteSource source(path);
+  Require(source.IsOpen(), "Full-file fixture could not be opened");
+  const auto decoded = blend::ReadFileBytes(source, limits);
+  if (!decoded.HasValue()) {
+    std::cerr << decoded.GetError().code << ": " << decoded.GetError().message << '\n';
+  }
+  Require(decoded.HasValue(), "Full-file fixture rejected");
+  blend::MemoryByteSource memory(decoded.GetValue());
+  const auto header = blend::ReadHeader(memory);
+  Require(header.HasValue() && header.GetValue().version == 502 && header.GetValue().headerSize == 17,
+      "Decoded Blender fixture has the wrong header");
+  if (!compressed) {
+    std::vector<std::byte> original(static_cast<std::size_t>(source.Size()));
+    Require(source.Read(0, original) && original == decoded.GetValue(), "Uncompressed file bytes changed");
+  }
+  const auto& bytes = decoded.GetValue();
+  const std::string_view text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+  for (const bool gzip : {false, true}) {
+    std::string encoded;
+    const std::size_t chunkSize = gzip ? 4096 : 255;
+    for (std::size_t offset = 0; offset < text.size(); offset += chunkSize) {
+      const auto chunk = text.substr(offset, chunkSize);
+      encoded += gzip ? GzipFrame(chunk) : RawZstdFrame(chunk);
+    }
+    const auto roundTrip = ParseFile(encoded, limits);
+    Require(roundTrip.HasValue() && roundTrip.GetValue() == bytes, "Compressed Blender fixture bytes differ");
+  }
+}
+
 class CompressedReadFailure final : public blend::ByteSource {
 public:
   explicit CompressedReadFailure(std::string prefix = RawZstdFrame("BLENDER17-01v0502"))
@@ -185,12 +378,26 @@ void CheckGzipHeaders() {
       "\x10\x00\xc0\x89\x24\x4f\x22\x7a\xa1\x13\x85\x0d\x2c\x61\x7e\x8b"
       "\xdc\x5d\x5f\x73\x8f\x79\x72\x4b\x91\x5f\xd4\x28\x17\x00\x00\x00"
       "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xb8\x1f\x72\xdc"
+      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xb8\x1f\x72\xdc"
       "\x70\x8a\x11\x80\x00\x00";
   const auto deflatedHeader = Parse(std::string_view(deflated, sizeof(deflated) - 1));
   Require(deflatedHeader.HasValue() && deflatedHeader.GetValue().version == 502 &&
               deflatedHeader.GetValue().headerSize == 17,
       "High-ratio gzip header rejected");
+  const auto deflatedBytes = std::string_view(deflated, sizeof(deflated) - 1);
+  const auto inflated = ParseFile(deflatedBytes);
+  if (!inflated.HasValue()) {
+    std::cerr << inflated.GetError().code << ": " << inflated.GetError().message << '\n';
+  }
+  Require(inflated.HasValue() && inflated.GetValue().size() == 32785, "Full-file DEFLATE output was lost");
+  auto limits = fileLimits;
+  limits.maxExpansionRatio = 1;
+  ExpectFileError(deflatedBytes, "BLEND_COMPRESSION_RATIO_LIMIT", limits);
+  limits.maxExpansionRatio = fileLimits.maxExpansionRatio;
+  limits.maxOutputBytes = 32784;
+  ExpectFileError(deflatedBytes, "BLEND_COMPRESSION_OUTPUT_LIMIT", limits);
+  limits.maxOutputBytes = 32785;
+  Require(ParseFile(deflatedBytes, limits).HasValue(), "Exact DEFLATE output budget rejected");
 }
 
 class ShortSource final : public blend::ByteSource {
@@ -202,14 +409,17 @@ public:
 
 int main(int argumentCount, char** arguments) {
     try {
-        Require(argumentCount == 3, "Expected temporary and Blender fixture paths");
-        CheckZlibDecoder();
-        CheckGzipHeaders();
-        blend::FileByteSource realFile(arguments[2]);
-        const auto realHeader = blend::ReadHeader(realFile);
-        if (!realHeader.HasValue()) {
-            std::cerr << realHeader.GetError().code << ": " << realHeader.GetError().message << '\n';
-        }
+      Require(argumentCount == 4, "Expected temporary, compressed and uncompressed Blender fixture paths");
+      CheckZlibDecoder();
+      CheckGzipHeaders();
+      CheckFileBytes();
+      CheckFileFixture(arguments[2], true);
+      CheckFileFixture(arguments[3], false);
+      blend::FileByteSource realFile(arguments[2]);
+      const auto realHeader = blend::ReadHeader(realFile);
+      if (!realHeader.HasValue()) {
+        std::cerr << realHeader.GetError().code << ": " << realHeader.GetError().message << '\n';
+      }
         Require(realHeader.HasValue(), "Blender-written compressed header rejected");
         Require(realHeader.GetValue().version == 502, "Wrong Blender fixture version");
         Require(realHeader.GetValue().containerVersion == blend::BlendContainerVersion::Blender5 &&
@@ -342,7 +552,7 @@ int main(int argumentCount, char** arguments) {
         std::filesystem::remove(fixture);
         blend::FileByteSource missing("this-file-does-not-exist.blend");
         Require(!missing.IsOpen() && !missing.Read(0, destination), "Missing file accepted");
-        std::cout << "Header and byte-source tests passed\n";
+        std::cout << "Header, compression and byte-source tests passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

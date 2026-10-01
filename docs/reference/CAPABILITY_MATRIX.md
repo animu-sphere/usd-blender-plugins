@@ -36,11 +36,18 @@ No row says "supported" without a fixture.
 | legacy block layout | — | | Phase 1 |
 | Blender 5 block layout | — | | Phase 1 |
 | gzip header probe (bounded; not full-file validation) | supported | synthetic stored-block members and an independently encoded DEFLATE stream in `blendFile.header` | Phase 1 |
-| gzip full-container decompression | — | | Phase 1 |
+| gzip full-container decompression (bytes only; explicit limits) | supported | generated gzip members around `empty.blend` and decoded corpus bytes; stored-block and independent DEFLATE vectors in `blendFile.header`; no Blender-written gzip fixture | Phase 1 |
 | Zstandard header probe (bounded; not full-file validation) | supported | `blendFile.header`; `corpus/blender-5.2.2/Untitled.blend` | Phase 0 |
-| Zstandard full-container decompression | — | | Phase 1 |
+| Zstandard full-container decompression (bytes only; explicit limits) | supported | `corpus/blender-5.2.2/Untitled.blend`; raw frames around `empty.blend`; checksum and RLE vectors in `blendFile.header` | Phase 1 |
+| full-file input, output, ratio and window limits | supported | exact byte/ratio boundaries, high-ratio streams, oversized windows and invalid limits in `blendFile.header` | Phase 1 |
 | SDNA | — | | Phase 1 |
 | `blend_inspect` | — | | Phase 1 |
+
+Full-stream byte reading validates compression and the decoded header, not
+blocks, `ENDB` or SDNA. It does not change the importer's header-only path.
+Caller-supplied limits and their semantics are defined in the
+[blend contract](../design/BLEND_CONTRACT.md#41-full-stream-byte-reading);
+production defaults remain the open BLEND-O5 decision in that document.
 
 ## 2. Blender versions
 

@@ -84,4 +84,12 @@ struct Header {
 
 Result<Header> ReadHeader(ByteSource& source);
 
+struct CompressionLimits {
+  std::uint64_t maxInputBytes = 0;
+  std::uint64_t maxOutputBytes = 0;
+  std::uint64_t maxExpansionRatio = 0;
+  std::uint32_t maxWindowLog = 0;
+};
+
+Result<std::vector<std::byte>> ReadFileBytes(ByteSource& source, const CompressionLimits& limits);
 }

@@ -64,12 +64,15 @@ to `plugins/usdBlendFileFormat/tests/fixtures/`.
 | `BLEND_HEADER_VERSION` | Fatal | no | a version byte is not an ASCII digit | `version.blend`; legacy and format-1 cases in `blendFile.header` |
 | `BLEND_HEADER_SIZE` | Fatal | no | an extended header declares a size other than 17 | `blendFile.header` |
 | `BLEND_HEADER_FORMAT_VERSION` | Fatal | no | an extended header does not declare 8-byte pointers and format 01 | `blendFile.header` |
-| `BLEND_COMPRESSION_DECODER` | Fatal | no | the decoder cannot be allocated or configured | implemented; allocation failure unverified |
-| `BLEND_COMPRESSION_TRUNCATED` | Fatal | no | compressed input ends before the required header output and the current member or frame is incomplete | short gzip and Zstandard input prefixes in `blendFile.header` |
-| `BLEND_COMPRESSION_INVALID` | Fatal | no | the header stream is corrupt or decoding makes no progress | invalid gzip method, flags and block type; corrupt intermediate member CRC/size; invalid Zstandard block type in `blendFile.header` |
-| `BLEND_COMPRESSION_WINDOW_LIMIT` | Fatal | no | the Zstandard decoder window exceeds 8 MiB | oversized window in `blendFile.header` |
-| `BLEND_COMPRESSION_INPUT_LIMIT` | Fatal | no | 1 MiB of input produces too few header bytes | empty gzip member and Zstandard frame sequences; excessive gzip metadata in `blendFile.header` |
-| `BLEND_COMPRESSION_READ_FAILED` | Fatal | no | a compressed-source read fails | gzip and Zstandard `CompressedReadFailure` cases in `blendFile.header` |
+| `BLEND_COMPRESSION_DECODER` | Fatal | no | the decoder or full-file output cannot be allocated or configured | implemented; allocation failure unverified |
+| `BLEND_COMPRESSION_TRUNCATED` | Fatal | no | compressed input ends before required probe output or before a full-stream member/frame finishes | short gzip and Zstandard prefixes, including gzip trailers, in `blendFile.header` |
+| `BLEND_COMPRESSION_INVALID` | Fatal | no | the stream or checksum is corrupt, trailing data is invalid, or decoding makes no progress | invalid gzip method, flags and block type; intermediate and final CRC/ISIZE corruption; Zstandard block/checksum corruption and trailing garbage in `blendFile.header` |
+| `BLEND_COMPRESSION_WINDOW_LIMIT` | Fatal | no | the Zstandard window exceeds the probe's 8 MiB or the full-file caller's window budget | oversized window in `blendFile.header` |
+| `BLEND_COMPRESSION_INPUT_LIMIT` | Fatal | no | the probe exhausts 1 MiB before finding its header, or the full-file source exceeds the caller's input limit | empty members/frames, excessive metadata and full-file input boundaries in `blendFile.header` |
+| `BLEND_COMPRESSION_READ_FAILED` | Fatal | no | a probe or full-file source read fails | gzip/Zstandard `CompressedReadFailure` and full-file initial/refill failures in `blendFile.header` |
+| `BLEND_COMPRESSION_LIMITS` | Fatal | no | a full-file byte or ratio limit is zero, or window log is outside 10 through 30 | invalid limit configurations in `blendFile.header` |
+| `BLEND_COMPRESSION_OUTPUT_LIMIT` | Fatal | no | decoded bytes exceed the caller's output budget or the addressable vector size | uncompressed, gzip and Zstandard output boundaries in `blendFile.header`; address-space exhaustion unverified |
+| `BLEND_COMPRESSION_RATIO_LIMIT` | Fatal | no | decoded bytes exceed source size times the caller's expansion ratio | gzip DEFLATE/Zstandard RLE bomb vectors and exact ratio boundaries in `blendFile.header` |
 | `BLEND_HEADER_OPEN_FAILED` | Fatal | no | ArResolver cannot open the resolved asset | implemented; fixture unverified |
 | `BLEND_USD_AUTHORING_FAILED` | Fatal | no | the temporary stage cannot be created | implemented; fixture unverified |
 | `BLEND_USD_READ_FAILED` | Fatal | no | a C++ exception reaches the importer boundary | implemented; fixture unverified |

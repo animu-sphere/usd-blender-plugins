@@ -28,6 +28,13 @@ the repositories alike.
 | `usdBlendFileFormat` | plugin bundle (`usd-fileformat`) | `plugins/usdBlendFileFormat/` | `openstrata.plugin.yaml` | Registration, resolver-backed byte access, validation and USD authoring through the file-format boundary. | Phase 0 |
 | `blend_inspect` | CLI executable | `tools/blendInspect/` | `openstrata.tool.yaml` | Reports what a `.blend` contains — header, blocks, SDNA, datablocks, objects — without USD. | Phase 1 |
 
+The reader's byte-level public boundary separates `ReadHeader` probes from
+`ReadFileBytes`, which returns owning decoded bytes under explicit
+`CompressionLimits`. Consumers can wrap those bytes in `MemoryByteSource`;
+no codec types escape the library. The
+[blend contract](../design/BLEND_CONTRACT.md#41-full-stream-byte-reading)
+defines the limit and validation semantics.
+
 ### 1.2 Later, only when their responsibility is real
 
 Named now so the boundaries are designed for them; created only when the

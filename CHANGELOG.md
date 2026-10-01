@@ -8,6 +8,11 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Explicit-limit full-file byte reading for uncompressed, gzip and Zstandard
+    sources, with owning output, validated headers, complete member/frame and
+    checksum checks, bounded output growth, and input/output/ratio/window
+    diagnostics. Regression tests cover real-file byte round trips, failed
+    reads, exact limits, truncation, trailing garbage and high-ratio streams.
 - A bounded gzip header probe using the vendored zlib decoder, with legacy
     and format-1 layouts, concatenated members, input limits, and regression
     tests for truncation, corruption, metadata, source failures and stopping
@@ -51,6 +56,8 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- Corrected a missing byte in the independent DEFLATE test vector; full-stream
+    tests now verify its CRC and stored size as well as its header.
 - The dependency contract resolves zlib through a vendored decoder subset,
     without relying on the OpenStrata OpenUSD runtime or an externally
     installed zlib package, including for installed reader targets.
