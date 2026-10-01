@@ -3,13 +3,15 @@
 This page is the **only** document that says what is implemented. Every other
 document describes intended behavior and links here.
 
-As of 2026-10-01 Phase 0 is in progress. Only header validation and minimal
-stage scaffolding are implemented; no Blender scene version is supported yet.
+The tables below own capability status, not delivery status; phase status is in
+the [roadmap table](../roadmap/README.md#status-at-a-glance).
 Synthetic headers and the Blender-written `empty.blend` below live in
 `plugins/usdBlendFileFormat/tests/fixtures/`;
 the contributor-provided Blender file lives in `tests/corpus/` beside them.
-Header validation does not establish scene compatibility. Windows verification is recorded
-in [the build guide](../guides/building.md); Linux remains unverified.
+Header validation does not establish scene compatibility. Fixture generation
+requirements and evidence are in its
+[provenance and checks](../../plugins/usdBlendFileFormat/tests/fixtures/README.md#blender-written-empty-scene);
+build and test procedures are in [the build guide](../guides/building.md).
 
 Vocabulary:
 

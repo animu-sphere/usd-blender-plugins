@@ -4,17 +4,17 @@ Documentation is organized by responsibility: each category answers one class
 of question. The layout is the one `usd-mmd-plugins`, `usd-vrm-plugins` and
 `open-strata` use, so the repositories read the same way.
 
-**Phase 0 implementation is in progress (2026-10-01).** The header reader and
-minimal file-format stage build and test on Windows. The remaining `design/`
-sections describe intended behavior;
-[reference/](reference/) is the only place that says what is implemented.
+For implemented behavior, use the
+[capability matrix](reference/CAPABILITY_MATRIX.md). For phase status and
+release mapping, use the [roadmap table](roadmap/README.md#status-at-a-glance);
+for upcoming work, use the [current tasks](roadmap/current.md).
 
 | Category | Answers | Start here |
 | --- | --- | --- |
 | [architecture/](architecture/) | How the workspace is structured: component identities, dependency directions, build modes, external dependencies. | [WORKSPACE.md](architecture/WORKSPACE.md) · [DEPENDENCIES.md](architecture/DEPENDENCIES.md) |
 | [design/](design/) | What the file format reads, what it authors, and why. | [DESIGN_POLICY.md](design/DESIGN_POLICY.md) |
 | [reference/](reference/) | Facts about the current tree: what is supported, which diagnostics exist. | [CAPABILITY_MATRIX.md](reference/CAPABILITY_MATRIX.md) · [DIAGNOSTICS.md](reference/DIAGNOSTICS.md) |
-| [roadmap/](roadmap/) | What is planned next (incomplete work only), and which release carries it. | [README.md](roadmap/README.md) · [current.md](roadmap/current.md) |
+| [roadmap/](roadmap/) | Phase status, release mapping and incomplete tasks. | [README.md](roadmap/README.md) · [current.md](roadmap/current.md) |
 | [contributing/](contributing/) | How to maintain these documents. | [documentation.md](contributing/documentation.md) |
 | [guides/](guides/) | Commands verified against the implementation. | [building.md](guides/building.md) |
 
@@ -55,10 +55,10 @@ sections describe intended behavior;
 
 - Code is authoritative for implemented behavior; `architecture/` and
   `reference/` record it and change with it.
-- `design/` defines intended contracts and must label what is not yet
-  implemented.
-- `roadmap/` holds incomplete work only; the release a Phase lands in is stated
-  only in its [status table](roadmap/README.md#status-at-a-glance).
+- `design/` defines intended contracts, not capability or delivery status.
+- Phase status and release mapping appear only in the
+  [roadmap table](roadmap/README.md#status-at-a-glance); incomplete task status
+  appears only in [current.md](roadmap/current.md).
 - The details are in [contributing/documentation.md](contributing/documentation.md).
 
 ## Contributing

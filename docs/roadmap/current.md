@@ -1,21 +1,12 @@
 # Current milestones
 
-The next two Phases, broken into tasks. A task leaves this page when it lands;
-a Phase leaves it when every task has. Scope is
+Upcoming milestones, broken into incomplete tasks. A task leaves this page
+when it lands; a Phase leaves it when every task has. Scope is
 [DESIGN_POLICY.md §14](../design/DESIGN_POLICY.md#14-phases); the release a
-Phase lands in is the [status table](README.md#status-at-a-glance).
+Phase lands in and its status are in the
+[status table](README.md#status-at-a-glance).
 
-## Phase 0 — workspace skeleton 🚧
-
-Goal: `.blend` is recognized as an OpenUSD file format, and opens as the
-minimal `/Asset` stage.
-
-| # | Task | Done when | Status |
-| --- | --- | --- | --- |
-| 0.8 | Add the Blender fixture generator for `empty.blend` | generator and non-destructive Blender content check exist; separate-process saves differ in bytes, so byte-identical regeneration remains unresolved | 🚧 |
-| 0.9 | CI on Windows and Linux; `ost plugin build`, `doctor`, `test` L0-L5 | generated graph, root CTest and standalone bundle jobs plus explicit doctor/stage-contract companion jobs are wired; all must be green on both hosts, with hosted results still unverified | 🚧 |
-
-## Phase 1 — container and SDNA ⬜
+## Phase 1 — container and SDNA
 
 Goal: `.blend` binary structure is read by independent C++, stably, and can be
 looked at.

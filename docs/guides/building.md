@@ -1,8 +1,10 @@
 # Building and testing
 
-Verified on Windows on 2026-10-01 with `ost` 0.23.14, Visual Studio 2026
+The local commands below were exercised on Windows on 2026-10-01 with
+`ost` 0.23.14, Visual Studio 2026
 (MSVC 19.51), and the local OpenStrata `cy2026` / `usd` OpenUSD 26.08 artifact.
-Linux and the planned MSVC 2022 toolchain have not been exercised yet.
+This records the local command environment, not current platform or CI status;
+delivery status is in the [roadmap table](../roadmap/README.md#status-at-a-glance).
 Run commands from the repository root.
 
 `ost` generates a machine-local `strata.lock`; it is ignored until a
@@ -36,13 +38,11 @@ ost ci plan
 ost ci generate github
 ```
 
-These commands pass locally on Windows; regeneration also matches the
-checked-in workflow. When replacing an existing workflow, add `--force` to
-the generation command. `ost ci validate --resolve` was also run: the Windows
-runtime resolves locally, but the Linux digest is not in the local registry,
-so that check fails. This does not verify its remote availability or execution.
+When replacing an existing workflow, add `--force` to the generation command.
+Runtime resolution depends on artifacts available to the selected host and
+registry; a missing local registry entry is not a hosted CI result.
 
-Hosted Windows/Linux jobs have not yet run. The generated bundle pyramid is
+The generated bundle pyramid is
 not a separate `ost plugin doctor` invocation, and neither generated job kind
 runs `test_stage.py`. The hand-maintained companion workflow
 [stage-contract-ci.yml](../../.github/workflows/stage-contract-ci.yml) resolves
@@ -55,8 +55,6 @@ or use secrets. The resolver bootstrap is pinned to the matrix's `ost` version
 and rejects version drift; update both when changing that pin. Do not pass this
 companion workflow to the generator.
 
-The explicit doctor and stage-test commands pass locally on Windows. Hosted
-results for both workflows remain unverified under task 0.9.
 The regular jobs use committed fixtures and do not install or run Blender.
 
 ## Reader without OpenUSD
@@ -76,12 +74,10 @@ checks the selected configuration's generated libraries, including transitive
 dependencies. With a multi-config generator, the `CMAKE_BUILD_TYPE` preset
 value is unused; the build/test presets select Release explicitly.
 
-The link-boundary scripts pass on generated MSVC Release metadata in both
-root reader-only and standalone library builds. Rejection checks pass for
-OpenUSD, Blender, Scene IR and unknown libraries, and missing reader link
-information. CMake Tools currently has no active configure preset; select
-`reader` there to use its build/test integration. OpenStrata's library commands
-do not depend on that editor selection and have run the full updated suite.
+The link-boundary rejection checks cover OpenUSD, Blender, Scene IR and unknown
+libraries, and missing reader link information. Select the `reader` configure
+preset in CMake Tools to use its build/test integration. OpenStrata's library
+commands do not depend on that editor selection.
 
 ## Reader through OpenStrata
 
@@ -91,9 +87,8 @@ ost library test libs/blendFile --target cy2026 --profile usd --filter 'blendFil
 ost library test libs/blendFile --target cy2026 --profile usd
 ```
 
-Verified on Windows with Ninja and MSVC 19.51. Build and installation pass;
-the filtered run passes all three link tests, including the metadata setup
-fixture. The full run passes all five tests, including legacy and Blender 5
+The filtered invocation selects all three link tests, including the metadata
+setup fixture. The full suite covers legacy and Blender 5
 headers, the contributor-provided Zstandard-compressed Blender file, malformed
 headers and streams, frame-boundary splits, decoder-window and input limits,
 and failed source reads. This is header-only verification, not container or
@@ -112,23 +107,22 @@ ost plugin run plugins/usdBlendFileFormat --target cy2026 --profile usd -- pytho
 
 The manifest declares the `blendFile` edge; `ost` builds and installs the
 library into its workspace prefix before configuring the standalone bundle.
-L0-L5 report 12 passes, zero failures; four checks are skipped because there
-are no extra runtime paths or Python ABI declaration and C++ ABI is inherited.
 The five stage tests assert hierarchy, metadata, diagnostic codes, repeat-read
 determinism and contract-version preservation through a reference. Both the
 synthetic header and Blender-written empty scene exercise the stage contract.
 
 Six fixtures are synthetic legacy headers; `empty.blend` is a complete,
-uncompressed file written by Blender 5.2.2 LTS. The current parser deliberately
-stops after the header. L3/L4 use the real fixture; L5 compares both flattened
+uncompressed file written by Blender 5.2.2 LTS. L3/L4 use the real fixture;
+L5 compares both flattened
 minimal stages against their goldens. The generated source comment has its
 path removed by `ost` normalization. USDA files must use LF endings.
 
 ## Plain CMake with the installed SDK
 
-The prefix below names the local artifact used in this run, not a required
-machine path or SDK version. Another installed OpenUSD SDK may be supplied;
-only 26.08 has been verified so far. Build and load against the same release.
+The prefix below names the local artifact used in the dated local run, not a
+required machine path or SDK version. Another installed OpenUSD SDK may be
+supplied under the [dependency contract](../architecture/DEPENDENCIES.md#1-openusd).
+Build and load against the same release.
 
 ```powershell
 cmake -S . -B build/usd-vs18 -G "Visual Studio 18 2026" -A x64 "-DCMAKE_PREFIX_PATH=$HOME/.ost/runtimes/openstrata-cy2026-windows-x86_64-py313-usd"
@@ -138,8 +132,7 @@ ctest --test-dir build/usd-vs18 -C Release --output-on-failure
 
 This builds the reader first, resolves OpenUSD once through
 `find_package(pxr CONFIG REQUIRED)` without a version constraint, then builds
-the plugin. The original header and include CTests passed on the verified SDK;
-the expanded five-test suite has not been rerun in this mode.
+the plugin. CTest runs the root build's registered tests.
 
 ## Fixture reproducibility
 
@@ -148,7 +141,7 @@ the expanded five-test suite has not been rerun in this mode.
 ./tests/fixtures/generate.ps1 -Check
 ```
 
-All six synthetic fixture byte arrays match the generator.
+`-Check` compares all six synthetic fixture byte arrays with the generator.
 
 The Blender fixture generator requires Blender 5.2.2 LTS (verified build
 `d13f752e3b9c`). On the verified Windows installation:
@@ -157,14 +150,24 @@ The Blender fixture generator requires Blender 5.2.2 LTS (verified build
 $blender = Join-Path $env:ProgramFiles 'Blender Foundation/Blender 5.2/blender.exe'
 & $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests/fixtures/generate_blender.py
 & $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests/fixtures/generate_blender.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests/fixtures/generate_blender.py -- --check-bytes
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests/fixtures/test_generate_blender.py
 ```
 
-Generation writes `plugins/usdBlendFileFormat/tests/fixtures/empty.blend`, then
-reopens it in Blender to verify an empty scene with unit scale 1. `--check`
-validates the committed file without modifying it. `--output <path.blend>`
-selects a different destination for either mode.
+Generation writes `plugins/usdBlendFileFormat/tests/fixtures/empty.blend` using
+the library writer, saving the Scene and its dependencies but no UI state,
+then reopens it to verify an empty scene with unit scale 1. Blender reports
+`Library file, loading empty scene`; the saved Scene is restored and inspected,
+not replaced with an unchecked default. See the
+[fixture provenance](../../plugins/usdBlendFileFormat/tests/fixtures/README.md#blender-written-empty-scene)
+for its size and checksum.
 
-Two separate Blender runs produced 487,593-byte files with different SHA256
-values. Scene-content validation and deterministic USD output pass, but
-byte-identical Blender regeneration has not been achieved; task 0.8 remains
-in progress. No Blender 4.5 fixture or Linux run is claimed.
+`--check` validates the committed file's content without modifying it.
+`--check-bytes` first generates a temporary file and compares its bytes, then
+validates the content. `--output <path.blend>` selects a different destination
+for generation or either check. The two check modes are mutually exclusive.
+
+The regression suite checks independent-process and different-path
+reproduction, non-destructive checks and modified-byte rejection, stored Scene
+validation, and synthetic-header rejection. Generation evidence and its
+platform scope belong to the fixture provenance linked above.

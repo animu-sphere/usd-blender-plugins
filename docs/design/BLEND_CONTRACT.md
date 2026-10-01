@@ -1,8 +1,8 @@
 # Blend contract
 
-> Status: **proposed**, 2026-10-01. Phase 0 implements byte sources,
-> diagnostics and header validation; container and scene decoding are
-> not implemented. See [the capability matrix](../reference/CAPABILITY_MATRIX.md).
+> Status: **proposed**, 2026-10-01. This document defines intended behavior;
+> implemented behavior belongs to the
+> [capability matrix](../reference/CAPABILITY_MATRIX.md).
 >
 > This document owns how `.blend` bytes are read — the container, SDNA and
 > blocks in `blendFile` — and what each source concept becomes in the Scene IR
@@ -244,7 +244,7 @@ a version difference handled by the decoder, not a crash.
 
 ## 9. Version support
 
-| Range | Status |
+| Range | Design target |
 | --- | --- |
 | Blender 4.5 LTS | target for the first stable release |
 | Blender 5.x | target for the first stable release |

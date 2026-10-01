@@ -1,7 +1,9 @@
 # Backend policy
 
-> Status: **proposed**, 2026-10-01. Nothing here is implemented yet; the
-> native backend grows from Phase 1, the Blender host backend is Phase 7.
+> Status: **proposed**, 2026-10-01. This document defines intended behavior;
+> implemented behavior belongs to the
+> [capability matrix](../reference/CAPABILITY_MATRIX.md). Phase scope belongs
+> to [DESIGN_POLICY.md §14](DESIGN_POLICY.md#14-phases).
 >
 > This document owns the backends that produce a Scene IR, the boundary to
 > Blender itself, and the difference between source and evaluated data. On

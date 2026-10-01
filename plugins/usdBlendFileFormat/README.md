@@ -1,9 +1,10 @@
 # usdBlendFileFormat - OpenUSD blend file-format plugin
 
 Scaffolded from the official `usd-fileformat-cpp` template with `ost` 0.23.14.
-The bundle now reads bytes through ArResolver, validates a legacy header in
-the standalone `blendFile` library, and authors the minimal `/Asset` stage.
-It does not decode Blender blocks, SDNA or scenes yet.
+The bundle owns the OpenUSD file-format boundary and resolver-backed byte
+access, using the independent `blendFile` reader. Supported behavior belongs
+to the [capability matrix](../../docs/reference/CAPABILITY_MATRIX.md); phase
+status belongs to the [roadmap table](../../docs/roadmap/README.md#status-at-a-glance).
 
 ## Layout
 
@@ -13,7 +14,7 @@ CMakeLists.txt                  builds libUsdBlendFileFormatFileFormat.so into l
 cmake/OpenStrataPlugin.cmake    pinned, self-contained build/install mechanics
 src/UsdBlendFileFormatFileFormat.{h,cpp}  the SdfFileFormat implementation
 plugin/resources/usdBlendFileFormat/plugInfo.json   USD plugin registration
-tests/fixtures/                 synthetic headers, negatives and a stage golden
+tests/fixtures/                 synthetic headers, Blender scene, negatives and stage goldens
 ```
 
 The copied CMake helper is versioned with this scaffold and requires neither an
@@ -30,9 +31,9 @@ ost plugin doctor plugins/usdBlendFileFormat
 ost plugin test plugins/usdBlendFileFormat
 ```
 
-Run from the repository root. The OpenStrata verification runtime is pinned
-to 26.08; plain CMake accepts the caller's installed OpenUSD SDK without a
-version restriction. Other releases are unverified. For standalone CMake
+Run from the repository root. The OpenStrata runtime and plain CMake SDK rules
+are in the [dependency contract](../../docs/architecture/DEPENDENCIES.md#1-openusd).
+For standalone CMake
 configuration, install `blendFile` first and supply its prefix alongside
 the SDK. See [the build guide](../../docs/guides/building.md) for verified
 commands and [the capability matrix](../../docs/reference/CAPABILITY_MATRIX.md)
