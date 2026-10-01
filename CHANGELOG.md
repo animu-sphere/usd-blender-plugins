@@ -8,6 +8,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Bounded saved Object parent-reference validation in `blendScene` selection,
+    returning optional caller-sequence parent block indices without adding
+    parent-only Objects to Collection membership. Exact SDNA references and
+    explicit visit/depth budgets reject invalid/linked parents and cycles with
+    fatal source context. Four synthetic layouts cover shared/unselected parents
+    and deep chains; both corpus files cover null parents and pointer mutations.
+    No data/instance references, parenting modes, transforms, populated Scene IR,
+    fixture bytes or header-only importer behavior are changed.
 - Bounded saved Collection membership selection in `blendScene`, returning
     owning Object names and block indices from the active Scene's master
     Collection. Explicit visit/depth limits, exact references and ListBase

@@ -219,8 +219,20 @@ endpoints/backlinks/last/shared nodes, list and Collection cycles, reader-error
 propagation and exact visit/depth limits. A 256-child chain exercises the
 explicit DFS stack at the exact depth and one smaller. Every failure requires
 the exact fatal, non-recoverable code and payload offset/block index. This
-selects saved membership only, not parent/data/instance references, render or
+selects saved membership, not data/instance references, render or
 view-layer visibility, object values, transforms, meshes or a populated IR.
+
+The same selection also checks the
+[saved parent-reference boundary](../design/DESIGN_POLICY.md#524-saved-object-parent-reference-boundary).
+Both corpus files have null Object parents; every Object is tested with
+self/interior/absent parent-pointer mutations and exact fatal context.
+Four synthetic layouts cover selected and unselected parents, shared ancestors,
+reordered block indices, wrong targets/member shapes, linked/invalid parent IDs,
+self/ancestor cycles and 256-parent chains. Exactly sufficient visit/depth
+budgets succeed and one-smaller budgets fail. Parent-only Objects are validated
+without adding them to membership; returned parent indices address the caller's
+blocks, not its selected Object vector or IR. Nontrivial parenting remains
+synthetic evidence, not Blender-written transform or hierarchy equivalence.
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines matrix storage and ownership; supported scope is in the

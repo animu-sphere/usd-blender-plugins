@@ -385,7 +385,9 @@ is in the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 then walks `Scene.master_collection`. It returns `Result<SelectedSceneObjects>`:
 the owning `SelectedScene` and a vector of `SelectedObject` records containing
 caller-sequence `blockIndex` values and owning, prefix-stripped raw `sourceName`
-bytes. It does not publish an object/mesh Scene IR. Input matching, full-file,
+bytes, plus optional `parentBlockIndex` values validated under the
+[parent-reference boundary](#524-saved-object-parent-reference-boundary).
+It does not publish an object/mesh Scene IR. Input matching, full-file,
 block and schema budgets remain the caller's responsibility; the pointer map
 still validates duplicate saved addresses across the entire supplied sequence.
 
@@ -411,8 +413,9 @@ of block enumeration, not a deterministic identifier or sibling-name policy.
 
 Both `SceneTraversalLimits` fields are required and positive; zero-initialized
 limits are invalid. `maxVisited` counts each distinct expanded Collection,
-each traversed list node and each distinct Object, excluding Scene/GLOB and
-pointer-map construction. `maxDepth` bounds the active DFS Collection stack,
+each traversed list node and each distinct Object, including parent-only
+Objects, excluding Scene/GLOB and pointer-map construction. `maxDepth` bounds
+the active DFS Collection stack and the separate active parent chain,
 with the master at depth one, not the longest path through a shared DAG.
 Exactly sufficient budgets succeed; exceeding them returns fatal
 `BLEND_SCENE_VISIT_LIMIT` or `BLEND_SCENE_DEPTH_LIMIT`, never partial output.
@@ -423,12 +426,52 @@ offset and index. Unresolved list heads use Collection context; unresolved
 `next` pointers use the previous list node. Collection cycles/depth limits
 identify the referring Collection. Invalid limits and allocation failures
 have no source context. Reader failures retain their existing codes/context.
-No other Scene, unreachable Collection or Object is semantically inspected.
-This is saved membership, not evaluated/view-layer/render visibility: parent,
-data and instance-Collection references, transforms, geometry and object types
+No other Scene, unreachable Collection or Object outside membership and its
+parent chains is semantically inspected.
+This is saved membership, not evaluated/view-layer/render visibility: data
+and instance-Collection references, transforms, geometry and object types
 are not decoded or validated. Backend `Decode`, populated Scene IR and USD
 integration remain separate work. Fixture-backed scope is in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
+
+### 5.2.4 Saved Object parent-reference boundary
+
+After Collection membership succeeds, `SelectSceneObjects` validates every
+selected Object's scalar `Object *parent` and its reachable parent chain.
+A null pointer is a valid root; every nonzero pointer must resolve exactly to
+one `OB` block with `Object` SDNA type. Each reached Object must have the same
+local, valid `ID` and raw name shape required by membership. Missing members
+and malformed SDNA retain reader diagnostics; absent/interior, wrong-code,
+wrong-type and multi-element targets fail with `BLEND_SCENE_REFERENCE_INVALID`.
+Linked parent IDs fail without resolving or loading external files.
+
+`SelectedObject.parentBlockIndex` is the optional immediate parent's index in
+the caller's block sequence, **not** an index into the returned Object vector
+or Scene IR. A parent outside the selected Collections is validated but never
+added to membership. No ancestor names or values are published. Shared parents
+are valid, and null roots are not replaced by Collection hierarchy.
+
+Parent validation is iterative in saved Object discovery order. A reference
+to an active ancestor fails with `BLEND_SCENE_CYCLE`; completed chains are
+cached and not expanded again. `maxVisited` counts the union of membership
+Objects and parent-only Objects once each, in addition to Collections/list
+nodes. `maxDepth` separately bounds the number of unfinished Objects in the
+active parent chain, with its selected starting Object at depth one. Reaching
+a completed chain stops expansion; this is an active-work bound, not a bound
+on the longest full parent path. Collection and parent depths are not summed.
+Exactly sufficient limits succeed; invalid limits or exhaustion return fatal
+errors without partial output, using no production defaults.
+
+Unresolved parents use the referring Object's payload offset and block index;
+invalid targets use target context. Cycle, parent-depth and parent-only visit
+failures identify the referring Object. Existing selection/membership/reader
+errors are preserved. Unreachable Objects unrelated to membership or its
+ancestors are not semantically validated. This validates saved parent edges
+only: parenting mode, bone/vertex targets, parent inverse, local/world matrices,
+render visibility, data/instance references and IR/USD hierarchy authoring
+remain separate work. Both normal-save corpus files provide null-parent
+evidence and mutated-pointer regressions, not Blender-written nontrivial
+parenting or transform-oracle evidence; nontrivial chains use synthetic inputs.
 
 ### 5.3 `usdBlendFileFormat` — the importer
 

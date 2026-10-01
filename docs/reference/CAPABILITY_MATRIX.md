@@ -154,7 +154,9 @@ authored-stage support. The importer remains header-only.
 | saved-scene missing/invalid/linked-reference and source-metadata diagnostics | supported | missing/duplicate/wrong GLOB, null/absent/interior/wrong-type references, duplicate addresses, linked ID, invalid names/unit scales and SDNA errors with exact fatal block context in `blendScene.ir` | Phase 2 |
 | saved Collection membership and owning Object names/indices | supported | both normal-save 4.5.13/5.2.2 corpus files select Camera/Cube/Light; synthetic nested/shared/reordered/empty Collections and Object deduplication across all four layouts in `blendScene.ir` | Phase 2 |
 | Collection/ListBase reference, cycle and explicit traversal-budget diagnostics | supported | null/absent/interior/wrong-type/count targets, linked IDs, invalid names, endpoint/backlink/node-sharing errors, list/Collection cycles, exact visit/depth limits and 256-child chains in `blendScene.ir` | Phase 2 |
-| native Object value decoding and parent/data/instance-reference validation | — | | Phase 2 |
+| saved Object parent references and optional parent block indices | supported | null parents in both normal-save corpus files; synthetic selected/unselected/shared parents and block reordering across all four layouts in `blendScene.ir` | Phase 2 |
+| parent-reference, cycle and explicit traversal-budget diagnostics | supported | synthetic absent/interior/wrong-code/type/count references, linked parents, invalid names/SDNA shapes, self/ancestor cycles and 256-parent chains at exact visit/depth limits; every corpus Object has self/interior/absent pointer mutations in `blendScene.ir` | Phase 2 |
+| native Object value decoding and data/instance-reference validation | — | | Phase 2 |
 | parent-relative transforms, topology validation, normals and UV decoding | — | | Phase 2 |
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
@@ -183,7 +185,17 @@ results. It retains each reachable Object once in saved discovery order,
 including Camera and Light records without decoding their values. It returns
 owning raw names and caller-sequence indices, not object transforms, meshes,
 visibility, evaluated/view-layer state, Collection instances or a populated IR.
-Parent/data references are not followed or validated. Collection/Object linked
-IDs fail without external-file access; unreachable records are not semantically
-decoded. Real-file membership evidence is 64-bit little-endian only; other
+Data/instance references are not followed or validated. Collection/Object linked
+IDs fail without external-file access. Real-file membership evidence is
+64-bit little-endian only; other
 layouts, nested/shared graphs and malformed cases have synthetic evidence.
+
+The [parent-reference boundary](../design/DESIGN_POLICY.md#524-saved-object-parent-reference-boundary)
+validates selected Objects' saved parent chains with the same explicit budgets.
+Parent-only Objects count once but do not join membership. Optional parent
+indices belong to the caller's blocks, not the selected Object vector or IR.
+Completed chains are shared; depth limits bound active unfinished expansion,
+not the longest complete path. Unreachable Objects outside membership and its
+ancestors remain unvalidated. Real-file evidence covers null parents and
+mutated invalid pointers only; nontrivial parenting is synthetic. No transform,
+parenting-mode or Blender-oracle equivalence is established.

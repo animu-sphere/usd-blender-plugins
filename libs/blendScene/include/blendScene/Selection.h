@@ -22,6 +22,7 @@ struct SceneTraversalLimits {
 struct SelectedObject {
   std::uint32_t blockIndex;
   std::string sourceName;
+  std::optional<std::uint32_t> parentBlockIndex;
 };
 
 struct SelectedSceneObjects {

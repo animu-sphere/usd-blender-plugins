@@ -388,14 +388,15 @@ void CheckCollectionLayouts() {
       const auto idSize = static_cast<std::uint16_t>(16 + width);
       const auto sceneSize = static_cast<std::uint16_t>(idSize + 4 + width);
       const auto collectionSize = static_cast<std::uint16_t>(idSize + 4 * width);
+      const auto objectSize = static_cast<std::uint16_t>(idSize + width);
       const auto nodeSize = static_cast<std::uint16_t>(3 * width);
       blend::DnaSchema schema;
       schema.names = {"name[16]", "*lib", "scale_length", "id", "unit", "*curscene",
-          "*master_collection", "*first", "*last", "gobject", "children", "*next", "*prev", "*ob", "*collection"};
+          "*master_collection", "*first", "*last", "gobject", "children", "*next", "*prev", "*ob", "*collection", "*parent"};
       schema.types = {{"char", 1}, {"float", 4}, {"Library", 0}, {"ID", idSize},
           {"UnitSettings", 4}, {"Scene", sceneSize}, {"FileGlobal", width}, {"void", 0},
           {"ListBase", static_cast<std::uint16_t>(2 * width)}, {"Collection", collectionSize},
-          {"Object", idSize}, {"CollectionObject", nodeSize}, {"CollectionChild", nodeSize}};
+          {"Object", objectSize}, {"CollectionObject", nodeSize}, {"CollectionChild", nodeSize}};
       schema.structs = {{3, {{0, 0, "name", 0, {16}, 0, 16}, {2, 1, "lib", 1, {}, 16, width}}},
           {4, {{1, 2, "scale_length", 0, {}, 0, 4}}},
           {5, {{3, 3, "id", 0, {}, 0, idSize}, {4, 4, "unit", 0, {}, idSize, 4},
@@ -404,7 +405,7 @@ void CheckCollectionLayouts() {
           {8, {{7, 7, "first", 1, {}, 0, width}, {7, 8, "last", 1, {}, width, width}}},
           {9, {{3, 3, "id", 0, {}, 0, idSize}, {8, 9, "gobject", 0, {}, idSize, static_cast<std::uint64_t>(2 * width)},
                   {8, 10, "children", 0, {}, static_cast<std::uint64_t>(idSize + 2 * width), static_cast<std::uint64_t>(2 * width)}}},
-          {10, {{3, 3, "id", 0, {}, 0, idSize}}},
+          {10, {{3, 3, "id", 0, {}, 0, idSize}, {10, 15, "parent", 1, {}, idSize, width}}},
           {11, {{11, 11, "next", 1, {}, 0, width}, {11, 12, "prev", 1, {}, width, width},
                    {10, 13, "ob", 1, {}, static_cast<std::uint64_t>(2 * width), width}}},
           {12, {{12, 11, "next", 1, {}, 0, width}, {12, 12, "prev", 1, {}, width, width},
@@ -419,13 +420,13 @@ void CheckCollectionLayouts() {
       add({'S', 'C', 0, 0}, 2, sceneSize);
       add({'D', 'A', 'T', 'A'}, 5, collectionSize);
       add({'G', 'R', 0, 0}, 5, collectionSize);
-      add({'O', 'B', 0, 0}, 6, idSize);
-      add({'O', 'B', 0, 0}, 6, idSize);
+      add({'O', 'B', 0, 0}, 6, objectSize);
+      add({'O', 'B', 0, 0}, 6, objectSize);
       add({'D', 'A', 'T', 'A'}, 7, nodeSize);
       add({'D', 'A', 'T', 'A'}, 7, nodeSize);
       add({'D', 'A', 'T', 'A'}, 7, nodeSize);
       add({'D', 'A', 'T', 'A'}, 8, nodeSize);
-      add({'O', 'B', 0, 0}, 6, idSize);
+      add({'O', 'B', 0, 0}, 6, objectSize);
       add({'D', 'A', 'T', 'A'}, 8, nodeSize);
       auto store = [&](auto& input, std::size_t index, std::size_t member, std::uint64_t value) {
         StoreBits(input, static_cast<std::size_t>(blocks[index].offset) + member, value, width, order);
@@ -486,6 +487,86 @@ void CheckCollectionLayouts() {
                     error.byteOffset == (index ? std::optional<std::uint64_t>(records[*index].offset) : std::nullopt),
             "Collection failure has exact fatal code and block context");
       };
+      Require(!result.GetValue().objects[0].parentBlockIndex &&
+                  !result.GetValue().objects[1].parentBlockIndex,
+          "Null saved parents are valid roots");
+      auto parented = bytes;
+      store(parented, 4, idSize, blocks[5].oldAddress);
+      const auto hierarchy = select(parented, blocks, schema);
+      Require(hierarchy.HasValue() && hierarchy.GetValue().objects[0].parentBlockIndex == 5 &&
+                  !hierarchy.GetValue().objects[1].parentBlockIndex,
+          "Saved parent references retain caller-sequence block indices");
+      store(parented, 5, idSize, blocks[4].oldAddress);
+      failure(parented, blocks, schema, "BLEND_SCENE_CYCLE", 5);
+      parented = bytes;
+      store(parented, 4, idSize, blocks[4].oldAddress);
+      failure(parented, blocks, schema, "BLEND_SCENE_CYCLE", 4);
+      parented = bytes;
+      store(parented, 4, idSize, blocks[10].oldAddress);
+      store(parented, 10, 16, 0);
+      const auto externalParent = select(parented, blocks, schema, {9, 2});
+      Require(externalParent.HasValue() && externalParent.GetValue().objects.size() == 2 &&
+                  externalParent.GetValue().objects[0].parentBlockIndex == 10,
+          "An unselected parent is validated without changing Collection membership");
+      failure(parented, blocks, schema, "BLEND_SCENE_VISIT_LIMIT", 4, {8, 2});
+      store(parented, 10, idSize, blocks[5].oldAddress);
+      failure(parented, blocks, schema, "BLEND_SCENE_DEPTH_LIMIT", 10, {9, 2});
+      const auto longerHierarchy = select(parented, blocks, schema, {9, 3});
+      Require(longerHierarchy.HasValue() && longerHierarchy.GetValue().objects.size() == 2 &&
+                  longerHierarchy.GetValue().objects[0].parentBlockIndex == 10,
+          "An exactly sufficient parent depth succeeds");
+      store(parented, 10, idSize, blocks[4].oldAddress);
+      failure(parented, blocks, schema, "BLEND_SCENE_CYCLE", 10);
+      store(parented, 10, idSize, 0);
+      store(parented, 5, idSize, blocks[10].oldAddress);
+      const auto sharedParent = select(parented, blocks, schema, {9, 2});
+      Require(sharedParent.HasValue() && sharedParent.GetValue().objects.size() == 2 &&
+                  sharedParent.GetValue().objects[0].parentBlockIndex == 10 &&
+                  sharedParent.GetValue().objects[1].parentBlockIndex == 10,
+          "Shared unselected parents consume one visit and do not create cycles");
+      auto parentRecords = blocks;
+      std::reverse(parentRecords.begin(), parentRecords.end());
+      const auto reorderedParents = select(parented, parentRecords, schema, {9, 2});
+      Require(reorderedParents.HasValue() &&
+                  parentRecords[*reorderedParents.GetValue().objects[0].parentBlockIndex].oldAddress == blocks[10].oldAddress &&
+                  parentRecords[*reorderedParents.GetValue().objects[1].parentBlockIndex].oldAddress == blocks[10].oldAddress,
+          "Parent indices follow the caller's reordered blocks");
+      parented = bytes;
+      for (const auto address : {std::uint64_t{999}, blocks[5].oldAddress + 1, blocks[3].oldAddress}) {
+        store(parented, 4, idSize, address);
+        failure(parented, blocks, schema, "BLEND_SCENE_REFERENCE_INVALID",
+            address == blocks[3].oldAddress ? 3 : 4);
+      }
+      store(parented, 4, idSize, blocks[10].oldAddress);
+      failure(parented, blocks, schema, "BLEND_SCENE_LINKED_UNSUPPORTED", 10);
+      store(parented, 10, 16, 0);
+      auto parentDna = schema;
+      parentDna.structs[6].members[1].typeIndex = 9;
+      failure(parented, blocks, parentDna, "BLEND_SCENE_REFERENCE_INVALID", 4);
+      parentDna = schema;
+      parentDna.structs[6].members[1].pointerLevel = 2;
+      failure(parented, blocks, parentDna, "BLEND_SCENE_REFERENCE_INVALID", 4);
+      parentDna = schema;
+      parentDna.structs[6].members[1].arrayDimensions = {1};
+      failure(parented, blocks, parentDna, "BLEND_SCENE_REFERENCE_INVALID", 4);
+      parentDna = schema;
+      parentDna.structs[6].members[1].baseName = "other";
+      failure(parented, blocks, parentDna, "BLEND_DNA_MEMBER", 4);
+      for (const std::size_t index : {4, 10}) {
+        parentRecords = blocks;
+        parentRecords[index].count = 2;
+        failure(parented, parentRecords, schema, "BLEND_SCENE_REFERENCE_INVALID", static_cast<std::uint32_t>(index));
+        parentRecords = blocks;
+        parentRecords[index].code = {'D', 'A', 'T', 'A'};
+        failure(parented, parentRecords, schema, "BLEND_SCENE_REFERENCE_INVALID", static_cast<std::uint32_t>(index));
+        parentRecords = blocks;
+        parentRecords[index].sdnaIndex = 0;
+        parentRecords[index].length = idSize;
+        failure(parented, parentRecords, schema, "BLEND_SCENE_REFERENCE_INVALID", static_cast<std::uint32_t>(index));
+        auto invalidName = parented;
+        invalidName[static_cast<std::size_t>(blocks[index].offset)] = std::byte{'X'};
+        failure(invalidName, blocks, schema, "BLEND_SCENE_NAME_INVALID", static_cast<std::uint32_t>(index));
+      }
       failure(bytes, blocks, schema, "BLEND_SCENE_VISIT_LIMIT", 8, {7, 2});
       failure(bytes, blocks, schema, "BLEND_SCENE_DEPTH_LIMIT", 2, {8, 1});
       failure(bytes, blocks, schema, "BLEND_SCENE_LIMITS", std::nullopt, {0, 2});
@@ -583,6 +664,25 @@ void CheckCollectionLayouts() {
                   reordered.GetValue().objects[1].sourceName == "Two" &&
                   records[reordered.GetValue().objects[0].blockIndex].oldAddress == blocks[4].oldAddress,
           "Object membership and discovery order do not depend on block enumeration");
+      std::size_t objectParent = 4;
+      std::size_t parentReferrer = objectParent;
+      for (std::size_t depth = 0; depth < 256; ++depth) {
+        const auto parentIndex = blocks.size();
+        add({'O', 'B', 0, 0}, 6, objectSize);
+        name(parentIndex, "OBParent");
+        link(objectParent, idSize, parentIndex);
+        parentReferrer = objectParent;
+        objectParent = parentIndex;
+      }
+      const auto deepParents = select(bytes, blocks, schema, {264, 257});
+      Require(deepParents.HasValue() && deepParents.GetValue().objects.size() == 2 &&
+                  deepParents.GetValue().objects[0].parentBlockIndex == 12,
+          "Deep parent chains are iterative and do not add parent-only Objects to membership");
+      failure(bytes, blocks, schema, "BLEND_SCENE_DEPTH_LIMIT",
+          static_cast<std::uint32_t>(parentReferrer), {264, 256});
+      failure(bytes, blocks, schema, "BLEND_SCENE_VISIT_LIMIT",
+          static_cast<std::uint32_t>(parentReferrer), {263, 257});
+      store(bytes, 4, idSize, 0);
       for (std::size_t member = idSize; member < collectionSize; member += width) {
         store(bytes, 2, member, 0);
       }
@@ -682,6 +782,34 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
   std::vector<std::string> names;
   for (const auto& object : objects.GetValue().objects) {
     names.push_back(object.sourceName);
+    const auto view = blend::ViewDnaBlock(decoded.GetValue(), blocks.GetValue(),
+        schema.GetValue(), header.GetValue(), object.blockIndex);
+    Require(view.HasValue(), "Corpus Object binds through SDNA");
+    const auto parent = view.GetValue().Member("parent");
+    Require(parent.HasValue() && parent.GetValue().Type().name == "Object" &&
+                parent.GetValue().PointerLevel() == 1 && parent.GetValue().ArrayDimensions().empty(),
+        "Corpus Object has a scalar Object parent pointer");
+    const auto savedParent = parent.GetValue().Pointer();
+    Require(savedParent.HasValue() && savedParent.GetValue() == 0 && !object.parentBlockIndex,
+        "Both normal-save corpus files have unparented Objects");
+    const auto offset = static_cast<std::size_t>(parent.GetValue().Bytes().data() - decoded.GetValue().data());
+    for (const auto address : {blocks.GetValue()[object.blockIndex].oldAddress,
+             blocks.GetValue()[object.blockIndex].oldAddress + 1,
+             std::numeric_limits<std::uint64_t>::max()}) {
+      auto changed = decoded.GetValue();
+      StoreBits(changed, offset, address, header.GetValue().pointerSize, header.GetValue().byteOrder);
+      const auto failed = blend::SelectSceneObjects(changed, blocks.GetValue(),
+          schema.GetValue(), header.GetValue(), {10000, 64});
+      Require(!failed.HasValue(), "Mutated corpus parent references fail");
+      const auto& error = failed.GetError();
+      Require(error.code == (address == blocks.GetValue()[object.blockIndex].oldAddress
+                                    ? "BLEND_SCENE_CYCLE"
+                                    : "BLEND_SCENE_REFERENCE_INVALID") &&
+                  error.severity == blend::Severity::Fatal && !error.recoverable &&
+                  error.blockIndex == object.blockIndex &&
+                  error.byteOffset == blocks.GetValue()[object.blockIndex].offset,
+          "Mutated corpus parents have exact fatal diagnostics and source context");
+    }
   }
   std::sort(names.begin(), names.end());
   Require(names == std::vector<std::string>{"Camera", "Cube", "Light"},
