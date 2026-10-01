@@ -35,7 +35,11 @@ public:
 
 int main(int argumentCount, char** arguments) {
     try {
-    Require(argumentCount == 2, "Expected temporary fixture path");
+        Require(argumentCount == 3, "Expected temporary and Blender fixture paths");
+        blend::FileByteSource realFile(arguments[2]);
+        const auto realHeader = blend::ReadHeader(realFile);
+        Require(realHeader.HasValue(), "Blender-written compressed header rejected");
+        Require(realHeader.GetValue().version == 502, "Wrong Blender fixture version");
         for (const char pointer : {'_', '-'}) {
             for (const char endian : {'v', 'V'}) {
                 std::string text = "BLENDER-v405";

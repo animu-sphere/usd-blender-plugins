@@ -106,6 +106,12 @@ scope. A parent relation that crosses scopes is STAGE-O4.
 
 ## 5. Layer metadata
 
+Every layer authored by `usdBlendFileFormat` explicitly sets `upAxis = "Y"`
+and `metersPerUnit = 1` (one USD unit is one meter). These are fixed output
+settings, including for the minimal Phase 0 stage, not USD defaults or values
+inherited from the source Blender scene. Source axis and unit conversion are
+handled separately in §6.
+
 ```usda
 #usda 1.0
 (
