@@ -71,11 +71,14 @@ private:
 };
 
 enum class ByteOrder { Little, Big };
+enum class BlendContainerVersion { Legacy, Blender5 };
 
 struct Header {
     std::uint8_t pointerSize;
     ByteOrder byteOrder;
     std::uint16_t version;
+    BlendContainerVersion containerVersion = BlendContainerVersion::Legacy;
+    std::uint8_t headerSize = 12;
     std::string SourceVersion() const;
 };
 

@@ -22,7 +22,7 @@ the repositories alike.
 
 | Identity | Kind | Directory | Manifest | Role | Created in | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `blendFile` | plain static CMake library | `libs/blendFile/` | `openstrata.library.yaml` | `.blend` syntax: byte sources, diagnostics and legacy header implemented; remaining syntax planned. No OpenUSD. | Phase 0 (header), Phase 1 (container, SDNA) | header implemented |
+| `blendFile` | plain static CMake library | `libs/blendFile/` | `openstrata.library.yaml` | `.blend` syntax: byte sources, diagnostics, legacy and Blender 5 headers, bounded Zstandard header decoding implemented; remaining syntax planned. No OpenUSD. | Phase 0 (header), Phase 1 (container, SDNA) | header implemented |
 | `blendScene` | plain static CMake library | `libs/blendScene/` | `openstrata.library.yaml` | The Scene IR and the native backend: ID graph, version decoders, the single coordinate conversion, identifiers. No OpenUSD. | Phase 2 | reserved |
 | `usdBlendFileFormat` | plugin bundle (`usd-fileformat`) | `plugins/usdBlendFileFormat/` | `openstrata.plugin.yaml` | Registration, `ArAssetByteSource`, header validation and the minimal stage. Scaffolded from OpenStrata's `usd-fileformat-cpp` template; scene authoring remains planned. | Phase 0 | minimal stage implemented |
 | `blend_inspect` | CLI executable | `tools/blendInspect/` | `openstrata.tool.yaml` | Reports what a `.blend` contains — header, blocks, SDNA, datablocks, objects — without USD. | Phase 1 | reserved |

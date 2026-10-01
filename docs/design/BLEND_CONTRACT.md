@@ -1,7 +1,7 @@
 # Blend contract
 
 > Status: **proposed**, 2026-10-01. Phase 0 implements byte sources,
-> diagnostics and legacy-header validation; container and scene decoding are
+> diagnostics and header validation; container and scene decoding are
 > not implemented. See [the capability matrix](../reference/CAPABILITY_MATRIX.md).
 >
 > This document owns how `.blend` bytes are read — the container, SDNA and
@@ -110,6 +110,14 @@ limits of §2.4. Random access into Zstandard's seekable frames is a later
 optimization (Phase 8); it is not assumed, because whether a given file is
 written with useful frame boundaries is not under the reader's control.
 
+The Phase 0 header probe is separate from full container decompression:
+`ReadHeader` recognizes Zstandard magic and streams only the required 12 or
+17 output bytes, including across concatenated frames. It reads at most 1 MiB
+of compressed input in 4 KiB chunks and limits the decoder window to 8 MiB.
+These fixed probe budgets do not resolve BLEND-O5's full-file limits. The
+probe does not validate the remaining frames, payload or trailing checksums;
+successful header validation is not validation of a complete `.blend`.
+
 ## 5. File header
 
 ### 5.1 Legacy header
@@ -137,8 +145,27 @@ enum class BlendContainerVersion {
 };
 ```
 
-The exact byte layout is confirmed against the Blender 5.0 release notes and
-fixtures written by Blender 5.x before Phase 1 is done (BLEND-O1).
+The format-1 header is seventeen bytes:
+
+| Offset | Size | Content |
+| --- | --- | --- |
+| 0 | 7 | `BLENDER` |
+| 7 | 2 | header size as ASCII digits: `17` |
+| 9 | 1 | `-` (8-byte pointers) |
+| 10 | 2 | file-format version as ASCII digits: `01` |
+| 12 | 1 | `v` (little endian) |
+| 13 | 4 | file version as four ASCII digits, e.g. `0502` |
+
+`Header` retains `containerVersion` and `headerSize` as well as pointer size,
+byte order and file version. Unknown sizes and format versions are rejected,
+not interpreted as legacy headers. Format 1 is not restricted to file
+versions 5.x: Blender 4.5 can also read and write it.
+
+The layout is confirmed against the
+[Blender 5.0 release notes](https://developer.blender.org/docs/release_notes/5.0/core/#large-buffers-in-blend-files),
+the [5.0 header definition](https://github.com/blender/blender/blob/v5.0.0/source/blender/blenloader_core/BLO_core_blend_header.hh),
+and the contributor-provided `blender-5.2.2/Untitled.blend` corpus file.
+The block layout portion of BLEND-O1 remains open.
 
 ## 6. Block layout
 
@@ -276,7 +303,7 @@ with a diagnostic. Evaluated data comes only from the Blender host backend
 
 | Id | Question | Proposed answer | Blocks |
 | --- | --- | --- | --- |
-| BLEND-O1 | The exact byte layout of the Blender 5 header and block header. | Confirm against Blender 5.0's release notes and fixtures written by Blender 5.x; record it in §5.2 and §6.2. | Phase 1 |
+| BLEND-O1 | The exact byte layout of the Blender 5 block header; the file header is confirmed in §5.2. | Confirm against Blender 5.0's release notes and fixtures written by Blender 5.x; record the remaining layout in §6.2. | Phase 1 |
 | BLEND-O2 | The minimum Blender version read. | 3.0, the first with Zstandard; claimed only from 4.5 LTS. | Phase 1 |
 | BLEND-O3 | What happens to data linked from another `.blend`? | Reported in Phases 0–6. Later, possibly authored as a USD reference to the other `.blend`, which this file format then opens. | nothing (non-blocking) |
 | BLEND-O4 | Are big-endian and 32-bit-pointer files supported? | Read by the legacy container reader where fixtures exist; not claimed. | Phase 1 |

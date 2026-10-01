@@ -1,5 +1,6 @@
 #include "blend/BlendFile.h"
 
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <limits>
@@ -26,6 +27,31 @@ void ExpectError(std::string_view text, std::string_view code) {
         "Expected fatal non-recoverable diagnostic");
 }
 
+std::string RawZstdFrame(std::string_view text) {
+    Require(text.size() <= 255, "Test frame is too large");
+    std::string frame{"\x28\xb5\x2f\xfd\x20", 5};
+    frame.push_back(static_cast<char>(text.size()));
+    const auto block = (text.size() << 3) | 1;
+    frame.push_back(static_cast<char>(block & 255));
+    frame.push_back(static_cast<char>((block >> 8) & 255));
+    frame.push_back(static_cast<char>((block >> 16) & 255));
+    frame.append(text);
+    return frame;
+}
+
+class CompressedReadFailure final : public blend::ByteSource {
+public:
+    std::uint64_t Size() const override { return 32; }
+    bool Read(std::uint64_t offset, std::span<std::byte> destination) override {
+        if (offset != 0 || destination.size() != 12) {
+            return false;
+        }
+        const auto prefix = RawZstdFrame("BLENDER17-01v0502");
+        std::copy_n(reinterpret_cast<const std::byte*>(prefix.data()), destination.size(), destination.begin());
+        return true;
+    }
+};
+
 class ShortSource final : public blend::ByteSource {
 public:
     std::uint64_t Size() const override { return 12; }
@@ -38,8 +64,69 @@ int main(int argumentCount, char** arguments) {
         Require(argumentCount == 3, "Expected temporary and Blender fixture paths");
         blend::FileByteSource realFile(arguments[2]);
         const auto realHeader = blend::ReadHeader(realFile);
+        if (!realHeader.HasValue()) {
+            std::cerr << realHeader.GetError().code << ": " << realHeader.GetError().message << '\n';
+        }
         Require(realHeader.HasValue(), "Blender-written compressed header rejected");
         Require(realHeader.GetValue().version == 502, "Wrong Blender fixture version");
+        Require(realHeader.GetValue().containerVersion == blend::BlendContainerVersion::Blender5 &&
+            realHeader.GetValue().headerSize == 17 && realHeader.GetValue().pointerSize == 8 &&
+            realHeader.GetValue().byteOrder == blend::ByteOrder::Little, "Wrong Blender fixture layout");
+        const std::string modern = "BLENDER17-01v0502";
+        const auto modernHeader = Parse(modern);
+        Require(modernHeader.HasValue() && modernHeader.GetValue().version == 502 &&
+            modernHeader.GetValue().SourceVersion() == "5.2" &&
+            modernHeader.GetValue().containerVersion == blend::BlendContainerVersion::Blender5 &&
+            modernHeader.GetValue().headerSize == 17, "Uncompressed modern header rejected");
+        for (std::size_t length = 0; length < modern.size(); ++length) {
+            ExpectError(std::string_view(modern).substr(0, length), "BLEND_HEADER_TRUNCATED");
+        }
+        ExpectError("BLENDER18-01v0502", "BLEND_HEADER_SIZE");
+        ExpectError("BLENDER17_01v0502", "BLEND_HEADER_FORMAT_VERSION");
+        ExpectError("BLENDER17-02v0502", "BLEND_HEADER_FORMAT_VERSION");
+        ExpectError("BLENDER17-01V0502", "BLEND_HEADER_ENDIANNESS");
+        for (std::size_t index = 13; index < modern.size(); ++index) {
+            auto malformed = modern;
+            malformed[index] = 'x';
+            ExpectError(malformed, "BLEND_HEADER_VERSION");
+        }
+        const auto compressedModern = RawZstdFrame(modern);
+        const auto compressedHeader = Parse(compressedModern);
+        Require(compressedHeader.HasValue() && compressedHeader.GetValue().version == 502 &&
+            compressedHeader.GetValue().headerSize == 17, "Raw Zstandard modern header rejected");
+        const auto compressedLegacy = Parse(RawZstdFrame("BLENDER-v405"));
+        Require(compressedLegacy.HasValue() && compressedLegacy.GetValue().version == 405 &&
+            compressedLegacy.GetValue().containerVersion == blend::BlendContainerVersion::Legacy &&
+            compressedLegacy.GetValue().headerSize == 12, "Compressed legacy header rejected");
+        for (std::size_t length = 4; length < compressedModern.size(); ++length) {
+            ExpectError(std::string_view(compressedModern).substr(0, length), "BLEND_COMPRESSION_TRUNCATED");
+        }
+        for (std::size_t length = 0; length < modern.size(); ++length) {
+            ExpectError(RawZstdFrame(std::string_view(modern).substr(0, length)), "BLEND_HEADER_TRUNCATED");
+        }
+        ExpectError(RawZstdFrame("INVALID-v405"), "BLEND_HEADER_MAGIC");
+        ExpectError(RawZstdFrame("BLENDER17-01V0502"), "BLEND_HEADER_ENDIANNESS");
+        for (std::size_t split = 0; split <= modern.size(); ++split) {
+            const auto splitHeader = Parse(RawZstdFrame(std::string_view(modern).substr(0, split)) +
+                RawZstdFrame(std::string_view(modern).substr(split)));
+            Require(splitHeader.HasValue() && splitHeader.GetValue().version == 502, "Concatenated frames rejected");
+        }
+        auto corrupt = compressedModern;
+        corrupt[6] = static_cast<char>((modern.size() << 3) | 7);
+        ExpectError(corrupt, "BLEND_COMPRESSION_INVALID");
+        std::string oversizedWindow{"\x28\xb5\x2f\xfd\x00\x70", 6};
+        oversizedWindow.append(compressedModern.substr(6));
+        ExpectError(oversizedWindow, "BLEND_COMPRESSION_WINDOW_LIMIT");
+        std::string emptyFrames;
+        const auto emptyFrame = RawZstdFrame({});
+        while (emptyFrames.size() <= 1024 * 1024) {
+            emptyFrames += emptyFrame;
+        }
+        ExpectError(emptyFrames, "BLEND_COMPRESSION_INPUT_LIMIT");
+        CompressedReadFailure failedCompressedSource;
+        const auto failedCompressedRead = blend::ReadHeader(failedCompressedSource);
+        Require(!failedCompressedRead.HasValue() &&
+            failedCompressedRead.GetError().code == "BLEND_COMPRESSION_READ_FAILED", "Compressed short read accepted");
         for (const char pointer : {'_', '-'}) {
             for (const char endian : {'v', 'V'}) {
                 std::string text = "BLENDER-v405";
