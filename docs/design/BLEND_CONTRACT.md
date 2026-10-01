@@ -121,6 +121,43 @@ or validate the remaining payload or trailing checksums. A checksum needed
 to advance past an intermediate member is still validated. Successful header
 validation is not validation of a complete `.blend`.
 
+### 4.1 Full-stream byte reading
+
+`ReadFileBytes(ByteSource&, const CompressionLimits&)` returns an owning
+`std::vector<std::byte>` of the uncompressed file bytes. A caller can wrap
+those bytes in `MemoryByteSource` while keeping the result alive. Compression
+is recognized by the magic above; uncompressed bytes are copied unchanged.
+The decoded file header is validated, but blocks, `ENDB` and SDNA are not
+validated by this API.
+
+Every call supplies all four limits; zero-initialized limits are invalid:
+
+| Field | Meaning |
+| --- | --- |
+| `maxInputBytes` | maximum source size, including all members, frames and metadata |
+| `maxOutputBytes` | maximum decoded file size, also applied to uncompressed input |
+| `maxExpansionRatio` | maximum integer ratio: decoded size may not exceed source size times this value; applies only to compressed input |
+| `maxWindowLog` | base-2 logarithm of the maximum Zstandard window size, from 10 through 30; gzip always uses its fixed 32 KiB window |
+
+Input size is checked before decoding. Output and ratio limits are checked
+throughout decoding, with overflow-safe ratio arithmetic and bounded buffer
+growth. A fixed scratch buffer permits detecting output one byte beyond a
+limit without extending the returned buffer past that limit. Decoder and
+output allocation failures become `BLEND_COMPRESSION_*` diagnostics.
+
+Unlike the probe, full-stream reading requires every member or frame to end,
+validates gzip CRC/ISIZE and any Zstandard checksum present, and rejects
+truncation or trailing garbage. Concatenated members and frames share the
+same whole-file limits. Zstandard skippable frames may occur after the
+initial standard frame; skippable magic is not an initial format signature.
+The entire decoded stream must begin with a valid `.blend` header, not
+another compression envelope.
+
+This caller-specified policy deliberately has no production defaults.
+BLEND-O5 still requires real-corpus measurements before choosing defaults;
+the limits in unit tests are test budgets, not a supported file-size policy.
+The importer continues to use the separate header probe.
+
 ## 5. File header
 
 ### 5.1 Legacy header

@@ -88,13 +88,17 @@ ost library test libs/blendFile --target cy2026 --profile usd
 ```
 
 The filtered invocation selects all three link tests, including the metadata
-setup fixture. The full suite covers legacy and Blender 5
-headers, synthetic gzip streams, the contributor-provided Zstandard-compressed
-Blender file, malformed headers and streams, gzip member and Zstandard frame
-splits, decoder-window and input limits, and failed source reads. Gzip cases
-also cover metadata across chunks, intermediate checksums, and stopping before
-the trailing checksum. This is header-only verification, not container or scene
-decoding. The plugin pyramid below does not run these reader CTests.
+setup fixture. The full suite covers legacy and Blender 5 headers, synthetic
+gzip streams, the contributor-provided Zstandard-compressed Blender file,
+malformed headers and streams, member/frame splits, and failed source reads.
+Probe cases cover decoder-window/input limits and stopping before trailing
+checksum validation. Full-stream byte cases cover final checksums,
+truncation, metadata across chunks, trailing garbage, exact input/output/ratio
+limits, high-ratio streams, and byte-identical gzip/Zstandard round trips of
+both the generated empty scene and decoded corpus. Their explicit limits are
+test budgets, not production defaults. These are compression and header
+checks, not block, SDNA or scene decoding. The plugin pyramid below does not
+run these reader CTests.
 
 ## OpenStrata bundle
 
