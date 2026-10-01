@@ -28,16 +28,26 @@ cross-release C++ ABI.
 
 | Library | Reads | Used by | Found as |
 | --- | --- | --- | --- |
-| zlib | gzip-compressed `.blend` | `blendFile` | installed package |
+| zlib 1.3.2 | gzip-compressed `.blend` (planned) | `blendFile` | vendored inflate and checksum sources in `third_party/zlib` |
 | Zstandard 1.5.7 | Zstandard-compressed `.blend` | `blendFile` | vendored decompression-only source in `third_party/zstd` |
 
 Both are permissively licensed and belong only to `blendFile`.
-Zstandard's decoder is compiled directly into the library, with no external
-link dependency or build-time download. Its fixed revision, BSD license, and
-upstream regeneration command are recorded in
+Both decoders are compiled directly into the static library, with no external
+link dependency or build-time download. Their fixed releases, licenses, and
+source provenance are recorded in
+[third_party/zlib/README.md](../../third_party/zlib/README.md),
 [third_party/zstd/README.md](../../third_party/zstd/README.md) and
 [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).
-The source of zlib remains DEP-O2.
+
+zlib includes only inflate, its checksum routines, and required headers, not
+the encoder or gzip file I/O. It uses upstream `Z_PREFIX` to avoid unprefixed
+zlib symbol collisions with an OpenUSD SDK. Headers and compile definitions
+remain private to the reader. Both plain CMake and OpenStrata builds use this
+same source subset, including standalone reader builds without an OpenUSD
+SDK. Installed reader targets need neither `find_dependency(ZLIB)` nor an
+external zlib package. Licenses and provenance are installed with the library.
+This source integration does not claim gzip `.blend` support; bounded decoding
+and compressed-file tests remain part of Phase 1.
 
 ## 3. Blender
 
@@ -94,16 +104,22 @@ reason is recorded.
 
 ## 7. Open questions
 
-| Id | Question | Proposed answer | Blocks |
-| --- | --- | --- | --- |
-| DEP-O2 | Where zlib comes from; Zstandard is resolved below. | Installed package on `CMAKE_PREFIX_PATH`, provided by OpenStrata artifacts in `ost` builds. | Phase 1 |
+None currently.
 
 ### 7.1 Resolved decisions
+
+- **DEP-O2, zlib portion (2026-10-02):** vendor the upstream 1.3.2 inflate
+  and checksum source subset with provenance and its zlib license, as specified
+  in §2. This replaces the separately installed `ZLIB::ZLIB` proposal. Do not
+  assume that OpenStrata's OpenUSD artifact provides zlib or obtain it through
+  OpenUSD's dependency graph. Keep the codec private to the reader and retain
+  the independent installed-package contract. This decision does not claim
+  gzip support.
 
 - **DEP-O2, Zstandard portion (2026-10-01):** vendor the upstream 1.5.7
   decompression-only single-file library with provenance and its BSD license,
   following the `usd-vrm-plugins/third_party/cgltf` source-vendoring pattern.
-  zlib remains undecided. This decision does not claim compressed-file support.
+  This decision does not claim full compressed-file support.
 
 - **DEP-O1 (2026-10-01):** use OpenUSD 26.08 as the pinned OpenStrata
   verification runtime. The bundle manifest enforces that runtime choice;

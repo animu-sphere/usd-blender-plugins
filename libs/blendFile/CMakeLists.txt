@@ -6,14 +6,23 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 enable_language(C)
 set(BLEND_ZSTD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/zstd")
+set(BLEND_ZLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/zlib")
 add_library(blendFile STATIC src/BlendFile.cpp "${BLEND_ZSTD_DIR}/zstddeclib.c")
+target_sources(blendFile PRIVATE
+    "${BLEND_ZLIB_DIR}/adler32.c"
+    "${BLEND_ZLIB_DIR}/crc32.c"
+    "${BLEND_ZLIB_DIR}/inflate.c"
+    "${BLEND_ZLIB_DIR}/inffast.c"
+    "${BLEND_ZLIB_DIR}/inftrees.c"
+    "${BLEND_ZLIB_DIR}/zutil.c")
 add_library(blendFile::blendFile ALIAS blendFile)
 target_compile_features(blendFile PUBLIC cxx_std_20)
 set_target_properties(blendFile PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_EXTENSIONS OFF)
 target_include_directories(blendFile PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
-target_include_directories(blendFile PRIVATE "${BLEND_ZSTD_DIR}")
+target_include_directories(blendFile PRIVATE "${BLEND_ZSTD_DIR}" "${BLEND_ZLIB_DIR}")
+target_compile_definitions(blendFile PRIVATE Z_PREFIX)
 if(MSVC)
     target_compile_options(blendFile PUBLIC /utf-8)
     target_compile_definitions(blendFile PUBLIC NOMINMAX)
@@ -23,6 +32,8 @@ install(TARGETS blendFile EXPORT blendFileTargets ARCHIVE DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include)
 install(FILES "${BLEND_ZSTD_DIR}/LICENSE" "${BLEND_ZSTD_DIR}/README.md"
     DESTINATION share/licenses/blendFile/zstd)
+install(FILES "${BLEND_ZLIB_DIR}/LICENSE" "${BLEND_ZLIB_DIR}/README.md"
+    DESTINATION share/licenses/blendFile/zlib)
 install(EXPORT blendFileTargets NAMESPACE blendFile:: DESTINATION lib/cmake/blendFile)
 configure_package_config_file(cmake/blendFileConfig.cmake.in
     ${CMAKE_CURRENT_BINARY_DIR}/blendFileConfig.cmake
@@ -35,6 +46,8 @@ if(BUILD_TESTING)
     file(WRITE "${CMAKE_BINARY_DIR}/.cmake/api/v1/query/client-blendFile/codemodel-v2" "")
     add_executable(blendFileTests tests/BlendFileTests.cpp)
     target_link_libraries(blendFileTests PRIVATE blendFile::blendFile)
+    target_include_directories(blendFileTests PRIVATE "${BLEND_ZLIB_DIR}")
+    target_compile_definitions(blendFileTests PRIVATE Z_PREFIX)
     if(MSVC)
         target_sources(blendFileTests PRIVATE tests/utf8.manifest)
     endif()

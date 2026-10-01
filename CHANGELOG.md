@@ -8,6 +8,9 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Vendored zlib 1.3.2 inflate and checksum sources, with archive provenance,
+    private prefixed symbols, installed license notices and a gzip decoder
+    smoke test; gzip `.blend` decoding remains planned.
 - Header regression tests for the 2.99/3.0 version boundary across legacy
     pointer widths and byte orders, and for Blender 4.5 format-1 headers with
     and without Zstandard compression.
@@ -44,6 +47,9 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- The dependency contract resolves zlib through a vendored decoder subset,
+    without relying on the OpenStrata OpenUSD runtime or an externally
+    installed zlib package, including for installed reader targets.
 - The blend contract distinguishes the native decoder's 3.0 design floor
     from structural header recognition, and records the fixture requirements
     for legacy big-endian and 32-bit-pointer compatibility claims.

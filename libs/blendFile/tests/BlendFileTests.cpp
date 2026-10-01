@@ -1,5 +1,7 @@
 #include "blend/BlendFile.h"
 
+#include "zlib.h"
+
 #include <algorithm>
 #include <array>
 #include <iostream>
@@ -12,6 +14,26 @@ void Require(bool condition, const char* message) {
     if (!condition) {
         throw std::runtime_error(message);
     }
+}
+
+void CheckZlibDecoder() {
+  Require(std::string_view(zlibVersion()) == "1.3.2", "Wrong vendored zlib version");
+  std::array<Bytef, 25> compressed{
+      0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x03,
+      0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00, 0x86, 0xa6, 0x10,
+      0x36, 0x05, 0x00, 0x00, 0x00};
+  std::array<char, 5> output{};
+  z_stream stream{};
+  stream.next_in = compressed.data();
+  stream.avail_in = static_cast<uInt>(compressed.size());
+  stream.next_out = reinterpret_cast<Bytef*>(output.data());
+  stream.avail_out = static_cast<uInt>(output.size());
+  Require(inflateInit2(&stream, 15 + 16) == Z_OK, "Vendored gzip decoder initialization failed");
+  const auto status = inflate(&stream, Z_FINISH);
+  const auto cleanup = inflateEnd(&stream);
+  Require(status == Z_STREAM_END && cleanup == Z_OK && stream.total_in == compressed.size() &&
+              stream.total_out == output.size() && std::string_view(output.data(), output.size()) == "hello",
+      "Vendored gzip decoder smoke test failed");
 }
 
 blend::Result<blend::Header> Parse(std::string_view text) {
@@ -62,6 +84,7 @@ public:
 int main(int argumentCount, char** arguments) {
     try {
         Require(argumentCount == 3, "Expected temporary and Blender fixture paths");
+        CheckZlibDecoder();
         blend::FileByteSource realFile(arguments[2]);
         const auto realHeader = blend::ReadHeader(realFile);
         if (!realHeader.HasValue()) {
