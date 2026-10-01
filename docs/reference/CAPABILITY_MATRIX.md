@@ -152,7 +152,9 @@ authored-stage support. The importer remains header-only.
 | Blender-written unit-scale equivalence through native decoding and USD authoring | — | | Phase 2 |
 | saved active Scene selection and owning source metadata | supported | both normal-save corpus files select `Scene`; Scene-only `empty.blend` fails without fallback; synthetic two-Scene, reordered, 32/64-bit and little/big-endian layouts in `blendScene.ir` | Phase 2 |
 | saved-scene missing/invalid/linked-reference and source-metadata diagnostics | supported | missing/duplicate/wrong GLOB, null/absent/interior/wrong-type references, duplicate addresses, linked ID, invalid names/unit scales and SDNA errors with exact fatal block context in `blendScene.ir` | Phase 2 |
-| native Collection/list traversal, object decoding and graph validation | — | | Phase 2 |
+| saved Collection membership and owning Object names/indices | supported | both normal-save 4.5.13/5.2.2 corpus files select Camera/Cube/Light; synthetic nested/shared/reordered/empty Collections and Object deduplication across all four layouts in `blendScene.ir` | Phase 2 |
+| Collection/ListBase reference, cycle and explicit traversal-budget diagnostics | supported | null/absent/interior/wrong-type/count targets, linked IDs, invalid names, endpoint/backlink/node-sharing errors, list/Collection cycles, exact visit/depth limits and 256-child chains in `blendScene.ir` | Phase 2 |
+| native Object value decoding and parent/data/instance-reference validation | — | | Phase 2 |
 | parent-relative transforms, topology validation, normals and UV decoding | — | | Phase 2 |
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
@@ -173,3 +175,15 @@ does not populate objects/meshes, traverse collections or establish native-to-US
 unit equivalence. Its `blockIndex` refers to the caller's same ordered records.
 Real-file selection evidence remains 64-bit little-endian; other layouts have
 synthetic evidence only. The importer and inspection tool remain unchanged.
+
+The separate [Collection membership boundary](../design/DESIGN_POLICY.md#523-saved-collection-membership-boundary)
+selects saved Object membership from that Scene's master Collection, with exact
+references, bounded iterative traversal and fatal errors instead of partial
+results. It retains each reachable Object once in saved discovery order,
+including Camera and Light records without decoding their values. It returns
+owning raw names and caller-sequence indices, not object transforms, meshes,
+visibility, evaluated/view-layer state, Collection instances or a populated IR.
+Parent/data references are not followed or validated. Collection/Object linked
+IDs fail without external-file access; unreachable records are not semantically
+decoded. Real-file membership evidence is 64-bit little-endian only; other
+layouts, nested/shared graphs and malformed cases have synthetic evidence.

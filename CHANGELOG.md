@@ -8,6 +8,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Bounded saved Collection membership selection in `blendScene`, returning
+    owning Object names and block indices from the active Scene's master
+    Collection. Explicit visit/depth limits, exact references and ListBase
+    consistency reject linked IDs, invalid targets and cycles without partial
+    results. Both corpus files and four synthetic layouts cover membership,
+    shared records, ownership, deep chains and fatal diagnostic context.
+    No Object values, parent/data/instance references, transforms, populated
+    Scene IR, fixture bytes or header-only importer behavior are changed.
 - Native saved-scene selection in `blendScene`, using `FileGlobal.curscene`,
     exact saved-address resolution and SDNA, with owning source name/version/unit
     metadata and contextual fatal diagnostics for missing, invalid or linked

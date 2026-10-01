@@ -381,6 +381,239 @@ void CheckSelectionLayouts() {
   }
 }
 
+void CheckCollectionLayouts() {
+  for (const std::uint8_t width : {4, 8}) {
+    for (const auto order : {blend::ByteOrder::Little, blend::ByteOrder::Big}) {
+      const blend::Header header{width, order, 405};
+      const auto idSize = static_cast<std::uint16_t>(16 + width);
+      const auto sceneSize = static_cast<std::uint16_t>(idSize + 4 + width);
+      const auto collectionSize = static_cast<std::uint16_t>(idSize + 4 * width);
+      const auto nodeSize = static_cast<std::uint16_t>(3 * width);
+      blend::DnaSchema schema;
+      schema.names = {"name[16]", "*lib", "scale_length", "id", "unit", "*curscene",
+          "*master_collection", "*first", "*last", "gobject", "children", "*next", "*prev", "*ob", "*collection"};
+      schema.types = {{"char", 1}, {"float", 4}, {"Library", 0}, {"ID", idSize},
+          {"UnitSettings", 4}, {"Scene", sceneSize}, {"FileGlobal", width}, {"void", 0},
+          {"ListBase", static_cast<std::uint16_t>(2 * width)}, {"Collection", collectionSize},
+          {"Object", idSize}, {"CollectionObject", nodeSize}, {"CollectionChild", nodeSize}};
+      schema.structs = {{3, {{0, 0, "name", 0, {16}, 0, 16}, {2, 1, "lib", 1, {}, 16, width}}},
+          {4, {{1, 2, "scale_length", 0, {}, 0, 4}}},
+          {5, {{3, 3, "id", 0, {}, 0, idSize}, {4, 4, "unit", 0, {}, idSize, 4},
+                  {9, 6, "master_collection", 1, {}, static_cast<std::uint64_t>(idSize + 4), width}}},
+          {6, {{5, 5, "curscene", 1, {}, 0, width}}},
+          {8, {{7, 7, "first", 1, {}, 0, width}, {7, 8, "last", 1, {}, width, width}}},
+          {9, {{3, 3, "id", 0, {}, 0, idSize}, {8, 9, "gobject", 0, {}, idSize, static_cast<std::uint64_t>(2 * width)},
+                  {8, 10, "children", 0, {}, static_cast<std::uint64_t>(idSize + 2 * width), static_cast<std::uint64_t>(2 * width)}}},
+          {10, {{3, 3, "id", 0, {}, 0, idSize}}},
+          {11, {{11, 11, "next", 1, {}, 0, width}, {11, 12, "prev", 1, {}, width, width},
+                   {10, 13, "ob", 1, {}, static_cast<std::uint64_t>(2 * width), width}}},
+          {12, {{12, 11, "next", 1, {}, 0, width}, {12, 12, "prev", 1, {}, width, width},
+                   {9, 14, "collection", 1, {}, static_cast<std::uint64_t>(2 * width), width}}}};
+      std::vector<std::byte> bytes;
+      std::vector<blend::BlendBlock> blocks;
+      auto add = [&](std::array<char, 4> code, std::uint32_t dna, std::uint16_t size) {
+        blocks.push_back({code, size, 1000 + 100 * blocks.size(), dna, 1, bytes.size()});
+        bytes.resize(bytes.size() + size);
+      };
+      add({'G', 'L', 'O', 'B'}, 3, width);
+      add({'S', 'C', 0, 0}, 2, sceneSize);
+      add({'D', 'A', 'T', 'A'}, 5, collectionSize);
+      add({'G', 'R', 0, 0}, 5, collectionSize);
+      add({'O', 'B', 0, 0}, 6, idSize);
+      add({'O', 'B', 0, 0}, 6, idSize);
+      add({'D', 'A', 'T', 'A'}, 7, nodeSize);
+      add({'D', 'A', 'T', 'A'}, 7, nodeSize);
+      add({'D', 'A', 'T', 'A'}, 7, nodeSize);
+      add({'D', 'A', 'T', 'A'}, 8, nodeSize);
+      add({'O', 'B', 0, 0}, 6, idSize);
+      add({'D', 'A', 'T', 'A'}, 8, nodeSize);
+      auto store = [&](auto& input, std::size_t index, std::size_t member, std::uint64_t value) {
+        StoreBits(input, static_cast<std::size_t>(blocks[index].offset) + member, value, width, order);
+      };
+      auto link = [&](std::size_t index, std::size_t member, std::size_t target) {
+        store(bytes, index, member, blocks[target].oldAddress);
+      };
+      auto name = [&](std::size_t index, std::string_view value) {
+        for (std::size_t character = 0; character < value.size(); ++character) {
+          bytes[static_cast<std::size_t>(blocks[index].offset) + character] = static_cast<std::byte>(value[character]);
+        }
+      };
+      name(1, "SCChosen");
+      name(2, "GRRoot");
+      name(3, "GRChild");
+      name(4, "OBOne");
+      name(5, "OBTwo");
+      name(10, "OBUnused");
+      store(bytes, 10, 16, 999);
+      StoreBits(bytes, static_cast<std::size_t>(blocks[1].offset) + idSize,
+          std::bit_cast<std::uint32_t>(1.0f), 4, order);
+      link(0, 0, 1);
+      link(1, idSize + 4, 2);
+      link(2, idSize, 6);
+      link(2, idSize + width, 6);
+      link(2, idSize + 2 * width, 9);
+      link(2, idSize + 3 * width, 9);
+      link(3, idSize, 7);
+      link(3, idSize + width, 8);
+      link(6, 2 * width, 4);
+      link(7, 0, 8);
+      link(7, 2 * width, 4);
+      link(8, width, 7);
+      link(8, 2 * width, 5);
+      link(9, 2 * width, 3);
+      auto select = [&](const auto& input, const auto& records, const auto& dna,
+                        blend::SceneTraversalLimits limits = {8, 2}) {
+        return blend::SelectSceneObjects(input, records, dna, header, limits);
+      };
+      const auto result = select(bytes, blocks, schema);
+      Require(result.HasValue() && result.GetValue().objects.size() == 2 &&
+                  result.GetValue().objects[0].blockIndex == 4 && result.GetValue().objects[0].sourceName == "One" &&
+                  result.GetValue().objects[1].blockIndex == 5 && result.GetValue().objects[1].sourceName == "Two",
+          "Nested Collection membership deduplicates shared Objects at exact budgets");
+      auto failure = [&](const auto& input, const auto& records, const auto& dna,
+                         std::string_view code, std::optional<std::uint32_t> index,
+                         blend::SceneTraversalLimits limits = {32, 8}) {
+        const auto failed = select(input, records, dna, limits);
+        Require(!failed.HasValue(), "Malformed Collection graph fails");
+        const auto& error = failed.GetError();
+        if (error.code != code || error.blockIndex != index) {
+          throw std::runtime_error("Expected " + std::string(code) + " at " +
+                                   (index ? std::to_string(*index) : "none") + ", got " + error.code + " at " +
+                                   (error.blockIndex ? std::to_string(*error.blockIndex) : "none"));
+        }
+        Require(error.code == code && error.severity == blend::Severity::Fatal &&
+                    !error.recoverable && error.blockIndex == index &&
+                    error.byteOffset == (index ? std::optional<std::uint64_t>(records[*index].offset) : std::nullopt),
+            "Collection failure has exact fatal code and block context");
+      };
+      failure(bytes, blocks, schema, "BLEND_SCENE_VISIT_LIMIT", 8, {7, 2});
+      failure(bytes, blocks, schema, "BLEND_SCENE_DEPTH_LIMIT", 2, {8, 1});
+      failure(bytes, blocks, schema, "BLEND_SCENE_LIMITS", std::nullopt, {0, 2});
+      failure(bytes, blocks, schema, "BLEND_SCENE_LIMITS", std::nullopt, {8, 0});
+      for (const auto address : {std::uint64_t{0}, blocks[2].oldAddress + 1, std::uint64_t{999}}) {
+        auto changed = bytes;
+        store(changed, 1, idSize + 4, address);
+        failure(changed, blocks, schema, "BLEND_SCENE_REFERENCE_INVALID", 1);
+        changed = bytes;
+        store(changed, 6, 2 * width, address);
+        failure(changed, blocks, schema, "BLEND_SCENE_REFERENCE_INVALID", 6);
+        changed = bytes;
+        store(changed, 9, 2 * width, address);
+        failure(changed, blocks, schema, "BLEND_SCENE_REFERENCE_INVALID", 9);
+      }
+      for (const std::size_t index : {2, 3, 4, 5}) {
+        auto changed = bytes;
+        store(changed, index, 16, 999);
+        failure(changed, blocks, schema, "BLEND_SCENE_LINKED_UNSUPPORTED", static_cast<std::uint32_t>(index));
+        changed = bytes;
+        changed[static_cast<std::size_t>(blocks[index].offset)] = std::byte{'X'};
+        failure(changed, blocks, schema, "BLEND_SCENE_NAME_INVALID", static_cast<std::uint32_t>(index));
+      }
+      auto changed = bytes;
+      store(changed, 2, idSize + width, 0);
+      failure(changed, blocks, schema, "BLEND_SCENE_LIST_INVALID", 2);
+      changed = bytes;
+      store(changed, 2, idSize, 999);
+      failure(changed, blocks, schema, "BLEND_SCENE_REFERENCE_INVALID", 2);
+      changed = bytes;
+      store(changed, 7, 0, 999);
+      failure(changed, blocks, schema, "BLEND_SCENE_REFERENCE_INVALID", 7);
+      changed = bytes;
+      store(changed, 8, width, 0);
+      failure(changed, blocks, schema, "BLEND_SCENE_LIST_INVALID", 8);
+      changed = bytes;
+      store(changed, 3, idSize + width, blocks[7].oldAddress);
+      failure(changed, blocks, schema, "BLEND_SCENE_LIST_INVALID", 7);
+      changed = bytes;
+      store(changed, 3, idSize + width, blocks[6].oldAddress);
+      store(changed, 7, 0, blocks[7].oldAddress);
+      failure(changed, blocks, schema, "BLEND_SCENE_CYCLE", 7);
+      changed = bytes;
+      store(changed, 3, idSize + 2 * width, blocks[11].oldAddress);
+      store(changed, 3, idSize + 3 * width, blocks[11].oldAddress);
+      store(changed, 11, 2 * width, blocks[2].oldAddress);
+      failure(changed, blocks, schema, "BLEND_SCENE_CYCLE", 3);
+      changed = bytes;
+      store(changed, 9, 2 * width, blocks[2].oldAddress);
+      failure(changed, blocks, schema, "BLEND_SCENE_CYCLE", 2);
+      changed = bytes;
+      store(changed, 3, idSize, blocks[6].oldAddress);
+      store(changed, 3, idSize + width, blocks[6].oldAddress);
+      failure(changed, blocks, schema, "BLEND_SCENE_LIST_INVALID", 6);
+      for (const std::size_t index : {2, 4, 6, 9}) {
+        auto records = blocks;
+        records[index].count = 2;
+        failure(bytes, records, schema, "BLEND_SCENE_REFERENCE_INVALID", static_cast<std::uint32_t>(index));
+        records = blocks;
+        records[index].code = {'S', 'C', 0, 0};
+        failure(bytes, records, schema, "BLEND_SCENE_REFERENCE_INVALID", static_cast<std::uint32_t>(index));
+        records = blocks;
+        records[index].sdnaIndex = 0;
+        records[index].length = idSize;
+        failure(bytes, records, schema, "BLEND_SCENE_REFERENCE_INVALID", static_cast<std::uint32_t>(index));
+      }
+      auto dna = schema;
+      dna.structs[5].members[1].typeIndex = 3;
+      failure(bytes, blocks, dna, "BLEND_DNA_SIZE", 2);
+      dna = schema;
+      dna.structs[7].members[2].typeIndex = 9;
+      failure(bytes, blocks, dna, "BLEND_SCENE_REFERENCE_INVALID", 6);
+      dna = schema;
+      dna.structs[5].members.pop_back();
+      failure(bytes, blocks, dna, "BLEND_DNA_MEMBER", 2);
+      changed = bytes;
+      for (std::size_t member = idSize; member < collectionSize; member += width) {
+        store(changed, 2, member, 0);
+      }
+      const auto empty = select(changed, blocks, schema, {1, 1});
+      Require(empty.HasValue() && empty.GetValue().objects.empty(),
+          "An empty master Collection succeeds with one visit and depth one");
+      changed = bytes;
+      store(changed, 9, 0, blocks[11].oldAddress);
+      store(changed, 11, width, blocks[9].oldAddress);
+      store(changed, 11, 2 * width, blocks[3].oldAddress);
+      store(changed, 2, idSize + 3 * width, blocks[11].oldAddress);
+      const auto shared = select(changed, blocks, schema, {9, 2});
+      Require(shared.HasValue() && shared.GetValue().objects.size() == 2,
+          "Repeated child Collection references are shared, not cyclic");
+      auto records = blocks;
+      std::reverse(records.begin(), records.end());
+      const auto reordered = select(bytes, records, schema);
+      Require(reordered.HasValue() && reordered.GetValue().objects[0].sourceName == "One" &&
+                  reordered.GetValue().objects[1].sourceName == "Two" &&
+                  records[reordered.GetValue().objects[0].blockIndex].oldAddress == blocks[4].oldAddress,
+          "Object membership and discovery order do not depend on block enumeration");
+      for (std::size_t member = idSize; member < collectionSize; member += width) {
+        store(bytes, 2, member, 0);
+      }
+      std::size_t parent = 2;
+      std::size_t finalReferrer = parent;
+      for (std::size_t depth = 0; depth < 256; ++depth) {
+        const auto childIndex = blocks.size();
+        add({'G', 'R', 0, 0}, 5, collectionSize);
+        name(childIndex, "GRDeep");
+        const auto nodeIndex = blocks.size();
+        add({'D', 'A', 'T', 'A'}, 8, nodeSize);
+        link(parent, idSize + 2 * width, nodeIndex);
+        link(parent, idSize + 3 * width, nodeIndex);
+        link(nodeIndex, 2 * width, childIndex);
+        finalReferrer = parent;
+        parent = childIndex;
+      }
+      const auto deep = select(bytes, blocks, schema, {513, 257});
+      Require(deep.HasValue() && deep.GetValue().objects.empty(),
+          "Deep Collection chains use an explicit stack at exact visit and depth budgets");
+      failure(bytes, blocks, schema, "BLEND_SCENE_DEPTH_LIMIT",
+          static_cast<std::uint32_t>(finalReferrer), {513, 256});
+      name(4, "OBChanged");
+      schema.types[10].name = "Changed";
+      Require(result.GetValue().objects[0].sourceName == "One" &&
+                  result.GetValue().scene.metadata.sourceScene == "Chosen",
+          "Selected Object and Scene names own their bytes");
+    }
+  }
+}
+
 void CheckSelectedScene(const char* path, bool hasSavedScene) {
   blend::FileByteSource source(path);
   Require(source.IsOpen(), "Scene selection fixture opens");
@@ -402,6 +635,10 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
   if (!hasSavedScene) {
     Require(!selected.HasValue() && selected.GetError().code == "BLEND_SCENE_ACTIVE_MISSING",
         "Scene-only library has no implicit fallback");
+    const auto objects = blend::SelectSceneObjects(decoded.GetValue(), blocks.GetValue(),
+        schema.GetValue(), header.GetValue(), {10000, 64});
+    Require(!objects.HasValue() && objects.GetError().code == "BLEND_SCENE_ACTIVE_MISSING",
+        "Object selection preserves the Scene-only library's lack of a saved active Scene");
     return;
   }
   if (!selected.HasValue()) {
@@ -411,6 +648,44 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
               selected.GetValue().metadata.sourceVersion == header.GetValue().SourceVersion() &&
               selected.GetValue().metadata.sourceUnitScale > 0,
       "Saved active scene metadata is selected through SDNA");
+  const auto scene = blend::ViewDnaBlock(decoded.GetValue(), blocks.GetValue(),
+      schema.GetValue(), header.GetValue(), selected.GetValue().blockIndex);
+  Require(scene.HasValue(), "Selected Scene binds");
+  const auto master = scene.GetValue().Member("master_collection");
+  Require(master.HasValue() && master.GetValue().Type().name == "Collection" &&
+              master.GetValue().PointerLevel() == 1 &&
+              master.GetValue().ArrayDimensions().empty(),
+      "Saved Scene has a scalar master Collection pointer");
+  const auto address = master.GetValue().Pointer();
+  const auto pointers = blend::BuildPointerMap(blocks.GetValue());
+  Require(address.HasValue() && address.GetValue() != 0 && pointers.HasValue(),
+      "Master Collection has a saved address");
+  const auto target = pointers.GetValue().Resolve(address.GetValue());
+  Require(target.HasValue() && target.GetValue().has_value(),
+      "Master Collection resolves exactly");
+  const auto collection = blend::ViewDnaBlock(decoded.GetValue(), blocks.GetValue(),
+      schema.GetValue(), header.GetValue(), *target.GetValue());
+  Require(collection.HasValue() && collection.GetValue().Type().name == "Collection",
+      "Master Collection binds through SDNA");
+  for (const auto member : {"gobject", "children"}) {
+    const auto list = collection.GetValue().Member(member);
+    Require(list.HasValue() && list.GetValue().Type().name == "ListBase" &&
+                list.GetValue().PointerLevel() == 0 &&
+                list.GetValue().ArrayDimensions().empty(),
+        "Collection stores embedded object and child ListBases");
+  }
+  const auto objects = blend::SelectSceneObjects(decoded.GetValue(), blocks.GetValue(),
+      schema.GetValue(), header.GetValue(), {10000, 64});
+  if (!objects.HasValue()) {
+    throw std::runtime_error(objects.GetError().code + ": " + objects.GetError().message);
+  }
+  std::vector<std::string> names;
+  for (const auto& object : objects.GetValue().objects) {
+    names.push_back(object.sourceName);
+  }
+  std::sort(names.begin(), names.end());
+  Require(names == std::vector<std::string>{"Camera", "Cube", "Light"},
+      "Saved Collection membership selects the corpus objects");
 }
 }
 
@@ -420,6 +695,7 @@ int main(int argc, char** argv) {
     CheckUnits();
     CheckScene();
     CheckSelectionLayouts();
+    CheckCollectionLayouts();
     Require(argc == 4, "Three scene selection fixtures are required");
     CheckSelectedScene(argv[1], false);
     CheckSelectedScene(argv[2], true);

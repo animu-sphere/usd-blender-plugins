@@ -110,10 +110,15 @@ Fixture paths are relative to
 | `BLEND_POINTER_ALLOCATION` | Fatal | no | pointer entries or the unresolved diagnostic cannot be allocated | implemented; allocation failure unverified |
 | `BLEND_SCENE_GLOBAL_INVALID` | Fatal | no | GLOB is missing, duplicated or not one FileGlobal | synthetic GLOB absence/count/type cases in `blendScene.ir` |
 | `BLEND_SCENE_ACTIVE_MISSING` | Fatal | no | FileGlobal.curscene is null; no implicit Scene fallback | Scene-only `empty.blend` and synthetic null pointers in `blendScene.ir` |
-| `BLEND_SCENE_REFERENCE_INVALID` | Fatal | no | the saved Scene reference, target code/type/count or semantic member type is incompatible | absent/interior/metadata pointers, wrong pointer types and non-Scene targets in `blendScene.ir` |
-| `BLEND_SCENE_LINKED_UNSUPPORTED` | Fatal | no | the selected Scene has nonzero ID.lib; external data is not followed | synthetic linked active scenes in `blendScene.ir` |
-| `BLEND_SCENE_NAME_INVALID` | Fatal | no | selected Scene ID.name is not a terminated SC-prefixed one-byte char array | wrong prefixes and unterminated arrays in `blendScene.ir` |
-| `BLEND_SCENE_ALLOCATION` | Fatal | no | scene selection cannot allocate its owning output | implemented; allocation failure injection unverified |
+| `BLEND_SCENE_REFERENCE_INVALID` | Fatal | no | a required Scene/Collection/list/Object reference, target code/type/count or semantic member type is incompatible | null/absent/interior/metadata pointers, wrong pointer types and targets in `blendScene.ir` |
+| `BLEND_SCENE_LINKED_UNSUPPORTED` | Fatal | no | a selected Scene or reached Collection/Object has nonzero ID.lib; external data is not followed | synthetic linked Scene/Collection/Object IDs in `blendScene.ir` |
+| `BLEND_SCENE_NAME_INVALID` | Fatal | no | a selected Scene/Collection/Object ID.name is not a terminated SC/GR/OB-prefixed one-byte char array | synthetic invalid Scene/Collection/Object prefixes and Scene terminators in `blendScene.ir` |
+| `BLEND_SCENE_LIMITS` | Fatal | no | Object selection receives a zero visit or depth limit | both missing limits in `blendScene.ir` |
+| `BLEND_SCENE_VISIT_LIMIT` | Fatal | no | the next Collection/list node/unique Object would exceed the caller's visit limit | exact and one-smaller budgets across all four layouts in `blendScene.ir` |
+| `BLEND_SCENE_DEPTH_LIMIT` | Fatal | no | the next Collection expansion would exceed the caller's active DFS stack limit | two-level and 256-child chains at exact and one-smaller limits in `blendScene.ir` |
+| `BLEND_SCENE_LIST_INVALID` | Fatal | no | ListBase endpoints, prev backlinks, terminal last or exclusive list-node ownership disagree | endpoint/backlink/last and shared-node cases across all four layouts in `blendScene.ir` |
+| `BLEND_SCENE_CYCLE` | Fatal | no | a next chain repeats a node or a child Collection refers to an active Collection | list, self-Collection and ancestor-Collection cycles across all four layouts in `blendScene.ir` |
+| `BLEND_SCENE_ALLOCATION` | Fatal | no | scene selection or Collection traversal cannot allocate | implemented; allocation failure injection unverified |
 | `BLEND_SCENE_UNIT_SCALE_INVALID` | Fatal | no | the source unit scale is zero, negative or nonfinite | `UnitConversion` constructor and saved Scene selection cases in `blendScene.ir` |
 | `BLEND_SCENE_UNIT_VALUE_INVALID` | Fatal | no | a source distance is nonfinite or its conversion to meters overflows | scalar, position and translation cases in `blendScene.ir` |
 | `BLEND_SCENE_UNIT_TRANSFORM_INVALID` | Fatal | no | unit conversion receives a non-affine mesh/empty world matrix | projective matrix in `blendScene.ir` |
@@ -146,6 +151,16 @@ promotes an unresolved pointer to fatal `BLEND_SCENE_REFERENCE_INVALID` with
 GLOB context; it does not return a recoverable pointer warning and a selection.
 Reader binding/member and pointer-map failures retain their existing context.
 See the [selection boundary](../design/DESIGN_POLICY.md#522-saved-scene-selection-boundary).
+
+`SelectSceneObjects` preserves selection/reader failures and returns fatal
+semantic traversal errors, never partial output or recoverable unresolved
+reference warnings. Invalid targets use target context; unresolved required
+references use the referring Scene, Collection or list node. Collection cycle
+and depth failures use the referring Collection. Visit failures identify the
+Collection referrer or current list node; invalid limits and allocation
+failures have no context. Names are raw output provenance, not diagnostic
+datablock labels. See the
+[membership boundary](../design/DESIGN_POLICY.md#523-saved-collection-membership-boundary).
 
 The standalone `UnitConversion` helper throws `std::invalid_argument` for
 invalid input or `std::overflow_error` for meter-conversion overflow, with the
