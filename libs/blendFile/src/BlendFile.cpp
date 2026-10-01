@@ -1,5 +1,6 @@
 #include "blend/BlendFile.h"
 
+#include "zlib.h"
 #include "zstd.h"
 
 #include <algorithm>
@@ -11,6 +12,69 @@ namespace blend {
 namespace {
 Diagnostic Fatal(const char* code, const char* message, std::uint64_t offset) {
     return Diagnostic{code, Severity::Fatal, message, offset, std::nullopt, {}, false};
+}
+
+Result<std::size_t> ReadGzipHeader(ByteSource& source, std::span<std::byte> bytes) {
+  z_stream stream{};
+  if (inflateInit2(&stream, 15 + 16) != Z_OK) {
+    return Result<std::size_t>(Fatal("BLEND_COMPRESSION_DECODER", "Could not initialize the gzip decoder", 0));
+  }
+  std::unique_ptr<z_stream, decltype(&inflateEnd)> decoder(&stream, inflateEnd);
+  constexpr std::uint64_t inputLimit = 1024 * 1024;
+  std::array<std::byte, 4096> chunk{};
+  std::uint64_t offset = 0;
+  std::size_t outputSize = 12;
+  std::size_t outputCount = 0;
+  int status = Z_OK;
+  bool drain = false;
+  while (outputCount < outputSize) {
+    if (stream.avail_in == 0 && !drain) {
+      if (offset == source.Size()) {
+        if (status == Z_STREAM_END) {
+          return Result<std::size_t>(outputCount);
+        }
+        return Result<std::size_t>(Fatal("BLEND_COMPRESSION_TRUNCATED", "Incomplete compressed header", offset));
+      }
+      if (offset == inputLimit) {
+        return Result<std::size_t>(Fatal("BLEND_COMPRESSION_INPUT_LIMIT", "Compressed header exceeds the input budget", offset));
+      }
+      const auto count = static_cast<std::size_t>(std::min<std::uint64_t>(
+          chunk.size(), std::min(source.Size() - offset, inputLimit - offset)));
+      if (!source.Read(offset, std::span(chunk).first(count))) {
+        return Result<std::size_t>(Fatal("BLEND_COMPRESSION_READ_FAILED", "Could not read compressed bytes", offset));
+      }
+      offset += count;
+      stream.next_in = reinterpret_cast<Bytef*>(chunk.data());
+      stream.avail_in = static_cast<uInt>(count);
+    }
+    if (status == Z_STREAM_END && inflateReset2(&stream, 15 + 16) != Z_OK) {
+      return Result<std::size_t>(Fatal("BLEND_COMPRESSION_DECODER", "Could not reset the gzip decoder", offset - stream.avail_in));
+    }
+    const auto previousInput = stream.avail_in;
+    const auto previousOutput = outputCount;
+    stream.next_out = reinterpret_cast<Bytef*>(bytes.data() + outputCount);
+    stream.avail_out = static_cast<uInt>(outputSize - outputCount);
+    drain = false;
+    status = inflate(&stream, Z_BLOCK);
+    outputCount = outputSize - stream.avail_out;
+    if (status == Z_MEM_ERROR) {
+      return Result<std::size_t>(Fatal("BLEND_COMPRESSION_DECODER", "Could not allocate the gzip decoder window", offset - stream.avail_in));
+    }
+    if (status != Z_OK && status != Z_STREAM_END && status != Z_BUF_ERROR) {
+      return Result<std::size_t>(Fatal("BLEND_COMPRESSION_INVALID", "Invalid gzip stream", offset - stream.avail_in));
+    }
+    if (outputCount == 12 && outputSize == 12 && bytes[7] != std::byte{'_'} && bytes[7] != std::byte{'-'}) {
+      outputSize = bytes.size();
+      drain = status != Z_STREAM_END;
+    }
+    if (stream.avail_in == previousInput && outputCount == previousOutput && status != Z_STREAM_END) {
+      if (stream.avail_in == 0) {
+        continue;
+      }
+      return Result<std::size_t>(Fatal("BLEND_COMPRESSION_INVALID", "Gzip header decoder made no progress", offset - stream.avail_in));
+    }
+  }
+  return Result<std::size_t>(outputCount);
 }
 
 Result<std::size_t> ReadCompressedHeader(ByteSource& source, std::span<std::byte> bytes) {
@@ -124,12 +188,14 @@ Result<Header> ReadHeader(ByteSource& source) {
         return fail("BLEND_HEADER_READ_FAILED", "Could not read the header", 0);
     }
     constexpr std::array zstdMagic{std::byte{0x28}, std::byte{0xb5}, std::byte{0x2f}, std::byte{0xfd}};
-    const bool compressed = count >= zstdMagic.size() && std::equal(zstdMagic.begin(), zstdMagic.end(), bytes.begin());
+    constexpr std::array gzipMagic{std::byte{0x1f}, std::byte{0x8b}};
+    const bool gzip = count >= gzipMagic.size() && std::equal(gzipMagic.begin(), gzipMagic.end(), bytes.begin());
+    const bool compressed = gzip || (count >= zstdMagic.size() && std::equal(zstdMagic.begin(), zstdMagic.end(), bytes.begin()));
     if (compressed) {
-        const auto result = ReadCompressedHeader(source, bytes);
-        if (!result.HasValue()) {
-            return Result<Header>(result.GetError());
-        }
+      const auto result = gzip ? ReadGzipHeader(source, bytes) : ReadCompressedHeader(source, bytes);
+      if (!result.HasValue()) {
+        return Result<Header>(result.GetError());
+      }
         count = result.GetValue();
     }
     if (count < 12) {

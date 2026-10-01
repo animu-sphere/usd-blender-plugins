@@ -26,6 +26,7 @@ No installed zlib package, shared library, or network access is needed to build
 or consume the installed reader.
 
 zlib is used under its zlib license, reproduced in `LICENSE`. Release 1.3.2
-includes fixes from the upstream security audit. Vendoring and the decoder
-smoke test do not establish gzip `.blend` support: the reader must still add
-bounded decoding, diagnostic handling, and compressed-file tests.
+includes fixes from the upstream security audit. Reader behavior and fixture
+evidence are recorded in the
+[capability matrix](../../docs/reference/CAPABILITY_MATRIX.md#1-container),
+separately from this codec's provenance.

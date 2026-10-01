@@ -28,7 +28,7 @@ cross-release C++ ABI.
 
 | Library | Reads | Used by | Found as |
 | --- | --- | --- | --- |
-| zlib 1.3.2 | gzip-compressed `.blend` (planned) | `blendFile` | vendored inflate and checksum sources in `third_party/zlib` |
+| zlib 1.3.2 | gzip-compressed `.blend` | `blendFile` | vendored inflate and checksum sources in `third_party/zlib` |
 | Zstandard 1.5.7 | Zstandard-compressed `.blend` | `blendFile` | vendored decompression-only source in `third_party/zstd` |
 
 Both are permissively licensed and belong only to `blendFile`.
@@ -46,8 +46,9 @@ remain private to the reader. Both plain CMake and OpenStrata builds use this
 same source subset, including standalone reader builds without an OpenUSD
 SDK. Installed reader targets need neither `find_dependency(ZLIB)` nor an
 external zlib package. Licenses and provenance are installed with the library.
-This source integration does not claim gzip `.blend` support; bounded decoding
-and compressed-file tests remain part of Phase 1.
+Reader support and fixture evidence, distinguishing bounded header probes
+from full-container decompression, are recorded in the
+[capability matrix](../reference/CAPABILITY_MATRIX.md#1-container).
 
 ## 3. Blender
 
