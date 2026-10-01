@@ -36,7 +36,7 @@ No row says "supported" without a fixture.
 | legacy block layout (enumeration only) | supported | `corpus/blender-4.5.13/Untitled.blend`; synthetic 4.5 containers for both pointer widths and byte orders in `blendFile.header` | Phase 1 |
 | Blender 5 block layout (enumeration only) | supported | `empty.blend`; `corpus/blender-5.2.2/Untitled.blend`; synthetic format-1 containers and sparse 64-bit fields in `blendFile.header` | Phase 1 |
 | real 4.5/5.x block-kind equivalence (enumeration only) | supported | both corpus files enumerate the same 20 block kinds in `blendFile.header`; [comparison evidence](../../plugins/usdBlendFileFormat/tests/corpus/README.md#real-file-comparison) | Phase 1 |
-| block framing and caller-supplied count limit | supported | terminal `ENDB`, exact count limits, negative fields, unaligned payloads, truncated boundaries, oversized lengths, trailing bytes, failed reads and unknown codes in `blendFile.header` | Phase 1 |
+| block framing and caller-supplied count limit | supported | terminal `ENDB`, exact count limits, negative fields, unaligned payloads, trailing bytes, failed reads and unknown codes in `blendFile.header`; every block boundary/header prefix, payload cut points and oversized lengths in `empty.blend`, both corpus files and all synthetic layouts, with checked source-read ranges | Phase 1 |
 | gzip header probe (bounded; not full-file validation) | supported | synthetic stored-block members and an independently encoded DEFLATE stream in `blendFile.header` | Phase 1 |
 | gzip full-container decompression (bytes only; explicit limits) | supported | generated gzip members around `empty.blend` and both decoded corpus files; stored-block and independent DEFLATE vectors in `blendFile.header`; no Blender-written gzip fixture | Phase 1 |
 | Zstandard header probe (bounded; not full-file validation) | supported | `blendFile.header`; `corpus/blender-5.2.2/Untitled.blend` | Phase 0 |
@@ -46,7 +46,7 @@ No row says "supported" without a fixture.
 | SDNA malformed-input diagnostics | supported | all short payload prefixes, invalid sections/counts/indices/names, duplicate records, size mismatches, overflowing arrays and trailing bytes in `blendFile.header` | Phase 1 |
 | saved-address pointer map (ID and DATA; exact keys only) | supported | all reference-target addresses in `empty.blend` and both corpus files; synthetic null, unresolved, duplicate, metadata-collision and 64-bit keys in `blendFile.header` | Phase 1 |
 | raw ID datablock type/name enumeration | supported | every ID block in `empty.blend` and both corpus files; synthetic 32/64-bit, little/big-endian layouts, embedded ID offsets and raw name bytes in `blendFile.header` | Phase 1 |
-| raw ID range, index, count and name diagnostics | supported | synthetic out-of-range payloads/indices, size/count mismatches, invalid embedded members and unterminated names in `blendFile.header` | Phase 1 |
+| raw ID range, index, count and name diagnostics | supported | out-of-range SDNA indices for every ID in `empty.blend` and both corpus files; synthetic out-of-range payloads/indices, size/count mismatches, invalid embedded members and unterminated names in `blendFile.header` | Phase 1 |
 | `blend_inspect`: summary, `--blocks`, `--dna`, raw `--objects` | supported | `empty.blend` and both real corpus files in `blendInspect.cli`; argument/limit errors, missing/duplicate/malformed DNA1 and UTF-8 path regressions | Phase 1 |
 
 Full-stream byte reading validates compression and the decoded header, not

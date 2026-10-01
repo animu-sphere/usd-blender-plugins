@@ -8,6 +8,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Malformed-input reader regressions across every block in the generated
+    empty scene and both real corpus files, plus every synthetic container
+    layout: boundary/header-prefix and payload cut points, oversized lengths,
+    checked source-read ranges and exact fatal diagnostic context. Every
+    real-file ID is also checked with out-of-range SDNA indices, without
+    changing reader behavior or the header-only importer.
 - The OpenUSD-independent `blend_inspect` workspace tool, with fixture-backed
     header/layout summaries, raw ID counts, block and SDNA listings and saved
     Object names. Its standalone/composed CMake project stages `bin/` for

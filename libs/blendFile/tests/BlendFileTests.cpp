@@ -275,6 +275,70 @@ void CheckFileBytes() {
   Require(ParseFile(metadata).HasValue(), "Full-file gzip metadata across chunks rejected");
 }
 
+class CheckedByteSource final : public blend::ByteSource {
+public:
+  explicit CheckedByteSource(std::span<const std::byte> bytes) : source_(bytes) {
+  }
+  std::uint64_t Size() const override {
+    return source_.Size();
+  }
+  bool Read(std::uint64_t offset, std::span<std::byte> destination) override {
+    Require(offset <= Size() && destination.size() <= Size() - offset, "Reader requested bytes outside the source");
+    return source_.Read(offset, destination);
+  }
+
+private:
+  blend::MemoryByteSource source_;
+};
+
+void CheckMalformedBlocks(std::span<const std::byte> bytes, const blend::Header& header,
+    std::span<const blend::BlendBlock> blocks) {
+  const bool modern = header.containerVersion == blend::BlendContainerVersion::Blender5;
+  const std::size_t blockHeaderSize = modern ? 32 : 16 + header.pointerSize;
+  const auto expect = [&](std::size_t length, std::string_view code, std::uint64_t offset, std::uint32_t index) {
+    CheckedByteSource prefix(bytes.first(length));
+    const auto result = blend::ReadBlocks(prefix, blocks.size());
+    Require(!result.HasValue(), "Truncated real-file block accepted");
+    const auto& diagnostic = result.GetError();
+    Require(diagnostic.code == code && diagnostic.byteOffset == offset && diagnostic.blockIndex == index &&
+                diagnostic.severity == blend::Severity::Fatal && !diagnostic.recoverable,
+        "Truncated real-file block diagnostic differs");
+  };
+  std::vector<std::byte> corrupt(bytes.begin(), bytes.end());
+  for (std::size_t index = 0; index < blocks.size(); ++index) {
+    const auto& block = blocks[index];
+    const auto payload = static_cast<std::size_t>(block.offset);
+    const auto start = payload - blockHeaderSize;
+    expect(start, "BLEND_BLOCK_MISSING_ENDB", start, static_cast<std::uint32_t>(index));
+    for (std::size_t length = start + 1; length < payload; ++length) {
+      expect(length, "BLEND_BLOCK_TRUNCATED", start, static_cast<std::uint32_t>(index));
+    }
+    if (block.length != 0) {
+      const auto size = static_cast<std::size_t>(block.length);
+      for (const auto length : {payload, payload + size / 2, payload + size - 1}) {
+        expect(length, "BLEND_BLOCK_SIZE", start + (modern ? 16 : 4), static_cast<std::uint32_t>(index));
+      }
+    }
+    const auto position = start + (modern ? 16 : 4);
+    const std::size_t width = modern ? 8 : 4;
+    const auto maximum = modern ? static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())
+                                : static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max());
+    for (const auto length : {static_cast<std::uint64_t>(bytes.size() - payload + 1), maximum}) {
+      for (std::size_t digit = 0; digit < width; ++digit) {
+        const auto shift = header.byteOrder == blend::ByteOrder::Little ? digit : width - digit - 1;
+        corrupt[position + digit] = static_cast<std::byte>((length >> (8 * shift)) & 255);
+      }
+      CheckedByteSource source(corrupt);
+      const auto result = blend::ReadBlocks(source, blocks.size());
+      Require(!result.HasValue() && result.GetError().code == "BLEND_BLOCK_SIZE" &&
+                  result.GetError().byteOffset == position && result.GetError().blockIndex == index &&
+                  result.GetError().severity == blend::Severity::Fatal && !result.GetError().recoverable,
+          "Oversized real-file block length did not fail safely");
+    }
+    std::copy_n(bytes.begin() + position, width, corrupt.begin() + position);
+  }
+}
+
 void CheckFileFixture(const std::filesystem::path& path, bool compressed,
     std::uint16_t version = 502, std::uint8_t headerSize = 17) {
   constexpr blend::CompressionLimits limits{64 * 1024 * 1024, 64 * 1024 * 1024, 2048, 23};
@@ -300,6 +364,7 @@ void CheckFileFixture(const std::filesystem::path& path, bool compressed,
   const auto& bytes = decoded.GetValue();
   const auto blocks = blend::ReadBlocks(memory, 10000);
   Require(blocks.HasValue(), "SDNA fixture block enumeration failed");
+  CheckMalformedBlocks(bytes, header.GetValue(), blocks.GetValue());
   const auto pointers = blend::BuildPointerMap(blocks.GetValue());
   if (!pointers.HasValue()) {
     std::cerr << pointers.GetError().code << ": " << pointers.GetError().message << '\n';
@@ -351,6 +416,22 @@ void CheckFileFixture(const std::filesystem::path& path, bool compressed,
       std::cerr << datablocks.GetError().code << ": " << datablocks.GetError().message << '\n';
     }
     Require(datablocks.HasValue(), "Real-file ID enumeration rejected");
+    auto invalidBlocks = blocks.GetValue();
+    for (const auto& value : datablocks.GetValue()) {
+      auto& candidate = invalidBlocks[value.blockIndex];
+      const auto originalIndex = candidate.sdnaIndex;
+      for (const auto invalidIndex : {static_cast<std::uint32_t>(schema.structs.size()),
+               static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()),
+               std::numeric_limits<std::uint32_t>::max()}) {
+        candidate.sdnaIndex = invalidIndex;
+        const auto invalid = blend::ListDatablocks(bytes, invalidBlocks, schema);
+        Require(!invalid.HasValue() && invalid.GetError().code == "BLEND_DNA_INDEX" &&
+                    invalid.GetError().byteOffset == candidate.offset && invalid.GetError().blockIndex == value.blockIndex &&
+                    invalid.GetError().severity == blend::Severity::Fatal && !invalid.GetError().recoverable,
+            "Invalid real-file ID SDNA index did not fail safely");
+      }
+      candidate.sdnaIndex = originalIndex;
+    }
     std::size_t expectedIds = 0;
     for (const auto& candidate : blocks.GetValue()) {
       if (candidate.code[0] >= 'A' && candidate.code[0] <= 'Z' && candidate.code[1] >= 'A' && candidate.code[1] <= 'Z' &&
@@ -732,6 +813,7 @@ void CheckBlocks() {
         Require(parsed.HasValue() && parsed.GetValue().size() == 3 && parsed.Diagnostics().empty(),
             "Valid block layout rejected");
         const auto& blocks = parsed.GetValue();
+        CheckMalformedBlocks(std::as_bytes(std::span(file.data(), file.size())), Parse(file).GetValue(), blocks);
         Require(blocks[0].code == std::array{'S', 'C', '\0', '\0'} && blocks[0].length == 3 &&
                     blocks[0].oldAddress == old && blocks[0].sdnaIndex == 23 && blocks[0].count == 2 &&
                     blocks[0].offset == header.size() + end.size(),

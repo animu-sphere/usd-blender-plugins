@@ -109,6 +109,15 @@ source, exact count limits, negative fields, truncated boundaries, oversized
 lengths, source read failures, unknown-code diagnostics, and terminal `ENDB`
 checks. Other legacy pointer-width/byte-order combinations remain synthetic.
 
+Malformed-block checks cut each complete fixture and synthetic container at
+every block boundary and every partial block-header byte, and at the start,
+middle and final byte of each nonempty payload. Each block's length is also
+replaced with a value exceeding the remaining bytes and the layout's maximum
+positive signed length. A checked byte source rejects out-of-range read
+requests; every failure must carry the expected fatal, non-recoverable code,
+byte offset and block index. These checks exercise source-read bounds, not
+sanitizer instrumentation of decoder memory accesses.
+
 SDNA cases decode every structure in the generated empty scene and both real
 corpus files, checking member ranges, TLEN totals and name lookup. Synthetic
 cases cover both pointer widths and byte orders, multidimensional arrays,
@@ -124,7 +133,10 @@ Synthetic cases cover null/unresolved pointers, duplicate keys, excluded
 metadata collisions, both pointer widths and byte orders, non-leading
 embedded ID members, output ownership, raw name bytes and invalid ID ranges,
 indices, counts, members and terminators. Real screen blocks verify that `SN`
-block codes and `SR` name prefixes remain distinct. See the
+block codes and `SR` name prefixes remain distinct. Every real-file ID is also
+checked with SDNA indices at the first out-of-range value and the signed and
+unsigned 32-bit maxima, requiring `BLEND_DNA_INDEX` with that block's context.
+See the
 [raw ID boundary](../design/BLEND_CONTRACT.md#82-raw-datablock-boundary).
 These checks do not traverse pointer graphs or read scene values; the importer
 remains header-only.
