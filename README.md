@@ -3,10 +3,15 @@
 OpenUSD plugins for [Blender](https://www.blender.org/) `.blend` files: a
 read-only `SdfFileFormat` that opens a `.blend` directly as a USD layer.
 
-> Status: documentation baseline. Nothing is implemented yet. The
+> Status: Phase 0 in progress. The official OpenStrata template now builds a
+> read-only bundle with legacy-header validation and a minimal `/Asset` stage.
+> Fixtures are synthetic headers, not Blender scenes; blocks, SDNA and scene
+> decoding are not implemented. The
 > [capability matrix](docs/reference/CAPABILITY_MATRIX.md) is the only page that
 > says what is implemented, and [the roadmap](docs/roadmap/README.md) what comes
 > next.
+
+The intended scene workflow (not implemented yet):
 
 ```usda
 #usda 1.0
@@ -40,13 +45,13 @@ Blender installation; a separately installed Blender can be used, across a
 process boundary, as a reference oracle and for evaluated geometry. Writing
 `.blend` is out of scope.
 
-## Components (planned)
+## Components
 
 | Component | Kind | Role |
 | --- | --- | --- |
-| `blendFile` | plain C++ library | `.blend` container, compression, blocks, SDNA — no OpenUSD |
+| `blendFile` | plain C++ library | Implemented: byte sources, diagnostics, legacy header. Planned: compression, blocks, SDNA. No OpenUSD. |
 | `blendScene` | plain C++ library | the Blender-neutral Scene IR and the native decoder — no OpenUSD |
-| `usdBlendFileFormat` | OpenUSD `SdfFileFormat` bundle | `.blend` → a USD stage |
+| `usdBlendFileFormat` | OpenUSD `SdfFileFormat` bundle | Implemented: header-validated minimal stage. Scene decoding is planned. |
 | `blend_inspect` | CLI | what a `.blend` contains, without USD |
 | `blendHost` | plain C++ library (later) | the Blender host backend, over a subprocess |
 
@@ -70,6 +75,8 @@ stages from each compose without special cases. The full contract is
 [docs/design/STAGE_CONTRACT.md](docs/design/STAGE_CONTRACT.md).
 
 ## Documentation
+
+Build and test commands: [docs/guides/building.md](docs/guides/building.md).
 
 | | |
 | --- | --- |

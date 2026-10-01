@@ -1,0 +1,41 @@
+# OpenStrata plugin bundle manifest.
+# A plugin is a self-describing bundle, not a bare shared library: this file is
+# the contract `ost plugin inspect|build|doctor|test` resolve against.
+manifest:
+  schema: openstrata.plugin/v1alpha1
+plugin:
+  name: usdBlendFileFormat
+  version: 0.1.0
+  kind: usd-fileformat
+# SPDX license for this plugin's own code. Surfaced by `ost plugin inspect` and
+# recorded in the package manifest. Change it to match your project's license.
+license: Apache-2.0
+runtime:
+  # The OpenUSD version range this plugin tolerates. The runtime supplies the
+  # certified point within it.
+  openusd: "==26.08"
+  cxx_abi: inherit
+  # Source bundles do not hard-code C++ ABI; `ost plugin doctor` compares the
+  # resolved target/runtime ABI when a built or packaged manifest records one.
+  # To pin it, `cxx_abi` accepts a scalar (`msvc143`), the `inherit` sentinel
+  # (defer to the runtime), or a per-OS map for a cross-platform bundle:
+  #   cxx_abi: { windows: msvc143, linux: libstdcxx, macos: libcxx }
+provides:
+  - usd-fileformat:blend
+requires:
+  capabilities: [usd-stage-read]
+  libraries:
+    - id: blendFile
+      version: "==0.1.0"
+usd:
+  # Where this bundle's plugInfo.json lives, relative to the bundle root.
+  plug_info: plugin/resources/usdBlendFileFormat/plugInfo.json
+tests:
+  smoke: [tests/fixtures/header_only.blend]
+  roundtrip: [tests/fixtures/header_only.blend]
+  negative:
+    - tests/fixtures/invalid.blend
+    - tests/fixtures/truncated.blend
+    - tests/fixtures/pointer_size.blend
+    - tests/fixtures/endianness.blend
+    - tests/fixtures/version.blend

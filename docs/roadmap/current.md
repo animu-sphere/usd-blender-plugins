@@ -5,23 +5,19 @@ a Phase leaves it when every task has. Scope is
 [DESIGN_POLICY.md §14](../design/DESIGN_POLICY.md#14-phases); the release a
 Phase lands in is the [status table](README.md#status-at-a-glance).
 
-## Phase 0 — workspace skeleton ⬜
+## Phase 0 — workspace skeleton 🚧
 
 Goal: `.blend` is recognized as an OpenUSD file format, and opens as the
 minimal `/Asset` stage.
 
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
-| 0.1 | Repository files: `LICENSE` (Apache-2.0), `VERSION`, `CHANGELOG.md`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.gitattributes`, `.clang-format` | the files exist and the README links the docs | ⬜ |
-| 0.2 | Resolve DEP-O1 and STAGE-O5 | the owning documents record the answers | ⬜ |
-| 0.3 | Scaffold the bundle from OpenStrata's `usd-fileformat-cpp` template (`ost plugin new usd-fileformat … --extension blend`), and move it to `plugins/usdBlendFileFormat/` | `ost plugin inspect` passes; identities match [WORKSPACE.md §1](../architecture/WORKSPACE.md#1-identities) | ⬜ |
-| 0.4 | Update the manifest: name, license, the pinned OpenUSD runtime, `usd-fileformat:blend` | the manifest matches [WORKSPACE.md §4](../architecture/WORKSPACE.md#4-manifests-versioning-and-build-metadata) | ⬜ |
-| 0.5 | Root `CMakeLists.txt`, `CMakePresets.json`, `cmake/` modules, `openstrata.toml`, `openstrata.ci.yaml` | plain CMake and `ost` both build the bundle | ⬜ |
-| 0.6 | `libs/blendFile` scaffold: `ByteSource`, `FileByteSource`, `MemoryByteSource`, the diagnostic record and `Result<T>`, legacy header recognition | unit tests pass; the boundary test shows no OpenUSD in its link line | ⬜ |
-| 0.7 | `UsdBlendFileFormat::Read`: `ArAssetByteSource`, header validation, `/Asset`, `geo`, `mtl`, layer metadata, contract version | [STAGE_CONTRACT.md §17](../design/STAGE_CONTRACT.md#17-validation-checklist) items 1–5 pass on `empty.blend`; a non-`.blend` file fails with `BLEND_HEADER_*` | ⬜ |
-| 0.8 | Fixture generators: byte-level (invalid header, truncated), and a Blender script for `empty.blend` | committed fixtures equal what the generators write | ⬜ |
-| 0.9 | CI on Windows and Linux; `ost plugin build`, `doctor`, `test` L0–L5 | CI is green on both | ⬜ |
-| 0.10 | `guides/building.md` with the commands actually run | every command in it has been run | ⬜ |
+| 0.1 | Finish repository policy files: `LICENSE` (Apache-2.0), `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md` | the files exist; version, changelog, README, `.gitattributes` and root `.clang-format` already exist | 🚧 |
+| 0.5 | Finish `openstrata.ci.yaml` | the root CMake, presets, modules and workspace manifest already build through plain CMake and `ost`; the CI matrix exists | 🚧 |
+| 0.6 | Complete the reader boundary gate | header and byte-source unit tests and include checks pass; add generated link-line inspection | 🚧 |
+| 0.7 | Validate the minimal stage on a Blender-written `empty.blend` | [STAGE_CONTRACT.md §17](../design/STAGE_CONTRACT.md#17-validation-checklist) items 1-5 already pass on synthetic headers; repeat on a real fixture | 🚧 |
+| 0.8 | Add the Blender fixture generator for `empty.blend` | byte-level fixtures already regenerate identically; the Blender fixture does too | 🚧 |
+| 0.9 | CI on Windows and Linux; `ost plugin build`, `doctor`, `test` L0-L5 | local Windows tests pass; CI is green on both | ⬜ |
 
 ## Phase 1 — container and SDNA ⬜
 

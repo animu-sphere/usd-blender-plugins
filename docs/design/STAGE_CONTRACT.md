@@ -1,6 +1,7 @@
 # Stage contract
 
-> Status: **proposed**, 2026-10-01. Nothing here is implemented yet. A section
+> Status: **proposed**, 2026-10-01. The minimal stage is fixture-tested; the
+> remaining sections describe intended behavior. A section
 > becomes binding when the Phase that first authors it lands with a fixture
 > ([DESIGN_POLICY.md §14](DESIGN_POLICY.md#14-phases)); from then, changing it
 > is a contract change (§2).
@@ -10,6 +11,10 @@
 > On this area it wins over the design policy. Materials are detailed in
 > [MATERIAL_POLICY.md](MATERIAL_POLICY.md), identifiers in
 > [NAMING_POLICY.md](NAMING_POLICY.md).
+
+Phase 0 evidence: the synthetic `header_only.blend` and `test_stage.py` verify
+the minimal hierarchy, layer metadata, kind and contract version, including
+reference composition. Real Blender scenes are not decoded yet.
 
 ## 1. Scope
 
@@ -84,7 +89,7 @@ Fixed rules:
 | default prim | `Asset` |
 | geometry root | `/Asset/geo` |
 | material root | `/Asset/mtl` |
-| `/Asset` kind | `component` (STAGE-O5) |
+| `/Asset` kind | `component` (STAGE-O5 resolved) |
 
 The scope names and their order are frozen
 ([DESIGN_POLICY.md §15](DESIGN_POLICY.md#15-decisions-frozen-early)). Blender
@@ -333,7 +338,11 @@ schedules them.
 | STAGE-O2 | How is a mesh shared by several objects authored? | Phase 2 duplicates it per object. Later: one prototype and references or instancing, once a fixture shows the cost. | nothing (non-blocking) |
 | STAGE-O3 | Do color attributes become `primvars:displayColor`? | The active render color attribute also becomes `displayColor`; every color attribute is `primvars:<name>`. | Phase 3 |
 | STAGE-O4 | Where does an object go whose parent is in another scope (a camera parented to a mesh)? | In its own scope, with the transform relative to `/Asset`, and the source parent recorded in customData. Animated parents then need baked samples. | Phase 4 |
-| STAGE-O5 | Is `/Asset` `component` or `assembly`? | `component`, as the siblings, until a consumer needs scene files composed as assemblies. | Phase 0 |
 | STAGE-O6 | The light intensity conversion (watts, irradiance, exposure). | Fixed per light type by fixtures rendered in both Blender and a USD renderer. | Phase 4 |
 | STAGE-O7 | Camera lens and aperture units with `metersPerUnit = 1`. | Millimeters, as Blender stores them and as most USD tools read them; confirm against the OpenUSD release in use. | Phase 4 |
 | STAGE-O8 | Where is the `UsdSkelRoot` for skinned meshes under `/Asset/geo`? | `/Asset` becomes the `UsdSkelRoot` when the scene has a skinned mesh, as `usd-mmd-plugins` does. | Phase 6 |
+
+### 18.1 Resolved decisions
+
+- **STAGE-O5 (2026-10-01):** `/Asset` has kind `component`, matching the
+  sibling asset contracts. `test_stage.py` verifies this value.

@@ -1,7 +1,7 @@
 # usd-blender-plugins — design policy
 
-> Status: **proposed** as the project's design policy, 2026-10-01. Nothing is
-> implemented yet; every behavior described here is intended, and
+> Status: **proposed** as the project's design policy, 2026-10-01. Phase 0
+> implementation has begun; behavior here remains intended unless verified in
 > [reference/CAPABILITY_MATRIX.md](../reference/CAPABILITY_MATRIX.md) is the
 > only document that says what is implemented.
 >

@@ -3,8 +3,11 @@
 This page is the **only** document that says what is implemented. Every other
 document describes intended behavior and links here.
 
-As of 2026-10-01 nothing is implemented: the repository holds the
-documentation baseline only.
+As of 2026-10-01 Phase 0 is in progress. Only header validation and minimal
+stage scaffolding are implemented; no Blender scene version is supported yet.
+Fixtures below live in `plugins/usdBlendFileFormat/tests/fixtures/`; they are
+synthetic bytes, not Blender-written files. Windows verification is recorded
+in [the build guide](../guides/building.md); Linux remains unverified.
 
 Vocabulary:
 
@@ -23,8 +26,8 @@ No row says "supported" without a fixture.
 
 | Capability | Status | Fixture | Intended in |
 | --- | --- | --- | --- |
-| `.blend` registration (`usd-fileformat:blend`) | — | | Phase 0 |
-| legacy header | — | | Phase 0 |
+| `.blend` registration (`usd-fileformat:blend`) | supported | `header_only.blend` | Phase 0 |
+| legacy header | supported | `header_only.blend`; malformed header fixtures; `blendFile.header` | Phase 0 |
 | Blender 5 header | — | | Phase 1 |
 | legacy block layout | — | | Phase 1 |
 | Blender 5 block layout | — | | Phase 1 |
@@ -44,8 +47,8 @@ No row says "supported" without a fixture.
 
 | Capability | Status | Fixture | Intended in |
 | --- | --- | --- | --- |
-| `/Asset`, `defaultPrim`, `geo`, `mtl` | — | | Phase 0 |
-| Y-up, meters | — | | Phase 0 |
+| `/Asset`, `defaultPrim`, `geo`, `mtl` | supported | `header_only.blend`, `test_stage.py`, golden | Phase 0 |
+| Y-up, meters | supported | `header_only.blend`, `test_stage.py`, golden | Phase 0 |
 | objects, parenting, transforms | — | | Phase 2 |
 | meshes: topology, normals, UVs | — | | Phase 2 |
 | deterministic identifiers | — | | Phase 2 |

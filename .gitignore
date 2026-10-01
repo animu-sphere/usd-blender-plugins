@@ -1,0 +1,8 @@
+/build/
+/.strata/
+/CMakeUserPresets.json
+/strata.lock
+/.vscode/
+**/build/
+**/.strata/
+**/__pycache__/

@@ -1,0 +1,7 @@
+file(GLOB_RECURSE sources "${SOURCE_DIR}/include/*.h" "${SOURCE_DIR}/src/*.cpp")
+foreach(source IN LISTS sources)
+    file(READ "${source}" content)
+    if(content MATCHES "#[ \t]*include[ \t]*[<\"](pxr/|DNA_|BKE_|BLI_|blendScene/|usdBlend)")
+        message(FATAL_ERROR "Forbidden dependency in ${source}")
+    endif()
+endforeach()

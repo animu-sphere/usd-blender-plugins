@@ -1,0 +1,27 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+    "configurePresets": [
+        {
+            "name": "reader",
+            "displayName": "Reader only (no OpenUSD)",
+            "binaryDir": "${sourceDir}/build/reader-preset",
+            "cacheVariables": {
+                "BLEND_BUILD_PLUGIN": "OFF",
+                "BUILD_TESTING": "ON",
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "reader", "configurePreset": "reader", "configuration": "Release" }
+    ],
+    "testPresets": [
+        {
+            "name": "reader",
+            "configurePreset": "reader",
+            "configuration": "Release",
+            "output": { "outputOnFailure": true }
+        }
+    ]
+}

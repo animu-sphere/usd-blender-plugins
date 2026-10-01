@@ -27,7 +27,7 @@ in.** No other document states a version for a Phase.
 
 | Phase | Scope | Status | Release |
 | --- | --- | --- | --- |
-| 0 | workspace skeleton, minimal file format | ⬜ | v0.1.0 (planned) |
+| 0 | workspace skeleton, minimal file format | 🚧 | v0.1.0 (planned) |
 | 1 | container and SDNA, `blend_inspect` | ⬜ | v0.2.0 (planned) |
 | 2 | objects and meshes | ⬜ | v0.3.0 (planned) |
 | 3 | materials and images | ⬜ | v0.4.0 (planned) |
@@ -44,12 +44,11 @@ re-decided when a Phase is ready to ship.
 
 Where things stand, as of 2026-10-01:
 
-- The documentation baseline exists: the design policy, five focused design
-  contracts, the workspace contract, dependencies, and reference pages that
-  state nothing is implemented yet.
-- Phase 0 is next. Its first technical milestone is a `.blend` that opens in
-  OpenUSD as an `/Asset` stage; the first *useful* milestone, a cube that opens
-  in `usdview` as a `UsdGeomMesh`, is Phase 2.
+- Phase 0 is in progress: the template bundle, header reader, minimal stage
+  and Windows verification exist. Real Blender fixtures and CI remain.
+- The first *useful* milestone, a cube that opens in `usdview` as a
+  `UsdGeomMesh`, is still Phase 2. See the
+  [capability matrix](../reference/CAPABILITY_MATRIX.md) for current behavior.
 
 ## Open decisions
 
@@ -59,8 +58,6 @@ schedules them.
 
 | Id | Question | Owner | Blocks |
 | --- | --- | --- | --- |
-| DEP-O1 | The pinned OpenUSD release | [DEPENDENCIES §7](../architecture/DEPENDENCIES.md#7-open-questions) | Phase 0 |
-| STAGE-O5 | `/Asset` kind | [STAGE §18](../design/STAGE_CONTRACT.md#18-open-questions) | Phase 0 |
 | BLEND-O1 | Blender 5 header and block layout | [BLEND §12](../design/BLEND_CONTRACT.md#12-open-questions) | Phase 1 |
 | BLEND-O2 | Minimum Blender version read | [BLEND §12](../design/BLEND_CONTRACT.md#12-open-questions) | Phase 1 |
 | BLEND-O4 | Big-endian and 32-bit files | [BLEND §12](../design/BLEND_CONTRACT.md#12-open-questions) | Phase 1 |
