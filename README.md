@@ -89,8 +89,16 @@ Build and test commands: [docs/guides/building.md](docs/guides/building.md).
 
 Changes are recorded in the [changelog](CHANGELOG.md).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and review expectations,
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards, and
+[SECURITY.md](SECURITY.md) for private vulnerability reporting.
+
 ## License
 
-Apache-2.0. Blender is a separate, GPL-licensed program; this repository
+[Apache-2.0](LICENSE). Third-party code retains its own license; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Blender is a separate, GPL-licensed program; this repository
 neither contains nor links it
 ([docs/design/BACKEND_POLICY.md §7](docs/design/BACKEND_POLICY.md#7-license-boundary)).

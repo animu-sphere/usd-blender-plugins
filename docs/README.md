@@ -60,3 +60,10 @@ sections describe intended behavior;
 - `roadmap/` holds incomplete work only; the release a Phase lands in is stated
   only in its [status table](roadmap/README.md#status-at-a-glance).
 - The details are in [contributing/documentation.md](contributing/documentation.md).
+
+## Contributing
+
+Repository development and review expectations are in
+[CONTRIBUTING.md](../CONTRIBUTING.md), community standards in
+[CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md), and private vulnerability reporting
+in [SECURITY.md](../SECURITY.md).
