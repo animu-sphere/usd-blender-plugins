@@ -43,8 +43,20 @@ runtime resolves locally, but the Linux digest is not in the local registry,
 so that check fails. This does not verify its remote availability or execution.
 
 Hosted Windows/Linux jobs have not yet run. The generated bundle pyramid is
-not a separate `ost plugin doctor` invocation, and neither job kind runs
-`test_stage.py`; both explicit checks still need CI wiring under task 0.9.
+not a separate `ost plugin doctor` invocation, and neither generated job kind
+runs `test_stage.py`. The hand-maintained companion workflow
+[stage-contract-ci.yml](../../.github/workflows/stage-contract-ci.yml) resolves
+the existing bundle cells with `ost ci matrix`, without copying their SDK
+digests, runners or host Python/package requirements. It builds the standalone
+bundle on both hosts, runs explicit `ost plugin doctor` diagnostics and all
+five stage-contract tests, and uploads their reports and logs. These additional
+build jobs also use billed hosted infrastructure; they do not publish anything
+or use secrets. The resolver bootstrap is pinned to the matrix's `ost` version
+and rejects version drift; update both when changing that pin. Do not pass this
+companion workflow to the generator.
+
+The explicit doctor and stage-test commands pass locally on Windows. Hosted
+results for both workflows remain unverified under task 0.9.
 The regular jobs use committed fixtures and do not install or run Blender.
 
 ## Reader without OpenUSD

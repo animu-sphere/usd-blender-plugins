@@ -29,8 +29,11 @@ All notable changes to this project are recorded here. The format follows
     remains unresolved.
 - A Windows/Linux OpenStrata CI matrix and generated pull-request workflow,
     with digest-pinned OpenUSD 26.08 SDKs, workspace graph and reader CTest
-    gates, and standalone bundle L0-L5 checks. Hosted runs remain unverified;
-    explicit doctor and stage-contract CI checks remain pending.
+    gates, and standalone bundle L0-L5 checks. Hosted runs remain unverified.
+- A companion Windows/Linux workflow for explicit plugin doctor and all five
+    stage-contract checks, resolving the existing CI bundle cells instead of
+    copying their SDK pins and preserving diagnostic reports and test logs.
+    The commands pass locally on Windows; hosted results remain unverified.
 - A verified Windows build guide. Container decoding and hosted Windows/Linux
     verification remain unfinished.
 - The documentation baseline: the design policy, the stage, blend, material,
