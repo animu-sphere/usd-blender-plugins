@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "corpus",
+  "blender": {
+    "version": "4.5.13",
+    "releaseLabel": "LTS",
+    "versionEvidence": "Reported by the contributor; the independently checked legacy header records only version 405, not the patch version or LTS label"
+  },
+  "files": [
+    {
+      "path": "Untitled.blend",
+      "sizeBytes": 504759,
+      "sha256": "c3db720aaa62f080630a7573c6b65a088e2a9363f7036aba36ca0b39faa75d83",
+      "provenance": "Provided directly by the repository maintainer; original bytes preserved",
+      "commitPermission": {
+        "granted": true,
+        "date": "2026-10-02",
+        "evidence": "Explicit permission in the development conversation for public-repository regression corpus use and future commits"
+      },
+      "generationScript": null,
+      "compression": "none",
+      "readerStatus": "block-enumeration",
+      "readerEvidence": {
+        "headerVersion": 405,
+        "containerLayout": "legacy",
+        "pointerSizeBytes": 8,
+        "byteOrder": "little",
+        "blockCount": 1240,
+        "dnaPayloadOffset": 372491,
+        "dnaPayloadBytes": 132244,
+        "endOffset": 504759,
+        "blockKinds": [
+          "CA", "DATA", "DNA1", "ENDB", "GLOB", "GR", "IM", "LA", "LS", "MA",
+          "ME", "OB", "PL", "REND", "SC", "SN", "TEST", "WM", "WO", "WS"
+        ],
+        "comparisonFile": "../blender-5.2.2/Untitled.blend",
+        "scope": "Header, unchanged raw bytes, generated gzip/Zstandard byte round trips and block framing only; no SDNA or scene validation"
+      },
+      "purpose": "Real-file regression input for legacy header, byte round trips and Blender 4.5/5.x block-kind comparison; no SDNA or scene validation"
+    }
+  ]
+}
