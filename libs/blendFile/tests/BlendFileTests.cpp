@@ -78,6 +78,15 @@ int main(int argumentCount, char** arguments) {
             modernHeader.GetValue().SourceVersion() == "5.2" &&
             modernHeader.GetValue().containerVersion == blend::BlendContainerVersion::Blender5 &&
             modernHeader.GetValue().headerSize == 17, "Uncompressed modern header rejected");
+        for (const bool compressed : {false, true}) {
+          const auto modernLtsHeader = Parse(compressed ? RawZstdFrame("BLENDER17-01v0405") : std::string("BLENDER17-01v0405"));
+          Require(modernLtsHeader.HasValue() && modernLtsHeader.GetValue().version == 405 &&
+                      modernLtsHeader.GetValue().SourceVersion() == "4.5" &&
+                      modernLtsHeader.GetValue().containerVersion == blend::BlendContainerVersion::Blender5 &&
+                      modernLtsHeader.GetValue().headerSize == 17 && modernLtsHeader.GetValue().pointerSize == 8 &&
+                      modernLtsHeader.GetValue().byteOrder == blend::ByteOrder::Little,
+              "Format-1 header incorrectly restricted to Blender 5");
+        }
         for (std::size_t length = 0; length < modern.size(); ++length) {
             ExpectError(std::string_view(modern).substr(0, length), "BLEND_HEADER_TRUNCATED");
         }
@@ -128,17 +137,25 @@ int main(int argumentCount, char** arguments) {
         Require(!failedCompressedRead.HasValue() &&
             failedCompressedRead.GetError().code == "BLEND_COMPRESSION_READ_FAILED", "Compressed short read accepted");
         for (const char pointer : {'_', '-'}) {
-            for (const char endian : {'v', 'V'}) {
-                std::string text = "BLENDER-v405";
-                text[7] = pointer;
-                text[8] = endian;
-                const auto result = Parse(text);
-                Require(result.HasValue(), "Valid header rejected");
-                Require(result.GetValue().pointerSize == (pointer == '_' ? 4 : 8), "Wrong pointer size");
-                Require(result.GetValue().byteOrder == (endian == 'v' ? blend::ByteOrder::Little : blend::ByteOrder::Big),
-                    "Wrong endianness");
-                Require(result.GetValue().version == 405 && result.GetValue().SourceVersion() == "4.5", "Wrong version");
+          for (const char endian : {'v', 'V'}) {
+            for (const std::uint16_t version : {299, 300, 405}) {
+              std::string text = "BLENDER-v" + std::to_string(version);
+              text[7] = pointer;
+              text[8] = endian;
+              const auto result = Parse(text);
+              Require(result.HasValue(), "Valid structural header rejected by a compatibility policy");
+              Require(result.GetValue().pointerSize == (pointer == '_' ? 4 : 8), "Wrong pointer size");
+              Require(result.GetValue().byteOrder == (endian == 'v' ? blend::ByteOrder::Little : blend::ByteOrder::Big),
+                  "Wrong endianness");
+              Require(result.GetValue().version == version &&
+                          result.GetValue().containerVersion == blend::BlendContainerVersion::Legacy &&
+                          result.GetValue().headerSize == 12,
+                  "Wrong legacy version or layout");
+              if (version == 405) {
+                Require(result.GetValue().SourceVersion() == "4.5", "Wrong source version");
+              }
             }
+          }
         }
         const std::string valid = "BLENDER-v405";
         for (std::size_t length = 0; length < valid.size(); ++length) {

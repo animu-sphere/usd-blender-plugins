@@ -30,7 +30,7 @@ Completion does not imply that the planned release has been tagged.
 | Phase | Scope | Status | Release |
 | --- | --- | --- | --- |
 | 0 | workspace skeleton, minimal file format | ✅ | v0.1.0 (planned) |
-| 1 | container and SDNA, `blend_inspect` | ⬜ | v0.2.0 (planned) |
+| 1 | container and SDNA, `blend_inspect` | 🚧 | v0.2.0 (planned) |
 | 2 | objects and meshes | ⬜ | v0.3.0 (planned) |
 | 3 | materials and images | ⬜ | v0.4.0 (planned) |
 | 4 | cameras, lights and collections | ⬜ | v0.5.0 (planned) |
@@ -55,9 +55,6 @@ schedules them.
 
 | Id | Question | Owner | Blocks |
 | --- | --- | --- | --- |
-| BLEND-O1 | Blender 5 header and block layout | [BLEND §12](../design/BLEND_CONTRACT.md#12-open-questions) | Phase 1 |
-| BLEND-O2 | Minimum Blender version read | [BLEND §12](../design/BLEND_CONTRACT.md#12-open-questions) | Phase 1 |
-| BLEND-O4 | Big-endian and 32-bit files | [BLEND §12](../design/BLEND_CONTRACT.md#12-open-questions) | Phase 1 |
 | BLEND-O5 | Decompression limits | [BLEND §12](../design/BLEND_CONTRACT.md#12-open-questions) | Phase 1 |
 | DEP-O2 | Where zlib and Zstandard come from | [DEPENDENCIES §7](../architecture/DEPENDENCIES.md#7-open-questions) | Phase 1 |
 | STAGE-O1 | Scene unit scale | [STAGE §18](../design/STAGE_CONTRACT.md#18-open-questions) | Phase 2 |

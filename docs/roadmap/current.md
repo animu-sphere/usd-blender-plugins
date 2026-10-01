@@ -13,7 +13,7 @@ looked at.
 
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
-| 1.1 | Resolve BLEND-O1, BLEND-O2, BLEND-O4, BLEND-O5, DEP-O2 | the owning documents record the answers | ⬜ |
+| 1.1 | Resolve BLEND-O5, DEP-O2 | the owning documents record the answers | 🚧 |
 | 1.2 | Compression: gzip and Zstandard, with size and ratio limits | compressed and uncompressed fixtures read identically; a bomb fixture fails with `BLEND_COMPRESSION_*` | ⬜ |
 | 1.3 | Container readers: legacy and Blender 5 block layouts, normalized to one block record | fixtures from 4.5 LTS and 5.x enumerate the same block kinds | ⬜ |
 | 1.4 | SDNA: `NAME`, `TYPE`, `TLEN`, `STRC`; member offsets; member lookup by name | every struct in each fixture's SDNA decodes; malformed SDNA fixtures fail with `BLEND_DNA_*` | ⬜ |
