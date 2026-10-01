@@ -1,0 +1,152 @@
+name: stage contract ci
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      bootstrap: ${{ steps.matrix.outputs.bootstrap }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Bootstrap the matrix resolver
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset=ost-cli-x86_64-unknown-linux-musl.tar.xz
+          base=https://github.com/animu-sphere/open-strata/releases/download/v0.23.14
+          curl -fsSLo "$asset" "$base/$asset"
+          curl -fsSLo "$asset.sha256" "$base/$asset.sha256"
+          test "$(sha256sum "$asset" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$asset.sha256")"
+          mkdir -p .ost-ci/bootstrap-bin
+          tar -xf "$asset" -C .ost-ci/bootstrap-bin
+          bin="$(find .ost-ci/bootstrap-bin -type f -name ost | head -n 1)"
+          test -n "$bin"
+          chmod +x "$bin"
+          echo "$(cd "$(dirname "$bin")" && pwd)" >> "$GITHUB_PATH"
+      - name: Resolve the existing bundle cells
+        id: matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          ost ci validate
+          ost ci matrix --lane pull_request --json > .ost-ci/matrix.json
+          test "$(ost --version)" = "ost $(jq -r '.data.bootstrap.version' .ost-ci/matrix.json)"
+          matrix="$(jq -c '{include: [.data.cells[] | select(.kind == "bundle" and .bundle == "plugins/usdBlendFileFormat")]}' .ost-ci/matrix.json)"
+          test "$(printf '%s' "$matrix" | jq '.include | length')" -gt 0
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "bootstrap=$(jq -c '.data.bootstrap' .ost-ci/matrix.json)" >> "$GITHUB_OUTPUT"
+
+  stage-contract:
+    needs: plan
+    name: stage-contract-${{ matrix.name }}
+    runs-on: ${{ matrix.runs_on }}
+    env:
+      OST_HOME: ${{ github.workspace }}/.ost-ci-home
+      OST_VERSION: ${{ fromJSON(needs.plan.outputs.bootstrap).version }}
+      OST_REPOSITORY: ${{ fromJSON(needs.plan.outputs.bootstrap).repository }}
+      OST_CHECKSUMS: ${{ toJSON(fromJSON(needs.plan.outputs.bootstrap).sha256) }}
+      BUNDLE: ${{ matrix.bundle }}
+      PLATFORM: ${{ matrix.platform }}
+      PROFILE: ${{ matrix.profile }}
+      RUNTIME_ARTIFACT: ${{ matrix.runtime_artifact }}
+      RUNTIME_REMOTE: ${{ matrix.runtime_remote }}
+      OPENUSD: ${{ matrix.require_openusd }}
+      OPENUSD_VERSION: ${{ matrix.require_openusd_version }}
+      MINIMUM_TRUST: ${{ matrix.minimum_trust }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Hosted runner billing notice
+        shell: bash
+        run: echo "::notice title=OpenStrata hosted-runner usage::These additional checks use GitHub-hosted infrastructure and may incur Actions charges."
+      - name: Bootstrap the pinned ost release
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${RUNNER_OS}-${RUNNER_ARCH}" in
+            Linux-X64) triple=x86_64-unknown-linux-musl; ext=tar.xz ;;
+            Windows-X64) triple=x86_64-pc-windows-msvc; ext=zip ;;
+            *) echo "Unsupported host: ${RUNNER_OS}-${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+          asset="ost-cli-${triple}.${ext}"
+          base="https://github.com/${OST_REPOSITORY}/releases/download/v${OST_VERSION}"
+          curl -fsSLo "$asset" "$base/$asset"
+          curl -fsSLo "$asset.sha256" "$base/$asset.sha256"
+          actual="$(sha256sum "$asset" | cut -d' ' -f1)"
+          test "$actual" = "$(cut -d' ' -f1 "$asset.sha256")"
+          pinned="$(printf '%s' "$OST_CHECKSUMS" | jq -r --arg triple "$triple" '.[$triple] // empty')"
+          if [ -n "$pinned" ]; then test "$actual" = "$pinned"; fi
+          mkdir -p .ost-ci/bootstrap-bin
+          if [ "$ext" = zip ]; then
+            powershell -NoProfile -Command "Expand-Archive -LiteralPath '$asset' -DestinationPath '.ost-ci/bootstrap-bin' -Force"
+          else
+            tar -xf "$asset" -C .ost-ci/bootstrap-bin
+          fi
+          bin="$(find .ost-ci/bootstrap-bin -type f \( -name ost -o -name ost.exe \) | head -n 1)"
+          test -n "$bin"
+          chmod +x "$bin"
+          bin_dir="$(cd "$(dirname "$bin")" && pwd)"
+          if [ "$RUNNER_OS" = Windows ]; then bin_dir="$(cygpath -w "$bin_dir")"; fi
+          echo "$bin_dir" >> "$GITHUB_PATH"
+      - name: Verify ost version
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(ost --version | tr -d '\r')" = "ost ${OST_VERSION}"
+      - name: Set up host Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.host_python }}
+      - name: Install declared Linux host packages
+        if: runner.os == 'Linux' && matrix.host_packages != null
+        shell: bash
+        env:
+          HOST_PACKAGES: ${{ join(matrix.host_packages.apt, ' ') }}
+        run: |
+          set -euo pipefail
+          test -n "$HOST_PACKAGES"
+          read -r -a packages <<< "$HOST_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "${packages[@]}"
+      - name: Pull and verify the pinned runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          ost artifact pull "$RUNTIME_REMOTE" --expect-artifact "$RUNTIME_ARTIFACT" --require-kind runtime --require-openusd "$OPENUSD" --require-openusd-version "$OPENUSD_VERSION"
+          ost artifact verify "$RUNTIME_ARTIFACT" --minimum-trust "$MINIMUM_TRUST" --require-sbom --require-provenance --require-openusd "$OPENUSD" --require-openusd-version "$OPENUSD_VERSION"
+          ost runtime pull "$PLATFORM" --profile "$PROFILE" --from-artifact "$RUNTIME_ARTIFACT" --force
+          ost library pull --target "$PLATFORM" --profile "$PROFILE"
+          ost runtime validate "$PLATFORM" --profile "$PROFILE"
+      - name: Build the standalone bundle
+        shell: bash
+        run: ost plugin build "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE"
+      - name: Run explicit plugin diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          ost plugin doctor "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE" --json | tee .ost-ci/doctor.json
+          jq -e '.ok == true and .data.passed == true and .data.summary.fail == 0' .ost-ci/doctor.json
+      - name: Run stage-contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ost plugin run "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE" -- python "$BUNDLE/tests/test_stage.py" 2>&1 | tee .ost-ci/stage-contract.log
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: stage-contract-${{ matrix.name }}
+          path: |
+            ${{ matrix.bundle }}/.strata/reports/
+            .ost-ci/doctor.json
+            .ost-ci/stage-contract.log

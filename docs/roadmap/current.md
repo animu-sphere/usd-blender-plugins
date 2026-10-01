@@ -13,7 +13,7 @@ minimal `/Asset` stage.
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
 | 0.8 | Add the Blender fixture generator for `empty.blend` | generator and non-destructive Blender content check exist; separate-process saves differ in bytes, so byte-identical regeneration remains unresolved | 🚧 |
-| 0.9 | CI on Windows and Linux; `ost plugin build`, `doctor`, `test` L0-L5 | the generated graph, root CTest and standalone bundle jobs are green on both hosts; doctor and stage-contract tests run in CI | 🚧 |
+| 0.9 | CI on Windows and Linux; `ost plugin build`, `doctor`, `test` L0-L5 | generated graph, root CTest and standalone bundle jobs plus explicit doctor/stage-contract companion jobs are wired; all must be green on both hosts, with hosted results still unverified | 🚧 |
 
 ## Phase 1 — container and SDNA ⬜
 
