@@ -8,6 +8,11 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Explicit-limit block enumeration for legacy and Blender 5 containers,
+    normalized to one record with validated framing, terminal `ENDB`,
+    recoverable unknown-code diagnostics and no payload allocation. Tests
+    cover all legacy widths and byte orders, sparse 64-bit fields, malformed
+    boundaries, decoded compression round trips and real Blender 5 fixtures.
 - Explicit-limit full-file byte reading for uncompressed, gzip and Zstandard
     sources, with owning output, validated headers, complete member/frame and
     checksum checks, bounded output growth, and input/output/ratio/window

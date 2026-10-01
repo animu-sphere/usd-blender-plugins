@@ -273,6 +273,189 @@ void CheckFileFixture(const std::filesystem::path& path, bool compressed) {
   }
 }
 
+void AppendInteger(std::string& bytes, std::uint64_t value, std::size_t width, bool little) {
+  for (std::size_t index = 0; index < width; ++index) {
+    const auto shift = little ? index : width - 1 - index;
+    bytes.push_back(static_cast<char>((value >> (8 * shift)) & 255));
+  }
+}
+
+std::string BlockHeader(std::string_view code, bool modern, std::size_t pointerSize, bool little,
+    std::uint64_t length = 0, std::uint64_t oldAddress = 0, std::uint64_t sdna = 0, std::uint64_t count = 0) {
+  Require(code.size() <= 4, "Test block code too long");
+  std::string bytes(code);
+  bytes.resize(4, '\0');
+  AppendInteger(bytes, modern ? sdna : length, 4, little);
+  AppendInteger(bytes, oldAddress, pointerSize, little);
+  AppendInteger(bytes, modern ? length : sdna, modern ? 8 : 4, little);
+  AppendInteger(bytes, count, modern ? 8 : 4, little);
+  return bytes;
+}
+
+blend::Result<std::vector<blend::BlendBlock>> ParseBlocks(std::string_view text, std::uint64_t limit = 10000) {
+  blend::MemoryByteSource source(std::as_bytes(std::span(text.data(), text.size())));
+  return blend::ReadBlocks(source, limit);
+}
+
+class SparseBlockSource final : public blend::ByteSource {
+public:
+  static constexpr auto length = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+  std::uint64_t Size() const override {
+    return prefix_.size() + length + end_.size();
+  }
+  bool Read(std::uint64_t offset, std::span<std::byte> destination) override {
+    if (offset <= prefix_.size() && destination.size() <= prefix_.size() - offset) {
+      blend::MemoryByteSource prefix(std::as_bytes(std::span(prefix_.data(), prefix_.size())));
+      return prefix.Read(offset, destination);
+    }
+    const auto endOffset = Size() - end_.size();
+    if (offset >= endOffset) {
+      blend::MemoryByteSource end(std::as_bytes(std::span(end_.data(), end_.size())));
+      return end.Read(offset - endOffset, destination);
+    }
+    return false;
+  }
+
+private:
+  std::string prefix_ = "BLENDER17-01v0502" + BlockHeader("DATA", true, 8, true, length,
+                                                  std::numeric_limits<std::uint64_t>::max(), std::numeric_limits<std::int32_t>::max(), length);
+  std::string end_ = BlockHeader("ENDB", true, 8, true);
+};
+
+void ExpectBlockError(std::string_view text, std::string_view code, std::uint64_t offset,
+    std::uint32_t index = 0, std::uint64_t limit = 10000) {
+  const auto result = ParseBlocks(text, limit);
+  Require(!result.HasValue(), "Expected block failure");
+  Require(result.GetError().code == code, "Unexpected block diagnostic code");
+  Require(result.GetError().byteOffset == offset && result.GetError().blockIndex == index &&
+              result.GetError().severity == blend::Severity::Fatal && !result.GetError().recoverable,
+      "Wrong block diagnostic location or severity");
+}
+
+void CheckBlocks() {
+  for (const bool modern : {false, true}) {
+    for (const std::size_t pointerSize : {4, 8}) {
+      for (const bool little : {false, true}) {
+        if (modern && (pointerSize != 8 || !little)) {
+          continue;
+        }
+        std::string header = modern ? "BLENDER17-01v0502" : "BLENDER-v405";
+        if (!modern) {
+          header[7] = pointerSize == 4 ? '_' : '-';
+          header[8] = little ? 'v' : 'V';
+        }
+        const auto make = [&](std::string_view code, std::uint64_t length = 0,
+                              std::uint64_t old = 0, std::uint64_t sdna = 0, std::uint64_t count = 0) {
+          return BlockHeader(code, modern, pointerSize, little, length, old, sdna, count);
+        };
+        const auto end = make("ENDB");
+        const auto old = pointerSize == 4 ? 0xfedcba98ULL : 0xfedcba9876543210ULL;
+        const auto first = make("SC", 3, old, 23, 2) + "abc";
+        const auto data = make("DATA", 1, 42, 7, 1) + "x";
+        const auto file = header + first + data + end;
+        const auto parsed = ParseBlocks(file, 3);
+        Require(parsed.HasValue() && parsed.GetValue().size() == 3 && parsed.Diagnostics().empty(),
+            "Valid block layout rejected");
+        const auto& blocks = parsed.GetValue();
+        Require(blocks[0].code == std::array{'S', 'C', '\0', '\0'} && blocks[0].length == 3 &&
+                    blocks[0].oldAddress == old && blocks[0].sdnaIndex == 23 && blocks[0].count == 2 &&
+                    blocks[0].offset == header.size() + end.size(),
+            "Block normalization failed");
+        Require(blocks[1].offset == header.size() + first.size() + end.size() && blocks[1].length == 1 &&
+                    blocks[1].oldAddress == 42 && blocks[1].sdnaIndex == 7 && blocks[1].count == 1 &&
+                    blocks[2].offset == file.size(),
+            "Unaligned block payload offset changed");
+        Require(ParseBlocks(header + end, 1).HasValue(), "Empty container rejected");
+        ExpectBlockError(file, "BLEND_BLOCK_COUNT_LIMIT", header.size() + first.size() + data.size(), 2, 2);
+        ExpectBlockError(header, "BLEND_BLOCK_MISSING_ENDB", header.size());
+        ExpectBlockError(header + first, "BLEND_BLOCK_MISSING_ENDB", header.size() + first.size(), 1);
+        for (std::size_t length = 1; length < end.size(); ++length) {
+          ExpectBlockError(header + end.substr(0, length), "BLEND_BLOCK_TRUNCATED", header.size());
+        }
+        for (const std::size_t boundary : {header.size(), header.size() + first.size(), header.size() + first.size() + data.size()}) {
+          for (std::size_t length = boundary; length < boundary + end.size(); ++length) {
+            Require(!ParseBlocks(std::string_view(file).substr(0, length)).HasValue(), "Truncated block boundary accepted");
+          }
+        }
+        const auto lengthPosition = header.size() + (modern ? 16 : 4);
+        const auto sdnaPosition = header.size() + (modern ? 4 : 8 + pointerSize);
+        const auto countPosition = header.size() + (modern ? 24 : 12 + pointerSize);
+        const auto negative = modern ? 0x8000000000000000ULL : 0x80000000ULL;
+        ExpectBlockError(header + make("DATA", negative), "BLEND_BLOCK_NEGATIVE_LENGTH", lengthPosition);
+        ExpectBlockError(header + make("DATA", 0, 0, 0x80000000ULL), "BLEND_BLOCK_NEGATIVE_SDNA", sdnaPosition);
+        ExpectBlockError(header + make("DATA", 0, 0, 0, negative), "BLEND_BLOCK_NEGATIVE_COUNT", countPosition);
+        ExpectBlockError(header + make("DATA", negative - 1), "BLEND_BLOCK_SIZE", lengthPosition);
+        ExpectBlockError(header + make("DATA", 1), "BLEND_BLOCK_SIZE", lengthPosition);
+        ExpectBlockError(header + make("ENDB", 1) + "x", "BLEND_BLOCK_ENDB", header.size());
+        ExpectBlockError(header + end + "x", "BLEND_BLOCK_TRAILING", header.size() + end.size());
+        ExpectBlockError(header + end + end, "BLEND_BLOCK_TRAILING", header.size() + end.size());
+        const auto unknown = ParseBlocks(header + make("????", 3) + "abc" + end);
+        Require(unknown.HasValue() && unknown.GetValue().size() == 2 && unknown.Diagnostics().size() == 1,
+            "Unknown code prevented block enumeration");
+        const auto& diagnostic = unknown.Diagnostics()[0];
+        Require(diagnostic.code == "BLEND_BLOCK_UNKNOWN_CODE" && diagnostic.severity == blend::Severity::Unsupported &&
+                    diagnostic.recoverable && diagnostic.byteOffset == header.size() && diagnostic.blockIndex == 0,
+            "Wrong unknown block diagnostic");
+        for (const auto boundary : {header.size(), header.size() + first.size()}) {
+          FailingFileSource failed(file, boundary);
+          const auto result = blend::ReadBlocks(failed, 3);
+          Require(!result.HasValue() && result.GetError().code == "BLEND_BLOCK_READ_FAILED" &&
+                      result.GetError().byteOffset == boundary,
+              "Block read failure accepted or misplaced");
+        }
+        for (const auto& encoded : {GzipFrame(file), RawZstdFrame(file)}) {
+          ExpectBlockError(encoded, "BLEND_BLOCK_COMPRESSED", 0);
+          const auto decoded = ParseFile(encoded);
+          Require(decoded.HasValue(), "Compressed container could not be decoded");
+          blend::MemoryByteSource source(decoded.GetValue());
+          const auto result = blend::ReadBlocks(source, 3);
+          Require(result.HasValue() && result.GetValue() == blocks, "Compression changed normalized blocks");
+        }
+      }
+    }
+  }
+  ExpectBlockError("BLENDER17-01v0502", "BLEND_BLOCK_LIMITS", 0, 0, 0);
+  ExpectBlockError("BLENDER17-01v0502", "BLEND_BLOCK_LIMITS", 0, 0, 0x100000000ULL);
+  Require(!ParseBlocks("INVALID-v405").HasValue() && !ParseBlocks("BLENDER").HasValue(), "Invalid container header accepted");
+  SparseBlockSource sparse;
+  const auto large = blend::ReadBlocks(sparse, 2);
+  Require(large.HasValue() && large.GetValue().size() == 2 && large.GetValue()[0].length == SparseBlockSource::length &&
+              large.GetValue()[0].count == SparseBlockSource::length &&
+              large.GetValue()[0].oldAddress == std::numeric_limits<std::uint64_t>::max() &&
+              large.GetValue()[0].sdnaIndex == std::numeric_limits<std::int32_t>::max() &&
+              large.GetValue()[1].offset == sparse.Size(),
+      "64-bit block fields or offsets were truncated, or enumeration read the payload");
+  const auto lts = ParseBlocks("BLENDER17-01v0405" + BlockHeader("ENDB", true, 8, true));
+  Require(lts.HasValue() && lts.GetValue().size() == 1, "Format-1 block layout incorrectly restricted to Blender 5");
+}
+
+void CheckBlockFixture(const std::filesystem::path& path, bool empty) {
+  blend::FileByteSource source(path);
+  constexpr blend::CompressionLimits limits{64 * 1024 * 1024, 64 * 1024 * 1024, 2048, 23};
+  const auto bytes = blend::ReadFileBytes(source, limits);
+  Require(bytes.HasValue(), "Block fixture could not be decoded");
+  blend::MemoryByteSource decoded(bytes.GetValue());
+  const auto parsed = blend::ReadBlocks(decoded, 100000);
+  if (!parsed.HasValue()) {
+    std::cerr << parsed.GetError().code << ": " << parsed.GetError().message << '\n';
+  }
+  Require(parsed.HasValue(), "Blender-written block fixture rejected");
+  const auto& blocks = parsed.GetValue();
+  Require(!blocks.empty() && blocks.back().code == std::array{'E', 'N', 'D', 'B'} &&
+              blocks.back().offset == bytes.GetValue().size(),
+      "Blender fixture has no terminal ENDB");
+  const auto dna = std::find_if(blocks.begin(), blocks.end(), [](const blend::BlendBlock& block) {
+    return block.code == std::array{'D', 'N', 'A', '1'};
+  });
+  Require(dna != blocks.end(), "Blender fixture has no DNA1");
+  if (empty) {
+    Require(blocks.size() == 266 && dna->offset == 53954 && dna->length == 134572 &&
+                blocks.back().offset == 188558,
+        "Known empty-scene block positions changed");
+    Require(parsed.Diagnostics().empty(), "Known empty-scene codes reported as unsupported");
+  }
+}
+
 class CompressedReadFailure final : public blend::ByteSource {
 public:
   explicit CompressedReadFailure(std::string prefix = RawZstdFrame("BLENDER17-01v0502"))
@@ -415,6 +598,9 @@ int main(int argumentCount, char** arguments) {
       CheckFileBytes();
       CheckFileFixture(arguments[2], true);
       CheckFileFixture(arguments[3], false);
+      CheckBlocks();
+      CheckBlockFixture(arguments[2], false);
+      CheckBlockFixture(arguments[3], true);
       blend::FileByteSource realFile(arguments[2]);
       const auto realHeader = blend::ReadHeader(realFile);
       if (!realHeader.HasValue()) {
@@ -552,7 +738,7 @@ int main(int argumentCount, char** arguments) {
         std::filesystem::remove(fixture);
         blend::FileByteSource missing("this-file-does-not-exist.blend");
         Require(!missing.IsOpen() && !missing.Read(0, destination), "Missing file accepted");
-        std::cout << "Header, compression and byte-source tests passed\n";
+        std::cout << "Header, compression, block and byte-source tests passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

@@ -65,7 +65,7 @@ cmake --build --preset reader
 ctest --preset reader
 ```
 
-Five CTests are registered: byte-source/header behavior, forbidden-include
+Five CTests are registered: byte-source/header/compression/block behavior, forbidden-include
 scanning, generated link metadata setup, generated link boundary inspection,
 and link-boundary rejection checks. The library has no external link
 dependencies. The metadata setup fixture reconfigures the existing build;
@@ -96,9 +96,16 @@ checksum validation. Full-stream byte cases cover final checksums,
 truncation, metadata across chunks, trailing garbage, exact input/output/ratio
 limits, high-ratio streams, and byte-identical gzip/Zstandard round trips of
 both the generated empty scene and decoded corpus. Their explicit limits are
-test budgets, not production defaults. These are compression and header
-checks, not block, SDNA or scene decoding. The plugin pyramid below does not
-run these reader CTests.
+test budgets, not production defaults.
+
+Block cases enumerate both legacy pointer widths and byte orders and the
+format-1 layout, including the generated empty scene and decoded corpus.
+They cover contiguous unaligned payloads, large 64-bit fields in a sparse
+source, exact count limits, negative fields, truncated boundaries, oversized
+lengths, source read failures, unknown-code diagnostics, and terminal `ENDB`
+checks. Synthetic legacy containers are not Blender-written 4.5 fixtures.
+These checks do not decode SDNA or scenes; the importer remains header-only.
+The plugin pyramid below does not run these reader CTests.
 
 ## OpenStrata bundle
 
