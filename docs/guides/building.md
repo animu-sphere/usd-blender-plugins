@@ -207,6 +207,21 @@ Selection follows the
 [saved-scene boundary](../design/DESIGN_POLICY.md#522-saved-scene-selection-boundary),
 not a Collection walk, object/mesh decoder or populated Scene IR. Neither these
 selection tests nor the synthetic IR arithmetic tests author USD geometry.
+
+The same test separately exercises `SelectSceneObjects` under the
+[Collection membership boundary](../design/DESIGN_POLICY.md#523-saved-collection-membership-boundary).
+Both normal-save corpus files select Camera/Cube/Light through their master
+Collection; the Scene-only library still fails without a fallback. Four
+synthetic pointer-width/byte-order layouts cover nested and empty Collections,
+shared child references, Object deduplication, block reordering, owning names,
+linked/unresolved/interior/wrong-type/count references, malformed ListBase
+endpoints/backlinks/last/shared nodes, list and Collection cycles, reader-error
+propagation and exact visit/depth limits. A 256-child chain exercises the
+explicit DFS stack at the exact depth and one smaller. Every failure requires
+the exact fatal, non-recoverable code and payload offset/block index. This
+selects saved membership only, not parent/data/instance references, render or
+view-layer visibility, object values, transforms, meshes or a populated IR.
+
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines matrix storage and ownership; supported scope is in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).

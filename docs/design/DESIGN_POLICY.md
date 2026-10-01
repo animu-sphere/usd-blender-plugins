@@ -378,6 +378,58 @@ walk, object graph, unit-normalized geometry, backend `Decode`, Scene IR
 publication or USD authoring is introduced by selection. Fixture-backed scope
 is in the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 
+### 5.2.3 Saved Collection membership boundary
+
+`SelectSceneObjects(bytes, blocks, schema, header, limits)` in
+`blendScene/Selection.h` first applies the saved-scene selection policy above,
+then walks `Scene.master_collection`. It returns `Result<SelectedSceneObjects>`:
+the owning `SelectedScene` and a vector of `SelectedObject` records containing
+caller-sequence `blockIndex` values and owning, prefix-stripped raw `sourceName`
+bytes. It does not publish an object/mesh Scene IR. Input matching, full-file,
+block and schema budgets remain the caller's responsibility; the pointer map
+still validates duplicate saved addresses across the entire supplied sequence.
+
+Collections must resolve exactly to one `Collection` with `GR` or `DATA` code,
+including the saved master Collection. Their embedded scalar `ListBase`
+members `gobject` and `children` use scalar `void *first/last`. Every list node
+must be one `DATA` record with the corresponding `CollectionObject` or
+`CollectionChild` SDNA type, typed scalar `next/prev` pointers and a typed
+scalar `ob` or `collection` target. Object targets must be one `OB` / `Object`.
+Null, absent, interior, wrong-type and multi-element required targets fail;
+empty lists require both endpoints to be null. Backlinks must match the
+previous node, and `last` must identify exactly the node with null `next`.
+A node shared by different lists is invalid. Collection and Object IDs require
+embedded scalar `ID`, null scalar `Library *lib` and terminated `GR`/`OB`
+names; linked IDs fail without accessing external files.
+
+The walk is iterative, depth-first in saved child-list order, inspecting each
+Collection's object list before its children. An Object shared by multiple
+Collections appears once at first discovery. Completed Collections can be
+shared; references to active Collections and repeated nodes in a next chain
+fail with `BLEND_SCENE_CYCLE`. Discovery order and source names are independent
+of block enumeration, not a deterministic identifier or sibling-name policy.
+
+Both `SceneTraversalLimits` fields are required and positive; zero-initialized
+limits are invalid. `maxVisited` counts each distinct expanded Collection,
+each traversed list node and each distinct Object, excluding Scene/GLOB and
+pointer-map construction. `maxDepth` bounds the active DFS Collection stack,
+with the master at depth one, not the longest path through a shared DAG.
+Exactly sufficient budgets succeed; exceeding them returns fatal
+`BLEND_SCENE_VISIT_LIMIT` or `BLEND_SCENE_DEPTH_LIMIT`, never partial output.
+No production default is introduced for these or decompression budgets.
+
+Semantic diagnostics attach the referring or invalid target block's payload
+offset and index. Unresolved list heads use Collection context; unresolved
+`next` pointers use the previous list node. Collection cycles/depth limits
+identify the referring Collection. Invalid limits and allocation failures
+have no source context. Reader failures retain their existing codes/context.
+No other Scene, unreachable Collection or Object is semantically inspected.
+This is saved membership, not evaluated/view-layer/render visibility: parent,
+data and instance-Collection references, transforms, geometry and object types
+are not decoded or validated. Backend `Decode`, populated Scene IR and USD
+integration remain separate work. Fixture-backed scope is in the
+[capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
+
 ### 5.3 `usdBlendFileFormat` — the importer
 
 The OpenUSD `SdfFileFormat` bundle, scaffolded from OpenStrata's
