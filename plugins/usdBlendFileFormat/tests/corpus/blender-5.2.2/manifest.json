@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "kind": "corpus",
+  "blender": {
+    "version": "5.2.2",
+    "releaseLabel": "LTS",
+    "versionEvidence": "Reported by the contributor; not independently verified"
+  },
+  "files": [
+    {
+      "path": "Untitled.blend",
+      "sizeBytes": 97310,
+      "sha256": "b945d3d790381099e5f42c9ae75b4e222fd32c30115ad1c8aeb845f5ee4164ce",
+      "provenance": "Provided directly by the repository maintainer",
+      "commitPermission": {
+        "granted": true,
+        "date": "2026-10-01",
+        "evidence": "Explicit permission in the development conversation"
+      },
+      "generationScript": null,
+      "compression": "zstandard",
+      "readerStatus": "unsupported",
+      "purpose": "Real-file regression input for compressed Blender 5 header reading"
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 # External dependencies
 
 > Status: OpenUSD and the C++20 toolchain are **accepted**, 2026-10-01.
-> Compression and Blender fixture dependencies remain proposed.
+> Zstandard source vendoring is accepted, 2026-10-01. Its build and reader
+> integration remain unverified. zlib and generated-fixture tooling remain proposed.
 
 Every external dependency, why it exists, how it is found, and who may use it.
 Dependency edges between components are
@@ -29,11 +30,15 @@ cross-release C++ ABI.
 | Library | Reads | Used by | Found as |
 | --- | --- | --- | --- |
 | zlib | gzip-compressed `.blend` | `blendFile` | installed package |
-| Zstandard | Zstandard-compressed `.blend` | `blendFile` | installed package |
+| Zstandard 1.5.7 | Zstandard-compressed `.blend` | `blendFile` | vendored decompression-only source in `third_party/zstd` |
 
-Both are permissively licensed and are `blendFile`'s only external edges.
-Whether they are taken from the OpenUSD build's own copies, from the system,
-or from OpenStrata artifacts is DEP-O2.
+Both are permissively licensed and belong only to `blendFile`.
+Zstandard's decoder is compiled directly into the library, with no external
+link dependency or build-time download. Its fixed revision, BSD license, and
+upstream regeneration command are recorded in
+[third_party/zstd/README.md](../../third_party/zstd/README.md) and
+[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).
+The source of zlib remains DEP-O2.
 
 ## 3. Blender
 
@@ -92,9 +97,14 @@ reason is recorded.
 
 | Id | Question | Proposed answer | Blocks |
 | --- | --- | --- | --- |
-| DEP-O2 | Where zlib and Zstandard come from. | Installed packages on `CMAKE_PREFIX_PATH`, provided by OpenStrata artifacts in `ost` builds. | Phase 1 |
+| DEP-O2 | Where zlib comes from; Zstandard is resolved below. | Installed package on `CMAKE_PREFIX_PATH`, provided by OpenStrata artifacts in `ost` builds. | Phase 1 |
 
 ### 7.1 Resolved decisions
+
+- **DEP-O2, Zstandard portion (2026-10-01):** vendor the upstream 1.5.7
+  decompression-only single-file library with provenance and its BSD license,
+  following the `usd-vrm-plugins/third_party/cgltf` source-vendoring pattern.
+  zlib remains undecided. This decision does not claim compressed-file support.
 
 - **DEP-O1 (2026-10-01):** use OpenUSD 26.08 as the pinned OpenStrata
   verification runtime. The bundle manifest enforces that runtime choice;

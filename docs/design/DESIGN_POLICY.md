@@ -450,6 +450,15 @@ grouped by the Blender version that wrote them (`blender_3x/`, `blender_4x/`,
 `blender_45_lts/`, `blender_5x/`). A `.blend` downloaded from elsewhere is
 never committed.
 
+**Corpus files are separate from generated fixtures.** A file supplied directly
+by a contributor may be committed only with explicit permission, under
+`tests/corpus/` in the owning component. Each version directory carries a
+`manifest.json` with the reported Blender version and its evidence, file paths,
+byte sizes, SHA-256 hashes, provenance, permission, and reader status. Keep
+original bytes; do not imply that corpus files can be regenerated or that their
+presence proves reader support. A header version alone does not establish the
+Blender patch version or LTS designation.
+
 ## 14. Phases
 
 This repository has **one** phase sequence, written `Phase 0`–`Phase 8`, and
