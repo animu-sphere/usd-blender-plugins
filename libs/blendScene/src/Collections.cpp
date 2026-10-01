@@ -67,10 +67,46 @@ public:
       }
       enter(child, referrer);
     }
+    ValidateParents();
     return std::move(objects_);
   }
 
 private:
+  void ValidateParents() {
+    std::unordered_map<std::uint32_t, std::optional<std::uint32_t>> parents;
+    std::unordered_set<std::uint32_t> completed;
+    for (auto& selected : objects_) {
+      std::vector<std::uint32_t> chain;
+      std::unordered_set<std::uint32_t> active;
+      auto current = selected.blockIndex;
+      auto referrer = current;
+      while (!completed.contains(current)) {
+        if (!active.insert(current).second) {
+          Fail("BLEND_SCENE_CYCLE", "Object parenting contains a cycle", referrer);
+        }
+        if (chain.size() >= limits_.maxDepth) {
+          Fail("BLEND_SCENE_DEPTH_LIMIT", "Object parent depth exceeds the caller's limit", referrer);
+        }
+        if (objectIndices_.insert(current).second) {
+          Visit(referrer);
+        }
+        const auto object = Bind(current, "Object", {'O', 'B', 0, 0});
+        Name(object, "OB", current);
+        chain.push_back(current);
+        const auto address = Pointer(object, "parent", "Object", current);
+        const auto parent = address == 0 ? std::optional<std::uint32_t>{} : Resolve(address, current);
+        parents.emplace(current, parent);
+        if (!parent) {
+          break;
+        }
+        referrer = current;
+        current = *parent;
+      }
+      completed.insert(chain.begin(), chain.end());
+      selected.parentBlockIndex = parents.at(selected.blockIndex);
+    }
+  }
+
   [[noreturn]] void Fail(const char* code, const char* message, std::uint32_t index) const {
     throw Diagnostic{code, Severity::Fatal, message, blocks_[index].offset, index, {}, false};
   }
@@ -180,7 +216,7 @@ private:
         if (objectIndices_.insert(target).second) {
           Visit(index);
           const auto object = Bind(target, "Object", {'O', 'B', 0, 0});
-          objects_.push_back({target, Name(object, "OB", target)});
+          objects_.push_back({target, Name(object, "OB", target), {}});
         }
       } else {
         targets.push_back(target);
