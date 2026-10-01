@@ -65,7 +65,7 @@ cmake --build --preset reader
 ctest --preset reader
 ```
 
-Five CTests are registered: byte-source/header/compression/block behavior, forbidden-include
+Five CTests are registered: byte-source/header/compression/block/SDNA behavior, forbidden-include
 scanning, generated link metadata setup, generated link boundary inspection,
 and link-boundary rejection checks. The library has no external link
 dependencies. The metadata setup fixture reconfigures the existing build;
@@ -108,7 +108,16 @@ They cover contiguous unaligned payloads, large 64-bit fields in a sparse
 source, exact count limits, negative fields, truncated boundaries, oversized
 lengths, source read failures, unknown-code diagnostics, and terminal `ENDB`
 checks. Other legacy pointer-width/byte-order combinations remain synthetic.
-These checks do not decode SDNA or scenes; the importer remains header-only.
+
+SDNA cases decode every structure in the generated empty scene and both real
+corpus files, checking member ranges, TLEN totals and name lookup. Synthetic
+cases cover both pointer widths and byte orders, multidimensional arrays,
+pointer arrays, function pointers, empty structures, all short payload
+prefixes, invalid sections/counts/indices/names, duplicates, size mismatches,
+array overflow and trailing bytes. See the
+[schema boundary](../design/BLEND_CONTRACT.md#71-schema-decoding-boundary)
+for payload ownership and diagnostic offsets. These checks do not read scene
+values or reconstruct pointers; the importer remains header-only.
 The plugin pyramid below does not run these reader CTests.
 
 ## OpenStrata bundle

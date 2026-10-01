@@ -266,6 +266,38 @@ void CheckFileFixture(const std::filesystem::path& path, bool compressed,
     Require(source.Read(0, original) && original == decoded.GetValue(), "Uncompressed file bytes changed");
   }
   const auto& bytes = decoded.GetValue();
+  const auto blocks = blend::ReadBlocks(memory, 10000);
+  Require(blocks.HasValue(), "SDNA fixture block enumeration failed");
+  std::size_t dnaCount = 0;
+  for (const auto& block : blocks.GetValue()) {
+    if (block.code != std::array<char, 4>{'D', 'N', 'A', '1'}) {
+      continue;
+    }
+    ++dnaCount;
+    const auto dna = blend::ReadDna(std::span(bytes).subspan(static_cast<std::size_t>(block.offset),
+                                        static_cast<std::size_t>(block.length)),
+        header.GetValue());
+    if (!dna.HasValue()) {
+      std::cerr << dna.GetError().code << ": " << dna.GetError().message << '\n';
+    }
+    Require(dna.HasValue(), "Real-file SDNA rejected");
+    const auto& schema = dna.GetValue();
+    Require(!schema.structs.empty(), "Real-file SDNA has no structures");
+    for (const auto& structure : schema.structs) {
+      const auto& type = schema.types[structure.typeIndex];
+      Require(schema.FindStruct(type.name) == &structure, "SDNA structure lookup failed");
+      std::uint64_t end = 0;
+      for (const auto& member : structure.members) {
+        Require(member.offset == end && member.size <= type.length - end, "SDNA member range invalid");
+        Require(structure.FindMember(member.baseName) == &member, "SDNA member lookup failed");
+        end += member.size;
+      }
+      Require(end == type.length, "SDNA structure length differs from TLEN");
+    }
+    Require(schema.FindStruct("Scene") != nullptr && schema.FindStruct("Object") != nullptr,
+        "Real-file SDNA is missing core structures");
+  }
+  Require(dnaCount == 1, "Fixture must contain exactly one DNA1 block");
   const std::string_view text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
   for (const bool gzip : {false, true}) {
     std::string encoded;
@@ -284,6 +316,143 @@ void AppendInteger(std::string& bytes, std::uint64_t value, std::size_t width, b
     const auto shift = little ? index : width - 1 - index;
     bytes.push_back(static_cast<char>((value >> (8 * shift)) & 255));
   }
+}
+
+std::string DnaFixture(bool little, std::uint8_t pointerSize, std::string_view arrayName = "values[2][3]",
+    std::string_view pointerName = "**links[2]", std::string_view callbackName = "(*callback)()") {
+  std::string bytes = "SDNANAME";
+  AppendInteger(bytes, 4, 4, little);
+  for (const auto name : {std::string_view("value"), arrayName, pointerName, callbackName}) {
+    bytes.append(name);
+    bytes.push_back('\0');
+  }
+  bytes.resize((bytes.size() + 3) / 4 * 4, '\0');
+  bytes += "TYPE";
+  AppendInteger(bytes, 5, 4, little);
+  for (const auto name : {"void", "int", "float", "Sample", "Empty"}) {
+    bytes += name;
+    bytes.push_back('\0');
+  }
+  bytes.resize((bytes.size() + 3) / 4 * 4, '\0');
+  bytes += "TLEN";
+  for (const auto length : {0, 4, 4, 28 + 3 * pointerSize, 0}) {
+    AppendInteger(bytes, length, 2, little);
+  }
+  bytes.resize((bytes.size() + 3) / 4 * 4, '\0');
+  bytes += "STRC";
+  AppendInteger(bytes, 2, 4, little);
+  for (const auto value : {3, 4, 1, 0, 2, 1, 0, 2, 0, 3, 4, 0}) {
+    AppendInteger(bytes, value, 2, little);
+  }
+  return bytes;
+}
+
+blend::Result<blend::DnaSchema> ParseDna(std::string_view text, bool little, std::uint8_t pointerSize) {
+  const blend::Header header{pointerSize, little ? blend::ByteOrder::Little : blend::ByteOrder::Big, 405};
+  return blend::ReadDna(std::as_bytes(std::span(text.data(), text.size())), header);
+}
+
+void ExpectDnaError(std::string_view text, bool little, std::uint8_t pointerSize, std::string_view code) {
+  const auto result = ParseDna(text, little, pointerSize);
+  Require(!result.HasValue(), "Expected SDNA failure");
+  if (result.GetError().code != code) {
+    std::cerr << "Expected " << code << ", got " << result.GetError().code << ": " << result.GetError().message << '\n';
+  }
+  Require(result.GetError().code == code, "Unexpected SDNA diagnostic code");
+  Require(result.GetError().severity == blend::Severity::Fatal && !result.GetError().recoverable &&
+              result.GetError().byteOffset && *result.GetError().byteOffset <= text.size(),
+      "Wrong SDNA diagnostic severity or payload-relative location");
+}
+
+void CheckDna() {
+  for (const bool little : {false, true}) {
+    for (const std::uint8_t pointerSize : {4, 8}) {
+      const auto bytes = DnaFixture(little, pointerSize);
+      const auto dna = ParseDna(bytes, little, pointerSize);
+      Require(dna.HasValue(), "Synthetic SDNA rejected");
+      const auto& schema = dna.GetValue();
+      Require(schema.names.size() == 4 && schema.types.size() == 5 && schema.structs.size() == 2,
+          "SDNA table counts differ");
+      const auto* sample = schema.FindStruct("Sample");
+      const auto* empty = schema.FindStruct("Empty");
+      Require(sample != nullptr && sample->members.size() == 4 && empty != nullptr && empty->members.empty(),
+          "SDNA structure lookup failed");
+      Require(schema.FindStruct("Missing") == nullptr && sample->FindMember("missing") == nullptr,
+          "Absent SDNA name must return nullptr");
+      const auto* value = sample->FindMember("value");
+      const auto* array = sample->FindMember("values");
+      const auto* links = sample->FindMember("links");
+      const auto* callback = sample->FindMember("callback");
+      Require(value && value->offset == 0 && value->size == 4 && value->pointerLevel == 0 && value->typeIndex == 1,
+          "SDNA scalar layout differs");
+      Require(array && array->offset == 4 && array->size == 24 && array->pointerLevel == 0 &&
+                  array->arrayDimensions == std::vector<std::uint64_t>{2, 3},
+          "SDNA multidimensional array layout differs");
+      Require(links && links->offset == 28 && links->size == 2 * pointerSize && links->pointerLevel == 2 &&
+                  links->arrayDimensions == std::vector<std::uint64_t>{2},
+          "SDNA pointer array layout differs");
+      Require(callback && callback->offset == 28 + 2 * pointerSize && callback->size == pointerSize &&
+                  callback->pointerLevel == 1 && callback->arrayDimensions.empty(),
+          "SDNA function pointer layout differs");
+      for (std::size_t length = 0; length < bytes.size(); ++length) {
+        const auto prefix = ParseDna(std::string_view(bytes).substr(0, length), little, pointerSize);
+        Require(!prefix.HasValue() && prefix.GetError().code.starts_with("BLEND_DNA_") &&
+                    prefix.GetError().severity == blend::Severity::Fatal && !prefix.GetError().recoverable &&
+                    prefix.GetError().byteOffset && *prefix.GetError().byteOffset <= length,
+            "Truncated SDNA did not fail safely");
+      }
+      auto replaceInteger = [&](std::size_t offset, std::uint64_t value, std::size_t width, std::string_view code) {
+        auto corrupt = bytes;
+        std::string encoded;
+        AppendInteger(encoded, value, width, little);
+        corrupt.replace(offset, width, encoded);
+        ExpectDnaError(corrupt, little, pointerSize, code);
+      };
+      const auto strc = bytes.find("STRC");
+      const auto tlen = bytes.find("TLEN");
+      for (const auto tag : {std::size_t{0}, std::size_t{4}, bytes.find("TYPE"), tlen, strc}) {
+        auto corrupt = bytes;
+        corrupt[tag] = 'X';
+        ExpectDnaError(corrupt, little, pointerSize, "BLEND_DNA_SECTION");
+      }
+      replaceInteger(8, 0xffffffff, 4, "BLEND_DNA_COUNT");
+      replaceInteger(bytes.find("TYPE") + 4, 0xffffffff, 4, "BLEND_DNA_COUNT");
+      replaceInteger(strc + 4, 0xffffffff, 4, "BLEND_DNA_COUNT");
+      replaceInteger(strc + 8, 5, 2, "BLEND_DNA_INDEX");
+      replaceInteger(strc + 10, 0xffff, 2, "BLEND_DNA_COUNT");
+      replaceInteger(strc + 12, 5, 2, "BLEND_DNA_INDEX");
+      replaceInteger(strc + 14, 4, 2, "BLEND_DNA_INDEX");
+      replaceInteger(strc + 18, 0, 2, "BLEND_DNA_DUPLICATE");
+      replaceInteger(strc + 28, 3, 2, "BLEND_DNA_DUPLICATE");
+      replaceInteger(tlen + 10, 27 + 3 * pointerSize, 2, "BLEND_DNA_SIZE");
+      replaceInteger(tlen + 10, 29 + 3 * pointerSize, 2, "BLEND_DNA_SIZE");
+      replaceInteger(tlen + 6, 0, 2, "BLEND_DNA_SIZE");
+      auto duplicateType = bytes;
+      duplicateType.replace(duplicateType.find("float"), 5, "Empty");
+      ExpectDnaError(duplicateType, little, pointerSize, "BLEND_DNA_DUPLICATE");
+      ExpectDnaError(bytes + "x", little, pointerSize, "BLEND_DNA_TRAILING");
+      ExpectDnaError(bytes, little, 0, "BLEND_DNA_LAYOUT");
+      for (const auto name : {"", "2values", "values[]", "values[0]", "values[-1]", "values[2", "values[2]junk"}) {
+        ExpectDnaError(DnaFixture(little, pointerSize, name), little, pointerSize, "BLEND_DNA_NAME");
+      }
+      for (const auto name : {"values[18446744073709551616]", "values[18446744073709551615]", "values[2147483648][2147483648]"}) {
+        ExpectDnaError(DnaFixture(little, pointerSize, name), little, pointerSize, "BLEND_DNA_SIZE");
+      }
+      ExpectDnaError(DnaFixture(little, pointerSize, "values[2][3]", "*"), little, pointerSize, "BLEND_DNA_NAME");
+      for (const auto name : {"(callback)()", "(*callback)", "(*callback)(int)", "(*callback", "(*callback)()junk"}) {
+        ExpectDnaError(DnaFixture(little, pointerSize, "values[2][3]", "**links[2]", name), little, pointerSize, "BLEND_DNA_NAME");
+      }
+      const auto functionArray = ParseDna(DnaFixture(little, pointerSize, "values[2][3]", "**links[2]", "(*callback[1])()"),
+          little, pointerSize);
+      Require(functionArray.HasValue() && functionArray.GetValue().FindStruct("Sample")->FindMember("callback")->arrayDimensions ==
+                                              std::vector<std::uint64_t>{1},
+          "SDNA function pointer array rejected");
+    }
+  }
+  const auto bytes = DnaFixture(true, 8);
+  const blend::Header invalid{8, static_cast<blend::ByteOrder>(99), 405};
+  const auto result = blend::ReadDna(std::as_bytes(std::span(bytes.data(), bytes.size())), invalid);
+  Require(!result.HasValue() && result.GetError().code == "BLEND_DNA_LAYOUT", "Invalid SDNA byte order accepted");
 }
 
 std::string BlockHeader(std::string_view code, bool modern, std::size_t pointerSize, bool little,
@@ -611,6 +780,7 @@ int main(int argumentCount, char** arguments) {
       CheckZlibDecoder();
       CheckGzipHeaders();
       CheckFileBytes();
+      CheckDna();
       CheckFileFixture(arguments[2], true);
       CheckFileFixture(arguments[3], false);
       CheckFileFixture(arguments[4], false, 405, 12);

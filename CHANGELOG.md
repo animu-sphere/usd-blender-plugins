@@ -8,6 +8,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Owning SDNA schema decoding with NAME/TYPE/TLEN/STRC tables, member offsets,
+    multidimensional arrays, pointer and function-pointer storage, and lookup
+    by struct/member name. Regressions decode every structure in the generated
+    empty scene and both real corpus files, cover all synthetic pointer-width
+    and byte-order combinations, and reject malformed payloads with
+    `BLEND_DNA_*` diagnostics without changing the header-only importer.
 - A contributor-provided Blender 4.5.13 legacy corpus file, preserving the
     original bytes with explicit commit permission and manifest provenance.
     Reader regressions cover its header, full-file byte round trips, known

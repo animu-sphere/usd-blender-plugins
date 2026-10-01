@@ -105,4 +105,34 @@ struct BlendBlock {
 };
 
 Result<std::vector<BlendBlock>> ReadBlocks(ByteSource& source, std::uint64_t maxBlocks);
+
+struct DnaType {
+  std::string name;
+  std::uint16_t length;
+};
+
+struct DnaMember {
+  std::uint16_t typeIndex;
+  std::uint16_t nameIndex;
+  std::string baseName;
+  std::uint32_t pointerLevel;
+  std::vector<std::uint64_t> arrayDimensions;
+  std::uint64_t offset;
+  std::uint64_t size;
+};
+
+struct DnaStruct {
+  std::uint16_t typeIndex;
+  std::vector<DnaMember> members;
+  const DnaMember* FindMember(std::string_view name) const;
+};
+
+struct DnaSchema {
+  std::vector<std::string> names;
+  std::vector<DnaType> types;
+  std::vector<DnaStruct> structs;
+  const DnaStruct* FindStruct(std::string_view name) const;
+};
+
+Result<DnaSchema> ReadDna(std::span<const std::byte> payload, const Header& header);
 }

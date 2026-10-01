@@ -9,12 +9,225 @@
 #include <memory>
 #include <new>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace blend {
 namespace {
 Diagnostic Fatal(const char* code, const char* message, std::uint64_t offset) {
     return Diagnostic{code, Severity::Fatal, message, offset, std::nullopt, {}, false};
 }
+
+class DnaReader {
+public:
+  DnaReader(std::span<const std::byte> bytes, const Header& header) : bytes_(bytes), header_(header) {
+  }
+
+  DnaSchema Read() {
+    if ((header_.pointerSize != 4 && header_.pointerSize != 8) ||
+        (header_.byteOrder != ByteOrder::Little && header_.byteOrder != ByteOrder::Big)) {
+      Fail("BLEND_DNA_LAYOUT", "Invalid SDNA pointer size or byte order");
+    }
+    DnaSchema schema;
+    Tag("SDNA");
+    Tag("NAME");
+    schema.names = Strings();
+    Align();
+    Tag("TYPE");
+    const auto typeNames = Strings();
+    if (typeNames.size() > 65536) {
+      Fail("BLEND_DNA_COUNT", "SDNA type table exceeds the index range");
+    }
+    Align();
+    Tag("TLEN");
+    if (typeNames.size() > Remaining() / 2) {
+      Fail("BLEND_DNA_TRUNCATED", "Incomplete SDNA type lengths");
+    }
+    std::unordered_set<std::string_view> uniqueTypes;
+    for (const auto& name : typeNames) {
+      if (!uniqueTypes.insert(name).second) {
+        Fail("BLEND_DNA_DUPLICATE", "Duplicate SDNA type name");
+      }
+      schema.types.push_back(DnaType{name, static_cast<std::uint16_t>(Integer(2))});
+    }
+    Align();
+    Tag("STRC");
+    const auto count = Integer(4);
+    if (count > Remaining() / 4 || count > schema.types.size()) {
+      Fail("BLEND_DNA_COUNT", "SDNA structure count exceeds the available records");
+    }
+    std::unordered_set<std::uint16_t> structTypes;
+    for (std::uint64_t index = 0; index < count; ++index) {
+      const auto typeIndex = static_cast<std::uint16_t>(Integer(2));
+      const auto memberCount = Integer(2);
+      if (typeIndex >= schema.types.size()) {
+        Fail("BLEND_DNA_INDEX", "SDNA structure type index is out of range");
+      }
+      if (!structTypes.insert(typeIndex).second) {
+        Fail("BLEND_DNA_DUPLICATE", "Duplicate SDNA structure type");
+      }
+      if (memberCount > Remaining() / 4) {
+        Fail("BLEND_DNA_COUNT", "SDNA member count exceeds the available records");
+      }
+      DnaStruct structure{typeIndex, {}};
+      std::unordered_set<std::string> memberNames;
+      std::uint64_t offset = 0;
+      for (std::uint64_t memberIndex = 0; memberIndex < memberCount; ++memberIndex) {
+        DnaMember member{};
+        member.typeIndex = static_cast<std::uint16_t>(Integer(2));
+        member.nameIndex = static_cast<std::uint16_t>(Integer(2));
+        if (member.typeIndex >= schema.types.size() || member.nameIndex >= schema.names.size()) {
+          Fail("BLEND_DNA_INDEX", "SDNA member index is out of range");
+        }
+        ParseName(schema.names[member.nameIndex], member);
+        if (!memberNames.insert(member.baseName).second) {
+          Fail("BLEND_DNA_DUPLICATE", "Duplicate SDNA member base name");
+        }
+        member.size = member.pointerLevel == 0 ? schema.types[member.typeIndex].length : header_.pointerSize;
+        if (member.size == 0) {
+          Fail("BLEND_DNA_SIZE", "SDNA member has a zero-sized value type");
+        }
+        for (const auto dimension : member.arrayDimensions) {
+          if (dimension > std::numeric_limits<std::uint64_t>::max() / member.size) {
+            Fail("BLEND_DNA_SIZE", "SDNA member array size overflows");
+          }
+          member.size *= dimension;
+        }
+        const auto length = schema.types[typeIndex].length;
+        if (member.size > length - offset) {
+          Fail("BLEND_DNA_SIZE", "SDNA members exceed the declared structure length");
+        }
+        member.offset = offset;
+        offset += member.size;
+        structure.members.push_back(std::move(member));
+      }
+      if (offset != schema.types[typeIndex].length) {
+        Fail("BLEND_DNA_SIZE", "SDNA structure " + schema.types[typeIndex].name + " has member size " +
+                                   std::to_string(offset) + " but declared length " + std::to_string(schema.types[typeIndex].length));
+      }
+      schema.structs.push_back(std::move(structure));
+    }
+    if (Remaining() != 0) {
+      Fail("BLEND_DNA_TRAILING", "Unexpected bytes after SDNA structures");
+    }
+    return schema;
+  }
+
+private:
+  [[noreturn]] void Fail(const char* code, std::string_view message) const {
+    throw Diagnostic{code, Severity::Fatal, std::string(message), position_, std::nullopt, {}, false};
+  }
+
+  std::size_t Remaining() const {
+    return bytes_.size() - position_;
+  }
+
+  std::uint64_t Integer(std::size_t width) {
+    if (width > Remaining()) {
+      Fail("BLEND_DNA_TRUNCATED", "Incomplete SDNA integer");
+    }
+    std::uint64_t value = 0;
+    for (std::size_t index = 0; index < width; ++index) {
+      const auto shift = header_.byteOrder == ByteOrder::Little ? index : width - 1 - index;
+      value |= static_cast<std::uint64_t>(std::to_integer<unsigned char>(bytes_[position_ + index])) << (8 * shift);
+    }
+    position_ += width;
+    return value;
+  }
+
+  void Tag(std::string_view expected) {
+    if (expected.size() > Remaining()) {
+      Fail("BLEND_DNA_TRUNCATED", "Incomplete SDNA section tag");
+    }
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+      if (bytes_[position_ + index] != static_cast<std::byte>(expected[index])) {
+        Fail("BLEND_DNA_SECTION", "Unexpected SDNA section tag");
+      }
+    }
+    position_ += expected.size();
+  }
+
+  void Align() {
+    const auto padding = (4 - position_ % 4) % 4;
+    if (padding > Remaining()) {
+      Fail("BLEND_DNA_TRUNCATED", "Incomplete SDNA alignment padding");
+    }
+    position_ += padding;
+  }
+
+  std::vector<std::string> Strings() {
+    const auto count = Integer(4);
+    if (count > Remaining() / 2 || count > 65536) {
+      Fail("BLEND_DNA_COUNT", "SDNA string count exceeds the available bytes or index range");
+    }
+    std::vector<std::string> strings;
+    for (std::uint64_t index = 0; index < count; ++index) {
+      const auto remaining = bytes_.subspan(position_);
+      const auto end = std::find(remaining.begin(), remaining.end(), std::byte{0});
+      if (end == remaining.end()) {
+        Fail("BLEND_DNA_TRUNCATED", "SDNA string lacks a terminating NUL");
+      }
+      const auto length = static_cast<std::size_t>(end - remaining.begin());
+      if (length == 0) {
+        Fail("BLEND_DNA_NAME", "Empty SDNA name");
+      }
+      strings.emplace_back(reinterpret_cast<const char*>(remaining.data()), length);
+      position_ += length + 1;
+    }
+    return strings;
+  }
+
+  void ParseName(std::string_view name, DnaMember& member) {
+    std::size_t position = 0;
+    const bool grouped = name.front() == '(';
+    if (grouped) {
+      ++position;
+    }
+    while (position < name.size() && name[position] == '*') {
+      ++member.pointerLevel;
+      ++position;
+    }
+    const auto identifierStart = [](char character) {
+      return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || character == '_';
+    };
+    if (position == name.size() || !identifierStart(name[position]) || (grouped && member.pointerLevel == 0)) {
+      Fail("BLEND_DNA_NAME", "Invalid SDNA member identifier");
+    }
+    const auto begin = position++;
+    while (position < name.size() && (identifierStart(name[position]) || (name[position] >= '0' && name[position] <= '9'))) {
+      ++position;
+    }
+    member.baseName = name.substr(begin, position - begin);
+    while (position < name.size() && name[position] == '[') {
+      ++position;
+      std::uint64_t dimension = 0;
+      const auto digits = position;
+      while (position < name.size() && name[position] >= '0' && name[position] <= '9') {
+        const auto digit = static_cast<unsigned int>(name[position++] - '0');
+        if (dimension > (std::numeric_limits<std::uint64_t>::max() - digit) / 10) {
+          Fail("BLEND_DNA_SIZE", "SDNA array dimension overflows");
+        }
+        dimension = dimension * 10 + digit;
+      }
+      if (position == digits || dimension == 0 || position == name.size() || name[position++] != ']') {
+        Fail("BLEND_DNA_NAME", "Invalid SDNA array dimension");
+      }
+      member.arrayDimensions.push_back(dimension);
+    }
+    if (grouped) {
+      if (position == name.size() || name[position++] != ')' || name.substr(position) != "()") {
+        Fail("BLEND_DNA_NAME", "Invalid SDNA function pointer declarator");
+      }
+      position = name.size();
+    }
+    if (position != name.size()) {
+      Fail("BLEND_DNA_NAME", "Unexpected SDNA member name decoration");
+    }
+  }
+
+  std::span<const std::byte> bytes_;
+  const Header& header_;
+  std::size_t position_ = 0;
+};
 
 Result<std::size_t> ReadGzipHeader(ByteSource& source, std::span<std::byte> bytes) {
   z_stream stream{};
@@ -178,6 +391,32 @@ bool FileByteSource::Read(std::uint64_t offset, std::span<std::byte> destination
 
 std::string Header::SourceVersion() const {
     return std::to_string(version / 100) + "." + std::to_string(version % 100);
+}
+
+const DnaMember* DnaStruct::FindMember(std::string_view name) const {
+  const auto member = std::find_if(members.begin(), members.end(), [name](const DnaMember& value) {
+    return value.baseName == name;
+  });
+  return member == members.end() ? nullptr : &*member;
+}
+
+const DnaStruct* DnaSchema::FindStruct(std::string_view name) const {
+  const auto structure = std::find_if(structs.begin(), structs.end(), [this, name](const DnaStruct& value) {
+    return value.typeIndex < types.size() && types[value.typeIndex].name == name;
+  });
+  return structure == structs.end() ? nullptr : &*structure;
+}
+
+Result<DnaSchema> ReadDna(std::span<const std::byte> payload, const Header& header) {
+  try {
+    return Result<DnaSchema>(DnaReader(payload, header).Read());
+  } catch (const Diagnostic& diagnostic) {
+    return Result<DnaSchema>(diagnostic);
+  } catch (const std::bad_alloc&) {
+    return Result<DnaSchema>(Fatal("BLEND_DNA_ALLOCATION", "Could not allocate SDNA tables", 0));
+  } catch (const std::length_error&) {
+    return Result<DnaSchema>(Fatal("BLEND_DNA_ALLOCATION", "SDNA tables exceed addressable memory", 0));
+  }
 }
 
 Result<std::vector<std::byte>> ReadFileBytes(ByteSource& source, const CompressionLimits& limits) {

@@ -89,6 +89,20 @@ unknown codes. Fixture paths are relative to
 | `BLEND_BLOCK_MISSING_ENDB` | Fatal | no | the source ends at a block boundary without `ENDB` | header-only and terminal payload truncations in `blendFile.header` |
 | `BLEND_BLOCK_ALLOCATION` | Fatal | no | block records or diagnostics cannot be allocated | implemented; allocation failure unverified |
 | `BLEND_BLOCK_UNKNOWN_CODE` | Unsupported | yes | a code is not recognized; its record is retained and its payload skipped | synthetic unknown block in `blendFile.header` |
+| `BLEND_DNA_LAYOUT` | Fatal | no | the supplied header has an invalid pointer size or byte order | invalid layouts in `blendFile.header` |
+| `BLEND_DNA_TRUNCATED` | Fatal | no | an integer, tag, string terminator, type length or alignment padding is incomplete | short SDNA payload prefixes in `blendFile.header` |
+| `BLEND_DNA_SECTION` | Fatal | no | an SDNA section tag differs from its required identifier | every section tag corrupted in `blendFile.header` |
+| `BLEND_DNA_COUNT` | Fatal | no | a table or member count exceeds remaining records or the index range | oversized NAME/TYPE/STRC and member counts in `blendFile.header` |
+| `BLEND_DNA_INDEX` | Fatal | no | a structure type or member type/name index is out of range | each index kind in `blendFile.header` |
+| `BLEND_DNA_NAME` | Fatal | no | a name is empty or a member declarator is malformed | invalid identifiers, arrays and function pointers in `blendFile.header` |
+| `BLEND_DNA_DUPLICATE` | Fatal | no | a type name, structure type or member base name is duplicated | each duplicate kind in `blendFile.header` |
+| `BLEND_DNA_SIZE` | Fatal | no | an array dimension/product overflows, a value member has zero size, or member sizes differ from TLEN | array overflow, zero type length and short/long structure lengths in `blendFile.header` |
+| `BLEND_DNA_TRAILING` | Fatal | no | bytes remain after the STRC records | trailing payload byte in `blendFile.header` |
+| `BLEND_DNA_ALLOCATION` | Fatal | no | the owning schema cannot be allocated | implemented; allocation failure unverified |
 | `BLEND_HEADER_OPEN_FAILED` | Fatal | no | ArResolver cannot open the resolved asset | implemented; fixture unverified |
 | `BLEND_USD_AUTHORING_FAILED` | Fatal | no | the temporary stage cannot be created | implemented; fixture unverified |
 | `BLEND_USD_READ_FAILED` | Fatal | no | a C++ exception reaches the importer boundary | implemented; fixture unverified |
+
+`ReadDna` diagnostics use DNA1-payload-relative byte offsets, not file offsets,
+and have no block index. A container caller may attach its block context; see
+the [schema boundary](../design/BLEND_CONTRACT.md#71-schema-decoding-boundary).
