@@ -15,6 +15,8 @@ All notable changes to this project are recorded here. The format follows
     byte sources, diagnostic records, `Result<T>` and the legacy header reader.
 - Root dual-mode CMake build, reader-only presets, workspace/library manifests,
     byte-level fixture generator, stage contract tests and an L5 golden.
+- A reader boundary gate over generated CMake File API link fragments, with
+    CTest metadata setup and allowed/forbidden dependency regression checks.
 - A verified Windows build guide. Blender-written fixtures, container decoding
     and Windows/Linux CI remain unfinished.
 - The documentation baseline: the design policy, the stage, blend, material,

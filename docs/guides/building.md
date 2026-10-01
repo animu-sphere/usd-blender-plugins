@@ -16,10 +16,38 @@ cmake --build --preset reader
 ctest --preset reader
 ```
 
-Both CTests pass: byte-source/header behavior and forbidden-include scanning.
-The library has no external link dependencies; a generated link-line gate is
-still pending. With a multi-config generator, the `CMAKE_BUILD_TYPE` preset
+Five CTests are registered: byte-source/header behavior, forbidden-include
+scanning, generated link metadata setup, generated link boundary inspection,
+and link-boundary rejection checks. The library has no external link
+dependencies. The metadata setup fixture reconfigures the existing build;
+CMake reads the File API query on this second configure, then the link gate
+checks the selected configuration's generated libraries, including transitive
+dependencies. With a multi-config generator, the `CMAKE_BUILD_TYPE` preset
 value is unused; the build/test presets select Release explicitly.
+
+The link-boundary scripts pass on generated MSVC Release metadata in both
+root reader-only and standalone library builds. Rejection checks pass for
+OpenUSD, Blender, Scene IR and unknown libraries, and missing reader link
+information. CMake Tools currently has no active configure preset; select
+`reader` there to use its build/test integration. OpenStrata's library commands
+do not depend on that editor selection and have run the full updated suite.
+
+## Reader through OpenStrata
+
+```powershell
+ost library build libs/blendFile --target cy2026 --profile usd
+ost library test libs/blendFile --target cy2026 --profile usd --filter 'blendFile\.link'
+ost library test libs/blendFile --target cy2026 --profile usd
+```
+
+Verified on Windows with Ninja and MSVC 19.51. Build and installation pass;
+the filtered run passes all three link tests, including the metadata setup
+fixture. The full run passes four of five tests: `blendFile.header` fails with
+`Blender-written compressed header rejected`. That test now requires the
+compressed Blender 5 fixture; compression and Blender 5 header parsing remain
+unimplemented. The include boundary and all link tests pass. This known failure
+keeps the full reader suite from being green; the plugin pyramid below does
+not run these CTests.
 
 ## OpenStrata bundle
 
@@ -58,7 +86,8 @@ ctest --test-dir build/usd-vs18 -C Release --output-on-failure
 
 This builds the reader first, resolves OpenUSD once through
 `find_package(pxr CONFIG REQUIRED)` without a version constraint, then builds
-the plugin. Both CTests pass on the verified SDK.
+the plugin. The original header and include CTests passed on the verified SDK;
+the expanded five-test suite has not been rerun in this mode.
 
 ## Fixture reproducibility
 

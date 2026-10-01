@@ -32,6 +32,7 @@ write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/blendFileConfigVers
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/blendFileConfig.cmake
     ${CMAKE_CURRENT_BINARY_DIR}/blendFileConfigVersion.cmake DESTINATION lib/cmake/blendFile)
 if(BUILD_TESTING)
+    file(WRITE "${CMAKE_BINARY_DIR}/.cmake/api/v1/query/client-blendFile/codemodel-v2" "")
     add_executable(blendFileTests tests/BlendFileTests.cpp)
     target_link_libraries(blendFileTests PRIVATE blendFile::blendFile)
     if(MSVC)
@@ -43,6 +44,16 @@ if(BUILD_TESTING)
     add_test(NAME blendFile.boundary COMMAND ${CMAKE_COMMAND}
         -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/Boundary.cmake)
+    add_test(NAME blendFile.linkMetadata COMMAND ${CMAKE_COMMAND}
+        -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR})
+    set_tests_properties(blendFile.linkMetadata PROPERTIES FIXTURES_SETUP blendFileLinkMetadata)
+    add_test(NAME blendFile.linkBoundary COMMAND ${CMAKE_COMMAND}
+        -DBUILD_DIR=${CMAKE_BINARY_DIR} -DCONFIG=$<CONFIG>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/LinkBoundary.cmake)
+    set_tests_properties(blendFile.linkBoundary PROPERTIES FIXTURES_REQUIRED blendFileLinkMetadata)
+    add_test(NAME blendFile.linkBoundaryChecks COMMAND ${CMAKE_COMMAND}
+        -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/link-boundary-tests
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/LinkBoundaryTests.cmake)
     get_target_property(BLEND_LINKS blendFile LINK_LIBRARIES)
     if(BLEND_LINKS)
         message(FATAL_ERROR "blendFile must have no external link dependencies in Phase 0")

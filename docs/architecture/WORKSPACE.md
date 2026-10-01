@@ -87,8 +87,14 @@ guard:
 All three run in CI from the Phase that creates the component.
 
 Current gates: `ost plugin test --workspace --graph-only`, the reader's CMake
-link-dependency check, and `blendFile.boundary` include scanning. Generated
-link-line inspection and CI wiring are still pending in Phase 0.
+link-dependency check, `blendFile.boundary` include scanning, and
+`blendFile.linkBoundary` inspection of generated CMake File API link fragments
+for the reader test executable, including transitive libraries. The link gate
+allows only `blendFile` and standard OS libraries; compression is currently
+compiled into `blendFile`. `blendFile.linkMetadata` is its CTest setup fixture:
+it reconfigures the existing build so even a fresh build has a File API reply.
+`blendFile.linkBoundaryChecks` tests allowed and forbidden library fragments.
+CI wiring remains pending in Phase 0.
 
 ## 3. Directory layout
 
@@ -209,7 +215,7 @@ Rules every `CMakeLists.txt` keeps:
 | header, byte sources; container and SDNA later | `libs/blendFile/tests/` | levels 1–2 of [DESIGN_POLICY.md §13](../design/DESIGN_POLICY.md#13-testing-policy) | header and byte-source tests |
 | Scene IR | `libs/blendScene/tests/` | level 3, against expected IR | — |
 | authoring | `plugins/usdBlendFileFormat/tests/` | level 4, from IR built in code | — |
-| boundary | each library's `tests/` | §2.3's link-line and include gates | include gate; generated link-line gate pending |
+| boundary | each library's `tests/` | §2.3's link-line and include gates | include gate; generated link fragments and rejection checks |
 | tool | `tools/blendInspect/tests/` | `blend_inspect` against fixtures | — |
 | integration | `tests/integration/` | `Usd.Stage.Open("*.blend")` against [STAGE_CONTRACT.md §17](../design/STAGE_CONTRACT.md#17-validation-checklist) | — |
 | pyramid | the bundle manifest's `tests:` | `ost plugin test` L0–L5 | synthetic header fixtures and golden |
