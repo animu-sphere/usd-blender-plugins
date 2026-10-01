@@ -14,7 +14,8 @@ From `build/single_file_libs` in the extracted release:
 python3 combine.py -r ../../lib -x legacy/zstd_legacy.h -o zstddeclib.c zstddeclib-in.c
 ```
 
-Copy the generated file, `lib/zstd.h`, and `LICENSE` together when updating.
+Copy the generated file, `lib/zstd.h`, `lib/zstd_errors.h`, and `LICENSE`
+together when updating.
 The reader compiles the decoder once into `blendFile`; no installed Zstandard
 package, shared library, network access, or Python is needed during the build.
 

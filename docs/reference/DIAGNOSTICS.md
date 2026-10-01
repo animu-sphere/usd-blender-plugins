@@ -57,12 +57,20 @@ to `plugins/usdBlendFileFormat/tests/fixtures/`.
 
 | Code | Severity | Recoverable | Raised when | Evidence |
 | --- | --- | --- | --- | --- |
-| `BLEND_HEADER_TRUNCATED` | Fatal | no | fewer than twelve bytes | `truncated.blend`; all 0-11 byte prefixes in `blendFile.header` |
+| `BLEND_HEADER_TRUNCATED` | Fatal | no | fewer than twelve legacy or seventeen format-1 header bytes | `truncated.blend`; all short header prefixes, including complete short Zstandard frames, in `blendFile.header` |
 | `BLEND_HEADER_READ_FAILED` | Fatal | no | the source reports enough bytes but its read fails | `ShortSource` in `blendFile.header` |
 | `BLEND_HEADER_MAGIC` | Fatal | no | the seven-byte signature differs | `invalid.blend` |
 | `BLEND_HEADER_POINTER_SIZE` | Fatal | no | a legacy pointer marker is neither `_` nor `-` | `pointer_size.blend` |
 | `BLEND_HEADER_ENDIANNESS` | Fatal | no | a byte-order marker is neither `v` nor `V` | `endianness.blend` |
-| `BLEND_HEADER_VERSION` | Fatal | no | a version byte is not an ASCII digit | `version.blend` |
+| `BLEND_HEADER_VERSION` | Fatal | no | a version byte is not an ASCII digit | `version.blend`; legacy and format-1 cases in `blendFile.header` |
+| `BLEND_HEADER_SIZE` | Fatal | no | an extended header declares a size other than 17 | `blendFile.header` |
+| `BLEND_HEADER_FORMAT_VERSION` | Fatal | no | an extended header does not declare 8-byte pointers and format 01 | `blendFile.header` |
+| `BLEND_COMPRESSION_DECODER` | Fatal | no | the decoder cannot be allocated or configured | implemented; allocation failure unverified |
+| `BLEND_COMPRESSION_TRUNCATED` | Fatal | no | compressed input ends before the required header output and the current frame is incomplete | all short Zstandard input prefixes in `blendFile.header` |
+| `BLEND_COMPRESSION_INVALID` | Fatal | no | the header stream is corrupt or decoding makes no progress | invalid block type in `blendFile.header` |
+| `BLEND_COMPRESSION_WINDOW_LIMIT` | Fatal | no | the decoder window exceeds 8 MiB | oversized window in `blendFile.header` |
+| `BLEND_COMPRESSION_INPUT_LIMIT` | Fatal | no | 1 MiB of input produces too few header bytes | empty-frame sequence in `blendFile.header` |
+| `BLEND_COMPRESSION_READ_FAILED` | Fatal | no | a compressed-source read fails | `CompressedReadFailure` in `blendFile.header` |
 | `BLEND_HEADER_OPEN_FAILED` | Fatal | no | ArResolver cannot open the resolved asset | implemented; fixture unverified |
 | `BLEND_USD_AUTHORING_FAILED` | Fatal | no | the temporary stage cannot be created | implemented; fixture unverified |
 | `BLEND_USD_READ_FAILED` | Fatal | no | a C++ exception reaches the importer boundary | implemented; fixture unverified |

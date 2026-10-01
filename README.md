@@ -4,8 +4,9 @@ OpenUSD plugins for [Blender](https://www.blender.org/) `.blend` files: a
 read-only `SdfFileFormat` that opens a `.blend` directly as a USD layer.
 
 > Status: Phase 0 in progress. The official OpenStrata template now builds a
-> read-only bundle with legacy-header validation and a minimal `/Asset` stage.
-> Fixtures are synthetic headers, not Blender scenes; blocks, SDNA and scene
+> read-only bundle with header validation and a minimal `/Asset` stage.
+> Header tests include synthetic bytes and a contributor-provided compressed
+> Blender 5 file; blocks, SDNA and scene
 > decoding are not implemented. The
 > [capability matrix](docs/reference/CAPABILITY_MATRIX.md) is the only page that
 > says what is implemented, and [the roadmap](docs/roadmap/README.md) what comes
@@ -49,7 +50,7 @@ process boundary, as a reference oracle and for evaluated geometry. Writing
 
 | Component | Kind | Role |
 | --- | --- | --- |
-| `blendFile` | plain C++ library | Implemented: byte sources, diagnostics, legacy header. Planned: compression, blocks, SDNA. No OpenUSD. |
+| `blendFile` | plain C++ library | Implemented: byte sources, diagnostics, legacy and Blender 5 headers, bounded Zstandard header probe. Planned: full decompression, blocks, SDNA. No OpenUSD. |
 | `blendScene` | plain C++ library | the Blender-neutral Scene IR and the native decoder — no OpenUSD |
 | `usdBlendFileFormat` | OpenUSD `SdfFileFormat` bundle | Implemented: header-validated minimal stage. Scene decoding is planned. |
 | `blend_inspect` | CLI | what a `.blend` contains, without USD |

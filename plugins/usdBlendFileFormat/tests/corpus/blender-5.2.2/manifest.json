@@ -19,7 +19,7 @@
       },
       "generationScript": null,
       "compression": "zstandard",
-      "readerStatus": "unsupported",
+      "readerStatus": "header-only",
       "purpose": "Real-file regression input for compressed Blender 5 header reading"
     }
   ]

@@ -14,6 +14,7 @@ is not a declaration of a separate asset license.
 verified; the file header alone cannot establish a patch version or LTS label.
 No generation script is available and no scene contents are assumed.
 
-The native reader does not yet support this compressed Blender 5 header.
-The existing regression assertion is expected to fail until that support lands;
-including the file does not claim Blender 5.2 compatibility.
+The native header reader accepts this Zstandard-compressed format-1 header
+and reports file version 502. The regression passes in `blendFile.header`.
+Blocks, SDNA and scene contents remain unread; this does not claim Blender 5.2
+scene compatibility or validate the full compressed file.

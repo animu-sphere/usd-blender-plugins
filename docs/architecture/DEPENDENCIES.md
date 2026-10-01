@@ -2,7 +2,8 @@
 
 > Status: OpenUSD and the C++20 toolchain are **accepted**, 2026-10-01.
 > Zstandard source vendoring is accepted, 2026-10-01. Its build and reader
-> integration remain unverified. zlib and generated-fixture tooling remain proposed.
+> header integration are verified on Windows. zlib and generated-fixture
+> tooling remain proposed.
 
 Every external dependency, why it exists, how it is found, and who may use it.
 Dependency edges between components are

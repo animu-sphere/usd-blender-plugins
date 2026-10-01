@@ -42,12 +42,11 @@ ost library test libs/blendFile --target cy2026 --profile usd
 
 Verified on Windows with Ninja and MSVC 19.51. Build and installation pass;
 the filtered run passes all three link tests, including the metadata setup
-fixture. The full run passes four of five tests: `blendFile.header` fails with
-`Blender-written compressed header rejected`. That test now requires the
-compressed Blender 5 fixture; compression and Blender 5 header parsing remain
-unimplemented. The include boundary and all link tests pass. This known failure
-keeps the full reader suite from being green; the plugin pyramid below does
-not run these CTests.
+fixture. The full run passes all five tests, including legacy and Blender 5
+headers, the contributor-provided Zstandard-compressed Blender file, malformed
+headers and streams, frame-boundary splits, decoder-window and input limits,
+and failed source reads. This is header-only verification, not container or
+scene decoding. The plugin pyramid below does not run these reader CTests.
 
 ## OpenStrata bundle
 
