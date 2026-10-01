@@ -110,13 +110,16 @@ limits of §2.4. Random access into Zstandard's seekable frames is a later
 optimization (Phase 8); it is not assumed, because whether a given file is
 written with useful frame boundaries is not under the reader's control.
 
-The Phase 0 header probe is separate from full container decompression:
-`ReadHeader` recognizes Zstandard magic and streams only the required 12 or
-17 output bytes, including across concatenated frames. It reads at most 1 MiB
-of compressed input in 4 KiB chunks and limits the decoder window to 8 MiB.
-These fixed probe budgets do not resolve BLEND-O5's full-file limits. The
-probe does not validate the remaining frames, payload or trailing checksums;
-successful header validation is not validation of a complete `.blend`.
+Header probes are separate from full container decompression: `ReadHeader`
+recognizes gzip and Zstandard magic and streams only the required 12 or 17
+output bytes, including across concatenated gzip members or Zstandard frames.
+Both read at most 1 MiB of compressed input in 4 KiB chunks. Zstandard's
+decoder window is limited to 8 MiB; gzip uses DEFLATE's fixed 32 KiB window.
+These fixed probe budgets do not resolve BLEND-O5's full-file limits. Probes
+stop as soon as the required header bytes are available; they do not require
+or validate the remaining payload or trailing checksums. A checksum needed
+to advance past an intermediate member is still validated. Successful header
+validation is not validation of a complete `.blend`.
 
 ## 5. File header
 

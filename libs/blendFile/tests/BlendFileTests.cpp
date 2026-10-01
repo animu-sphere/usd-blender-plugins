@@ -61,18 +61,137 @@ std::string RawZstdFrame(std::string_view text) {
     return frame;
 }
 
+std::string GzipFrame(std::string_view text) {
+  Require(text.size() <= 65535, "Test gzip member is too large");
+  std::string frame{"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x01", 11};
+  const auto length = static_cast<std::uint32_t>(text.size());
+  const auto inverseLength = length ^ 0xffff;
+  frame.push_back(static_cast<char>(length & 255));
+  frame.push_back(static_cast<char>((length >> 8) & 255));
+  frame.push_back(static_cast<char>(inverseLength & 255));
+  frame.push_back(static_cast<char>((inverseLength >> 8) & 255));
+  frame.append(text);
+  const auto checksum = static_cast<std::uint32_t>(crc32(0, reinterpret_cast<const Bytef*>(text.data()), length));
+  for (const auto value : {checksum, length}) {
+    for (std::size_t index = 0; index < 4; ++index) {
+      frame.push_back(static_cast<char>((value >> (8 * index)) & 255));
+    }
+  }
+  return frame;
+}
+
 class CompressedReadFailure final : public blend::ByteSource {
 public:
+  explicit CompressedReadFailure(std::string prefix = RawZstdFrame("BLENDER17-01v0502"))
+      : prefix_(std::move(prefix)) {
+  }
     std::uint64_t Size() const override { return 32; }
     bool Read(std::uint64_t offset, std::span<std::byte> destination) override {
         if (offset != 0 || destination.size() != 12) {
             return false;
         }
-        const auto prefix = RawZstdFrame("BLENDER17-01v0502");
-        std::copy_n(reinterpret_cast<const std::byte*>(prefix.data()), destination.size(), destination.begin());
+        std::copy_n(reinterpret_cast<const std::byte*>(prefix_.data()), destination.size(), destination.begin());
         return true;
     }
+
+  private:
+    std::string prefix_;
 };
+
+void CheckGzipHeaders() {
+  const std::string modern = "BLENDER17-01v0502";
+  const auto frame = GzipFrame(modern);
+  const auto modernHeader = Parse(frame);
+  Require(modernHeader.HasValue() && modernHeader.GetValue().version == 502 &&
+              modernHeader.GetValue().containerVersion == blend::BlendContainerVersion::Blender5 &&
+              modernHeader.GetValue().headerSize == 17 && modernHeader.GetValue().pointerSize == 8 &&
+              modernHeader.GetValue().byteOrder == blend::ByteOrder::Little,
+      "Gzip modern header rejected");
+  const auto ltsHeader = Parse(GzipFrame("BLENDER17-01v0405"));
+  Require(ltsHeader.HasValue() && ltsHeader.GetValue().version == 405 && ltsHeader.GetValue().headerSize == 17,
+      "Gzip format-1 LTS header rejected");
+  for (const char pointer : {'_', '-'}) {
+    for (const char endian : {'v', 'V'}) {
+      std::string legacy = "BLENDER-v405";
+      legacy[7] = pointer;
+      legacy[8] = endian;
+      const auto header = Parse(GzipFrame(legacy));
+      Require(header.HasValue() && header.GetValue().version == 405 && header.GetValue().headerSize == 12 &&
+                  header.GetValue().containerVersion == blend::BlendContainerVersion::Legacy &&
+                  header.GetValue().pointerSize == (pointer == '_' ? 4 : 8) &&
+                  header.GetValue().byteOrder == (endian == 'v' ? blend::ByteOrder::Little : blend::ByteOrder::Big),
+          "Gzip legacy layout rejected");
+    }
+  }
+  for (std::size_t length = 2; length < frame.size() - 8; ++length) {
+    ExpectError(std::string_view(frame).substr(0, length), "BLEND_COMPRESSION_TRUNCATED");
+  }
+  for (std::size_t length = 0; length < modern.size(); ++length) {
+    ExpectError(GzipFrame(std::string_view(modern).substr(0, length)), "BLEND_HEADER_TRUNCATED");
+  }
+  for (std::size_t split = 0; split <= modern.size(); ++split) {
+    const auto header = Parse(GzipFrame(std::string_view(modern).substr(0, split)) +
+                              GzipFrame(std::string_view(modern).substr(split)));
+    Require(header.HasValue() && header.GetValue().version == 502 && header.GetValue().headerSize == 17,
+        "Concatenated gzip members rejected");
+  }
+  ExpectError(GzipFrame("INVALID-v405"), "BLEND_HEADER_MAGIC");
+  ExpectError(GzipFrame("BLENDER18-01v0502"), "BLEND_HEADER_SIZE");
+  ExpectError(GzipFrame("BLENDER17-02v0502"), "BLEND_HEADER_FORMAT_VERSION");
+  ExpectError(GzipFrame("BLENDER17-01V0502"), "BLEND_HEADER_ENDIANNESS");
+  ExpectError(GzipFrame("BLENDER17-01v05x2"), "BLEND_HEADER_VERSION");
+  auto corrupt = frame;
+  corrupt[2] = '\x09';
+  ExpectError(corrupt, "BLEND_COMPRESSION_INVALID");
+  corrupt = frame;
+  corrupt[3] = static_cast<char>(0xe0);
+  ExpectError(corrupt, "BLEND_COMPRESSION_INVALID");
+  corrupt = frame;
+  corrupt[10] = '\x07';
+  ExpectError(corrupt, "BLEND_COMPRESSION_INVALID");
+  for (const std::size_t trailerOffset : {8, 4}) {
+    auto firstMember = GzipFrame("BLEND");
+    firstMember[firstMember.size() - trailerOffset] ^= 1;
+    ExpectError(firstMember + GzipFrame("ER17-01v0502"), "BLEND_COMPRESSION_INVALID");
+  }
+  for (const char flag : {'\x08', '\x10'}) {
+    auto metadata = frame;
+    metadata[3] = flag;
+    metadata.insert(10, std::string(8192, 'a') + '\0');
+    const auto header = Parse(metadata);
+    Require(header.HasValue() && header.GetValue().version == 502, "Gzip metadata across input chunks rejected");
+  }
+  auto excessiveMetadata = frame;
+  excessiveMetadata[3] = '\x08';
+  excessiveMetadata.insert(10, std::string(1024 * 1024, 'a') + '\0');
+  ExpectError(excessiveMetadata, "BLEND_COMPRESSION_INPUT_LIMIT");
+  std::string emptyMembers;
+  const auto emptyMember = GzipFrame({});
+  while (emptyMembers.size() <= 1024 * 1024) {
+    emptyMembers += emptyMember;
+  }
+  ExpectError(emptyMembers, "BLEND_COMPRESSION_INPUT_LIMIT");
+  CompressedReadFailure failedSource(frame);
+  const auto failedRead = blend::ReadHeader(failedSource);
+  Require(!failedRead.HasValue() && failedRead.GetError().code == "BLEND_COMPRESSION_READ_FAILED",
+      "Gzip source read failure accepted");
+  const auto trailerless = Parse(std::string_view(frame).substr(0, frame.size() - 8));
+  Require(trailerless.HasValue() && trailerless.GetValue().version == 502, "Gzip probe unexpectedly requires the trailer");
+  auto badTrailer = frame;
+  badTrailer[badTrailer.size() - 8] ^= 1;
+  Require(Parse(badTrailer).HasValue(), "Gzip probe unexpectedly validates the trailing checksum");
+  constexpr char deflated[] =
+      "\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\x0a\xed\xc1\xb1\x0d\x00\x10"
+      "\x10\x00\xc0\x89\x24\x4f\x22\x7a\xa1\x13\x85\x0d\x2c\x61\x7e\x8b"
+      "\xdc\x5d\x5f\x73\x8f\x79\x72\x4b\x91\x5f\xd4\x28\x17\x00\x00\x00"
+      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xb8\x1f\x72\xdc"
+      "\x70\x8a\x11\x80\x00\x00";
+  const auto deflatedHeader = Parse(std::string_view(deflated, sizeof(deflated) - 1));
+  Require(deflatedHeader.HasValue() && deflatedHeader.GetValue().version == 502 &&
+              deflatedHeader.GetValue().headerSize == 17,
+      "High-ratio gzip header rejected");
+}
 
 class ShortSource final : public blend::ByteSource {
 public:
@@ -85,6 +204,7 @@ int main(int argumentCount, char** arguments) {
     try {
         Require(argumentCount == 3, "Expected temporary and Blender fixture paths");
         CheckZlibDecoder();
+        CheckGzipHeaders();
         blend::FileByteSource realFile(arguments[2]);
         const auto realHeader = blend::ReadHeader(realFile);
         if (!realHeader.HasValue()) {

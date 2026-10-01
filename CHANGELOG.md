@@ -8,9 +8,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- A bounded gzip header probe using the vendored zlib decoder, with legacy
+    and format-1 layouts, concatenated members, input limits, and regression
+    tests for truncation, corruption, metadata, source failures and stopping
+    before payload or trailer validation.
 - Vendored zlib 1.3.2 inflate and checksum sources, with archive provenance,
     private prefixed symbols, installed license notices and a gzip decoder
-    smoke test; gzip `.blend` decoding remains planned.
+    smoke test.
 - Header regression tests for the 2.99/3.0 version boundary across legacy
     pointer widths and byte orders, and for Blender 4.5 format-1 headers with
     and without Zstandard compression.

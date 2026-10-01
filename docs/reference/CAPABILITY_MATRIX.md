@@ -35,7 +35,8 @@ No row says "supported" without a fixture.
 | Blender 5 header | supported | `empty.blend`; `blendFile.header`; `corpus/blender-5.2.2/Untitled.blend` | Phase 0 |
 | legacy block layout | — | | Phase 1 |
 | Blender 5 block layout | — | | Phase 1 |
-| gzip | — | | Phase 1 |
+| gzip header probe (bounded; not full-file validation) | supported | synthetic stored-block members and an independently encoded DEFLATE stream in `blendFile.header` | Phase 1 |
+| gzip full-container decompression | — | | Phase 1 |
 | Zstandard header probe (bounded; not full-file validation) | supported | `blendFile.header`; `corpus/blender-5.2.2/Untitled.blend` | Phase 0 |
 | Zstandard full-container decompression | — | | Phase 1 |
 | SDNA | — | | Phase 1 |
