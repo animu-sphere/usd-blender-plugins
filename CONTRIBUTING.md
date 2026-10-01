@@ -8,7 +8,8 @@ in an issue before implementing them. Keep pull requests focused on one task.
 ## Development and validation
 
 Follow [Building and testing](docs/guides/building.md) for prerequisites and
-verified commands. Windows is currently verified; Linux CI remains pending.
+verified commands. Delivery status belongs to the
+[roadmap table](docs/roadmap/README.md#status-at-a-glance), not this guide.
 
 - Reader changes: build and run the reader CTests, including the include and
   generated-link boundary gates. The plugin tests do not run reader CTests.
@@ -16,7 +17,8 @@ verified commands. Windows is currently verified; Linux CI remains pending.
   L0-L5 tests and the stage-contract tests described in the build guide.
 - Fixture changes: run the corresponding generator checks. Blender's
   `--check` validates scene contents without rewriting the committed fixture;
-  byte-identical regeneration remains unresolved.
+  `--check-bytes` compares a temporary regeneration without rewriting it.
+  Run the Blender fixture regression tests in the build guide as well.
 - Documentation changes: check relative links and heading anchors, and follow
   the [documentation guidelines](docs/contributing/documentation.md).
 

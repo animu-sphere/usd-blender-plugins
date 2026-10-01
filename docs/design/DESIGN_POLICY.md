@@ -1,9 +1,10 @@
 # usd-blender-plugins — design policy
 
-> Status: **proposed** as the project's design policy, 2026-10-01. Phase 0
-> implementation has begun; behavior here remains intended unless verified in
-> [reference/CAPABILITY_MATRIX.md](../reference/CAPABILITY_MATRIX.md) is the
-> only document that says what is implemented.
+> Status: **proposed** as the project's design policy, 2026-10-01. This document
+> defines intended behavior. The
+> [capability matrix](../reference/CAPABILITY_MATRIX.md) owns implemented
+> behavior; the [roadmap](../roadmap/README.md#status-at-a-glance) owns phase
+> status.
 >
 > This is the canonical, long-form policy: why the project is shaped the way it
 > is, where its boundaries are, and the order it is built in. It is distilled
@@ -579,8 +580,8 @@ Phase that first realizes it lands with a fixture, and binding from then.
 
 | Implementation plan | Here | Why | Status |
 | --- | --- | --- | --- |
-| §3, §32 — `lib/blend/`, `lib/usd/`, `src/fileformat/`; targets `blend_reader`, `blend_usd`, `BlenderFileFormat`; tool `blend-inspect`; plugin `usd-blender` | identities `blendFile`, `blendScene`, `usdBlendFileFormat`, `blend_inspect` in `libs/`, `plugins/`, `tools/` | the sibling workspace naming: lower-camel identities equal to their directory, `snake_case` executables ([WORKSPACE.md §1](../architecture/WORKSPACE.md#1-identities)) | proposed (Phase 0) |
+| §3, §32 — `lib/blend/`, `lib/usd/`, `src/fileformat/`; targets `blend_reader`, `blend_usd`, `BlenderFileFormat`; tool `blend-inspect`; plugin `usd-blender` | identities `blendFile`, `blendScene`, `usdBlendFileFormat`, `blend_inspect` in `libs/`, `plugins/`, `tools/` | the sibling workspace naming: lower-camel identities equal to their directory, `snake_case` executables ([WORKSPACE.md §1](../architecture/WORKSPACE.md#1-identities)) | binding workspace identities ([WORKSPACE.md §1](../architecture/WORKSPACE.md#1-identities)) |
 | §4.2 — one `blend_reader` holding container, SDNA and Scene IR | `blendFile` (syntax) and `blendScene` (Scene IR, decoding, conversion) | `blend_inspect --blocks/--dna` needs syntax only; the host backend produces a Scene IR with no container reader; each half is testable alone | proposed (Phase 2) |
 | §32 — a `blend_usd` static library | USD authoring inside the bundle, in `src/usd/`; `blendUsd` reserved | no second consumer of authoring exists yet; separate translation units keep the `SdfFileFormat` thin (§5.6) | proposed (Phase 2) |
 | §37 — releases v0.1.0–v1.0.0 as the plan's units | Phases 0–8 (§14); the release for each Phase only in the roadmap table | one source of truth per fact ([contributing/documentation.md](../contributing/documentation.md#one-source-of-truth-per-fact)) | accepted |
-| §9 — top-level metadata only | `/Asset.customData.blend:stageContractVersion` added | layer metadata is lost once the asset is referenced; `/Asset` customData travels with it, as in the siblings ([STAGE_CONTRACT.md §2](STAGE_CONTRACT.md#2-contract-version)) | proposed (Phase 0) |
+| §9 — top-level metadata only | `/Asset.customData.blend:stageContractVersion` added | layer metadata is lost once the asset is referenced; `/Asset` customData travels with it, as in the siblings ([STAGE_CONTRACT.md §2](STAGE_CONTRACT.md#2-contract-version)) | binding contract version ([STAGE_CONTRACT.md §2](STAGE_CONTRACT.md#2-contract-version)) |

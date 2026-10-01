@@ -3,16 +3,11 @@
 OpenUSD plugins for [Blender](https://www.blender.org/) `.blend` files: a
 read-only `SdfFileFormat` that opens a `.blend` directly as a USD layer.
 
-> Status: Phase 0 in progress. The official OpenStrata template now builds a
-> read-only bundle with header validation and a minimal `/Asset` stage.
-> Header tests include synthetic bytes and a contributor-provided compressed
-> Blender 5 file; blocks, SDNA and scene
-> decoding are not implemented. The
-> [capability matrix](docs/reference/CAPABILITY_MATRIX.md) is the only page that
-> says what is implemented, and [the roadmap](docs/roadmap/README.md) what comes
-> next.
+Implemented behavior is recorded in the
+[capability matrix](docs/reference/CAPABILITY_MATRIX.md); phase status and
+upcoming work are in [the roadmap](docs/roadmap/README.md#status-at-a-glance).
 
-The intended scene workflow (not implemented yet):
+The target scene workflow:
 
 ```usda
 #usda 1.0
@@ -50,9 +45,9 @@ process boundary, as a reference oracle and for evaluated geometry. Writing
 
 | Component | Kind | Role |
 | --- | --- | --- |
-| `blendFile` | plain C++ library | Implemented: byte sources, diagnostics, legacy and Blender 5 headers, bounded Zstandard header probe. Planned: full decompression, blocks, SDNA. No OpenUSD. |
+| `blendFile` | plain C++ library | bounded `.blend` syntax: byte sources, diagnostics, compression, headers, blocks and SDNA — no OpenUSD |
 | `blendScene` | plain C++ library | the Blender-neutral Scene IR and the native decoder — no OpenUSD |
-| `usdBlendFileFormat` | OpenUSD `SdfFileFormat` bundle | Implemented: header-validated minimal stage. Scene decoding is planned. |
+| `usdBlendFileFormat` | OpenUSD `SdfFileFormat` bundle | resolver-backed input and USD authoring through the file-format boundary |
 | `blend_inspect` | CLI | what a `.blend` contains, without USD |
 | `blendHost` | plain C++ library (later) | the Blender host backend, over a subprocess |
 
@@ -84,7 +79,7 @@ Build and test commands: [docs/guides/building.md](docs/guides/building.md).
 | [docs/design/](docs/design/) | What the file format reads and authors, and why — start with [DESIGN_POLICY.md](docs/design/DESIGN_POLICY.md) |
 | [docs/architecture/](docs/architecture/) | The binding workspace contract and external dependencies |
 | [docs/reference/](docs/reference/) | What is implemented, and diagnostics |
-| [docs/roadmap/](docs/roadmap/) | What is planned next (incomplete work only) |
+| [docs/roadmap/](docs/roadmap/) | Phase status, release mapping and incomplete tasks |
 | [docs/contributing/](docs/contributing/) | How the documentation is maintained |
 
 Changes are recorded in the [changelog](CHANGELOG.md).

@@ -1,7 +1,9 @@
 # Material policy
 
-> Status: **proposed**, 2026-10-01. Nothing here is implemented yet; Phase 3
-> implements §3–§7.
+> Status: **proposed**, 2026-10-01. This document defines intended behavior;
+> implemented behavior belongs to the
+> [capability matrix](../reference/CAPABILITY_MATRIX.md). Phase scope belongs
+> to [DESIGN_POLICY.md §14](DESIGN_POLICY.md#14-phases).
 >
 > This document owns how Blender materials, their node trees and their images
 > become USD. On this area it wins over the design policy.

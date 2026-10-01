@@ -1,7 +1,8 @@
 # Stage contract
 
-> Status: **proposed**, 2026-10-01. The minimal stage is fixture-tested; the
-> remaining sections describe intended behavior. A section
+> Status: **proposed**, 2026-10-01. This document defines intended behavior;
+> the [capability matrix](../reference/CAPABILITY_MATRIX.md) owns fixture-backed
+> support claims. A section
 > becomes binding when the Phase that first authors it lands with a fixture
 > ([DESIGN_POLICY.md §14](DESIGN_POLICY.md#14-phases)); from then, changing it
 > is a contract change (§2).
@@ -11,10 +12,6 @@
 > On this area it wins over the design policy. Materials are detailed in
 > [MATERIAL_POLICY.md](MATERIAL_POLICY.md), identifiers in
 > [NAMING_POLICY.md](NAMING_POLICY.md).
-
-Phase 0 evidence: the synthetic `header_only.blend` and `test_stage.py` verify
-the minimal hierarchy, layer metadata, kind and contract version, including
-reference composition. Real Blender scenes are not decoded yet.
 
 ## 1. Scope
 

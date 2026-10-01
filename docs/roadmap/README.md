@@ -1,7 +1,8 @@
 # Roadmap
 
-The roadmap holds only **incomplete** work. When a Phase lands, its task detail
-leaves this directory: shipped scope goes to the
+The task detail holds only **incomplete** work; the phase status table also
+records completed phases. When a Phase lands, its task detail leaves this
+directory: shipped scope goes to the
 [changelog](../../CHANGELOG.md) and, once versions are tagged, to per-version
 release records; the implemented state goes to
 [architecture/](../architecture/) and [reference/](../reference/). The roadmap
@@ -11,7 +12,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started · ⛔ blocked
 
 | Document | Contents |
 | --- | --- |
-| [current.md](current.md) | The next milestones — Phase 0 and Phase 1 — broken into tasks with completion criteria. |
+| [current.md](current.md) | Upcoming milestones, broken into incomplete tasks with completion criteria. |
 
 ## One sequence
 
@@ -22,12 +23,13 @@ made **only** in the table below.
 
 ## Status at a glance
 
-**This table is the single source of truth for which release a Phase lands
-in.** No other document states a version for a Phase.
+**This table is the single source of truth for phase status and which release
+a Phase lands in.** Other documents link here instead of repeating either.
+Completion does not imply that the planned release has been tagged.
 
 | Phase | Scope | Status | Release |
 | --- | --- | --- | --- |
-| 0 | workspace skeleton, minimal file format | 🚧 | v0.1.0 (planned) |
+| 0 | workspace skeleton, minimal file format | ✅ | v0.1.0 (planned) |
 | 1 | container and SDNA, `blend_inspect` | ⬜ | v0.2.0 (planned) |
 | 2 | objects and meshes | ⬜ | v0.3.0 (planned) |
 | 3 | materials and images | ⬜ | v0.4.0 (planned) |
@@ -42,15 +44,8 @@ v1.0.0 is the first stable reader contract
 The planned versions follow the 2026-10-01 implementation plan and are
 re-decided when a Phase is ready to ship.
 
-Where things stand, as of 2026-10-01:
-
-- Phase 0 is in progress: the template bundle, header reader, minimal stage
-  and Windows verification exist, including a generated Blender 5.2.2 empty
-  fixture. The Windows/Linux CI matrix and generated workflow exist;
-  byte-identical Blender regeneration and hosted CI verification remain.
-- The first *useful* milestone, a cube that opens in `usdview` as a
-  `UsdGeomMesh`, is still Phase 2. See the
-  [capability matrix](../reference/CAPABILITY_MATRIX.md) for current behavior.
+See the [current tasks](current.md) for upcoming work and the
+[capability matrix](../reference/CAPABILITY_MATRIX.md) for implemented behavior.
 
 ## Open decisions
 

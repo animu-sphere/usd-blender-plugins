@@ -1,13 +1,11 @@
 # External dependencies
 
-> Status: OpenUSD and the C++20 toolchain are **accepted**, 2026-10-01.
-> Zstandard source vendoring is accepted, 2026-10-01. Its build and reader
-> header integration are verified on Windows. zlib and generated-fixture
-> tooling remain proposed.
-
 Every external dependency, why it exists, how it is found, and who may use it.
 Dependency edges between components are
 [WORKSPACE.md §2](WORKSPACE.md#2-dependency-directions).
+Dependency decisions are recorded in [§7](#7-open-questions); generated-fixture
+requirements belong to the
+[fixture provenance](../../plugins/usdBlendFileFormat/tests/fixtures/README.md).
 
 ## 1. OpenUSD
 
@@ -21,8 +19,8 @@ The OpenStrata `usd-fileformat-cpp` template carries an OpenUSD version range
 that is only its scaffold default. The bundle manifest pins the OpenStrata
 verification runtime to 26.08. Plain CMake uses
 `find_package(pxr CONFIG REQUIRED)` without a version constraint, allowing the
-caller to supply another installed SDK. Other releases are not yet verified;
-accepting an SDK at configure time is not a compatibility guarantee. Build
+caller to supply another installed SDK. Accepting an SDK at configure time is
+not a compatibility guarantee. Build
 and load the plugin against the same SDK release, since OpenUSD has no stable
 cross-release C++ ABI.
 

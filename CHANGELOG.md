@@ -25,17 +25,15 @@ All notable changes to this project are recorded here. The format follows
 - The missing upstream Zstandard 1.5.7 error header required by its public API.
 - A Blender 5.2.2 LTS empty-scene fixture and generator, with non-destructive
     Blender content validation, real-file stage contract tests, and L3-L5
-    verification against a second golden. Byte-identical Blender regeneration
-    remains unresolved.
+    verification against a second golden.
 - A Windows/Linux OpenStrata CI matrix and generated pull-request workflow,
     with digest-pinned OpenUSD 26.08 SDKs, workspace graph and reader CTest
-    gates, and standalone bundle L0-L5 checks. Hosted runs remain unverified.
+    gates, and standalone bundle L0-L5 checks.
 - A companion Windows/Linux workflow for explicit plugin doctor and all five
     stage-contract checks, resolving the existing CI bundle cells instead of
     copying their SDK pins and preserving diagnostic reports and test logs.
-    The commands pass locally on Windows; hosted results remain unverified.
-- A verified Windows build guide. Container decoding and hosted Windows/Linux
-    verification remain unfinished.
+- A build guide for reader-only, standalone bundle and plain CMake workflows,
+    including fixture generation and validation.
 - The documentation baseline: the design policy, the stage, blend, material,
   naming and backend contracts, the workspace contract, external dependencies,
   the capability matrix and diagnostics reference, the roadmap, and the
@@ -43,6 +41,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- Documentation status is centralized: phase status and release mapping in the
+    roadmap table, incomplete task status in the current roadmap, and supported
+    behavior in the capability matrix. Other pages link to these owners rather
+    than maintaining parallel progress summaries.
+- The Blender empty-scene generator writes only the Scene and its dependencies
+    through the library writer, avoiding UI serialization. The regenerated
+    fixture is byte-identical across independent processes on the verified
+    Windows build, with a non-destructive `--check-bytes` mode and three
+    regression tests covering reproduction, modification detection and
+    inspection of the stored Scene.
 - Plain CMake accepts the caller's installed OpenUSD SDK without a version
     constraint. The OpenStrata verification runtime remains pinned to 26.08;
-    other SDK releases are not yet verified.
+    accepting another SDK is not a compatibility guarantee.

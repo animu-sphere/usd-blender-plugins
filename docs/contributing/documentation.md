@@ -11,7 +11,7 @@ delivery status without updating the page that owns it.
 | `architecture/` | Component identities, dependency edges, layout, build modes, external dependencies — the binding structural contract, with what exists marked as such. | Rationale; unimplemented features described as present. |
 | `design/` | Intended contracts, their rationale, and open questions. | Claims that something is implemented. |
 | `reference/` | Facts about the current tree: capabilities, diagnostics. | Plans, except in a column that is clearly labelled as intended. |
-| `roadmap/` | Incomplete, ordered work, its completion criteria, and which release carries it. | Completed work; rationale. |
+| `roadmap/` | Phase status and release mapping; incomplete, ordered tasks and their completion criteria. | Completed task detail; rationale. |
 | `guides/` | How to accomplish a task, with commands that have been run. | Commands nobody has run. |
 | `releases/` | One immutable record per released version. | Work in progress. |
 | `reports/` | Dated evidence from real runs; append-only. | Current-state claims. |
@@ -27,7 +27,9 @@ tag, the first report with the first dated run.
   `rejected`. A section that has been implemented and fixture-tested is
   binding; changing it afterwards is a contract change
   ([STAGE_CONTRACT.md §2](../design/STAGE_CONTRACT.md#2-contract-version)).
-- Roadmap items are ✅ done, 🚧 in progress, ⬜ not started, or ⛔ blocked.
+- Phase status appears only in the roadmap status table; task status appears
+  only in the current task tables. Use ✅ done, 🚧 in progress, ⬜ not started,
+  or ⛔ blocked. Do not repeat those states in summaries or phase headings.
 - The capability matrix uses its own vocabulary — supported, approximated,
   preserved, unsupported, unverified, and `—` for nothing implemented — and
   never says "supported" without a fixture.
@@ -44,8 +46,10 @@ identified by prefix and number (`STAGE-O1`, `BLEND-O2`, `MAT-O1`, `NAME-O1`,
 
 ## One source of truth per fact
 
-- Which release carries a Phase: the
+- Phase status and which release carries a Phase: the
   [roadmap status table](../roadmap/README.md#status-at-a-glance), nowhere else.
+- Incomplete tasks and their status:
+  [current.md](../roadmap/current.md), nowhere else.
 - What a Phase contains: [DESIGN_POLICY.md §14](../design/DESIGN_POLICY.md#14-phases).
 - Structure and dependency edges:
   [WORKSPACE.md](../architecture/WORKSPACE.md), changed first and alone.
@@ -56,6 +60,14 @@ identified by prefix and number (`STAGE-O1`, `BLEND-O2`, `MAT-O1`, `NAME-O1`,
 
 Link to the owner instead of restating it. When a summary disagrees with the
 implementation, the implementation wins and the summary is a bug.
+
+README files, design and architecture documents, contributing instructions,
+and guides must not carry live progress summaries or CI pass/pending status.
+Link to the roadmap for delivery status and to the capability matrix for
+support claims. Design acceptance status is a separate decision, not phase
+progress. Guides describe procedures; dated verification evidence belongs in
+reports, or is explicitly scoped to a dated run rather than phrased as current
+status. Changelog entries record delivered changes, not outstanding work.
 
 ## Language and form
 
@@ -78,3 +90,6 @@ implementation, the implementation wins and the summary is a bug.
 5. Completed work leaves `roadmap/`.
 6. A departure from a design document is recorded in that document, not only
    in the code or the pull request.
+7. Live phase, task and capability status is updated only in its owning table;
+  other pages link there instead of repeating it. Do not replace an obsolete
+  status banner with a newer duplicate.

@@ -1,6 +1,5 @@
 # Diagnostics
 
-As of 2026-10-01 the Phase 0 diagnostic record and header diagnostics exist.
 §1 and §2 describe the record and families from
 [DESIGN_POLICY.md §12](../design/DESIGN_POLICY.md#12-diagnostics), recorded
 here so later code lands into an agreed shape; §3 lists implemented codes.

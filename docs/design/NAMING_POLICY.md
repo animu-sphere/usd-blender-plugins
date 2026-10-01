@@ -1,7 +1,9 @@
 # Naming policy
 
-> Status: **proposed**, 2026-10-01. Nothing here is implemented yet; Phase 2
-> implements §2–§5, Phase 3 §6.
+> Status: **proposed**, 2026-10-01. This document defines intended behavior;
+> implemented behavior belongs to the
+> [capability matrix](../reference/CAPABILITY_MATRIX.md). Phase scope belongs
+> to [DESIGN_POLICY.md §14](DESIGN_POLICY.md#14-phases).
 >
 > This document owns source names, USD identifiers, collisions and asset
 > paths. On this area it wins over the design policy.

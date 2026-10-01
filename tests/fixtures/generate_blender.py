@@ -1,6 +1,7 @@
 import argparse
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import bpy
 
@@ -26,10 +27,21 @@ def validate_empty_scene():
         raise RuntimeError("Empty fixture must use a unit scale of 1")
 
 
+def write_empty_scene(output):
+    output.parent.mkdir(parents=True, exist_ok=True)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    validate_empty_scene()
+    bpy.data.libraries.write(
+        str(output), {bpy.context.scene}, fake_user=True, compress=False
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--check", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true")
+    mode.add_argument("--check-bytes", action="store_true")
     arguments = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     options = parser.parse_args(arguments)
     if bpy.app.version != BLENDER_VERSION:
@@ -39,16 +51,14 @@ def main():
         )
     output = options.output.resolve()
 
-    if not options.check:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        bpy.ops.wm.read_factory_settings(use_empty=True)
-        bpy.context.preferences.filepaths.save_version = 0
-        validate_empty_scene()
-        result = bpy.ops.wm.save_as_mainfile(
-            filepath=str(output), check_existing=False, compress=False
-        )
-        if result != {"FINISHED"}:
-            raise RuntimeError(f"Failed to save fixture: {result}")
+    if options.check_bytes:
+        with TemporaryDirectory(prefix="blend-fixture-") as directory:
+            regenerated = Path(directory) / "empty.blend"
+            write_empty_scene(regenerated)
+            if output.read_bytes() != regenerated.read_bytes():
+                raise RuntimeError("Fixture bytes differ from Blender regeneration")
+    elif not options.check:
+        write_empty_scene(output)
 
     with output.open("rb") as fixture:
         if fixture.read(len(FILE_HEADER)) != FILE_HEADER:
