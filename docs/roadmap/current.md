@@ -14,7 +14,7 @@ minimal `/Asset` stage.
 | --- | --- | --- | --- |
 | 0.1 | Finish repository policy files: `LICENSE` (Apache-2.0), `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md` | the files exist; version, changelog, README, `.gitattributes` and root `.clang-format` already exist | 🚧 |
 | 0.5 | Finish `openstrata.ci.yaml` | the root CMake, presets, modules and workspace manifest already build through plain CMake and `ost`; the CI matrix exists | 🚧 |
-| 0.6 | Complete the reader boundary gate | header and byte-source unit tests and include checks pass; add generated link-line inspection | 🚧 |
+| 0.6 | Complete the reader boundary gate | include and generated link checks pass through `ost library test`; the compressed Blender 5 header fixture must also pass (currently the only reader test failure) | 🚧 |
 | 0.7 | Validate the minimal stage on a Blender-written `empty.blend` | [STAGE_CONTRACT.md §17](../design/STAGE_CONTRACT.md#17-validation-checklist) items 1-5 already pass on synthetic headers; repeat on a real fixture | 🚧 |
 | 0.8 | Add the Blender fixture generator for `empty.blend` | byte-level fixtures already regenerate identically; the Blender fixture does too | 🚧 |
 | 0.9 | CI on Windows and Linux; `ost plugin build`, `doctor`, `test` L0-L5 | local Windows tests pass; CI is green on both | ⬜ |
