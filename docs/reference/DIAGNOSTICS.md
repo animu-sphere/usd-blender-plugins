@@ -48,6 +48,7 @@ as `TF_RUNTIME_ERROR` and the rest as `TF_WARN`, and authors what it can.
 | `BLEND_NAME_*` | `blendScene` | invalid UTF-8, collisions |
 | `BLEND_HOST_*` | `blendHost` | Blender not configured, process failure, timeout, invalid interchange |
 | `BLEND_USD_*` | `usdBlendFileFormat` | authoring failures |
+| `BLEND_IO_*`, `BLEND_INSPECT_*` | `blend_inspect` | file opening, CLI arguments and exception boundary |
 
 ## 3. Implemented codes
 
@@ -73,7 +74,7 @@ Fixture paths are relative to
 | `BLEND_COMPRESSION_WINDOW_LIMIT` | Fatal | no | the Zstandard window exceeds the probe's 8 MiB or the full-file caller's window budget | oversized window in `blendFile.header` |
 | `BLEND_COMPRESSION_INPUT_LIMIT` | Fatal | no | the probe exhausts 1 MiB before finding its header, or the full-file source exceeds the caller's input limit | empty members/frames, excessive metadata and full-file input boundaries in `blendFile.header` |
 | `BLEND_COMPRESSION_READ_FAILED` | Fatal | no | a probe or full-file source read fails | gzip/Zstandard `CompressedReadFailure` and full-file initial/refill failures in `blendFile.header` |
-| `BLEND_COMPRESSION_LIMITS` | Fatal | no | a full-file byte or ratio limit is zero, or window log is outside 10 through 30 | invalid limit configurations in `blendFile.header` |
+| `BLEND_COMPRESSION_LIMITS` | Fatal | no | a full-file byte or ratio limit is zero, window log is outside 10 through 30, or compressed CLI input has no explicit limits | invalid limit configurations in `blendFile.header`; missing CLI limits in `blendInspect.cli` |
 | `BLEND_COMPRESSION_OUTPUT_LIMIT` | Fatal | no | decoded bytes exceed the caller's output budget or the addressable vector size | uncompressed, gzip and Zstandard output boundaries in `blendFile.header`; address-space exhaustion unverified |
 | `BLEND_COMPRESSION_RATIO_LIMIT` | Fatal | no | decoded bytes exceed source size times the caller's expansion ratio | gzip DEFLATE/Zstandard RLE bomb vectors and exact ratio boundaries in `blendFile.header` |
 | `BLEND_BLOCK_LIMITS` | Fatal | no | the caller's block limit is zero or exceeds the maximum unsigned 32-bit index | invalid budgets in `blendFile.header` |
@@ -101,6 +102,7 @@ Fixture paths are relative to
 | `BLEND_DNA_MEMBER` | Fatal | no | a raw ID lacks an embedded ID or bounded char name array of the required type | wrong pointer/member types in `blendFile.header` |
 | `BLEND_DNA_TRAILING` | Fatal | no | bytes remain after the STRC records | trailing payload byte in `blendFile.header` |
 | `BLEND_DNA_ALLOCATION` | Fatal | no | the owning schema or raw datablock records cannot be allocated | implemented; allocation failure unverified |
+| `BLEND_DNA_BLOCK` | Fatal | no | the tool finds no DNA1 block or more than one | modified empty-scene containers in `blendInspect.cli` |
 | `BLEND_POINTER_DUPLICATE` | Fatal | no | two reference-target blocks have the same nonzero old address | synthetic duplicate DATA blocks in `blendFile.header`; metadata collisions are excluded |
 | `BLEND_POINTER_UNRESOLVED` | Warning | yes | an exact nonzero old address has no reference-target block; resolution returns null | absent and interior keys in `blendFile.header` |
 | `BLEND_POINTER_LIMIT` | Fatal | no | the input block count exceeds unsigned 32-bit indices | implemented; excessive allocation/count unverified |
@@ -108,6 +110,10 @@ Fixture paths are relative to
 | `BLEND_HEADER_OPEN_FAILED` | Fatal | no | ArResolver cannot open the resolved asset | implemented; fixture unverified |
 | `BLEND_USD_AUTHORING_FAILED` | Fatal | no | the temporary stage cannot be created | implemented; fixture unverified |
 | `BLEND_USD_READ_FAILED` | Fatal | no | a C++ exception reaches the importer boundary | implemented; fixture unverified |
+| `BLEND_IO_OPEN` | Fatal | no | the tool cannot open its input path | missing file in `blendInspect.cli` |
+| `BLEND_INSPECT_USAGE` | Fatal | no | CLI arguments are invalid or incomplete | invalid options, decimal values and argument counts in `blendInspect.cli`; exit status 2 |
+| `BLEND_INSPECT_MEMORY` | Fatal | no | a C++ allocation exception reaches the CLI boundary | implemented; allocation failure injection unverified |
+| `BLEND_INSPECT_ERROR` | Fatal | no | another C++ exception reaches the CLI boundary | implemented; exception injection unverified |
 
 `ReadDna` diagnostics use DNA1-payload-relative byte offsets, not file offsets,
 and have no block index. A container caller may attach its block context; see
@@ -117,3 +123,9 @@ the [schema boundary](../design/BLEND_CONTRACT.md#71-schema-decoding-boundary).
 offset and block index. Pointer-map duplicate errors identify the later
 reference-target block; `Resolve` warnings have no referring-block context.
 See the [raw boundaries](../design/BLEND_CONTRACT.md#81-pointer-map-boundary).
+
+The tool prints codes and severity to stderr and preserves available block
+and datablock context. DNA1-relative offsets are translated to decoded file
+offsets for its display; block and ID offsets already use decoded bytes.
+Full-stream diagnostics retain their library byte coordinate. Recoverable
+unsupported-block diagnostics do not change a successful CLI exit status.

@@ -8,6 +8,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- The OpenUSD-independent `blend_inspect` workspace tool, with fixture-backed
+    header/layout summaries, raw ID counts, block and SDNA listings and saved
+    Object names. Its standalone/composed CMake project stages `bin/` for
+    workspace packaging and installs the executable; compressed inputs require
+    explicit byte, expansion-ratio and window limits. CLI regressions cover
+    argument errors, diagnostics, malformed DNA1 and Windows UTF-8 paths.
 - An owning exact-key pointer map for ID and DATA blocks, with null and
     unresolved-reference handling, duplicate-key diagnostics and exclusion of
     metadata address collisions. Raw datablock enumeration uses SDNA to list

@@ -55,6 +55,16 @@ raw ID type/name records. These remain syntax-only operations inside
 added. Their [boundaries](../design/BLEND_CONTRACT.md#81-pointer-map-boundary)
 separate raw references from the ID graph owned by `blendScene`.
 
+`blend_inspect` composes these syntax APIs through `blendFile` alone in
+Phase 1. Its tool descriptor declares that library edge, and the root adds
+`tools/blendInspect` before resolving OpenUSD. The standalone tool finds the
+installed `blendFile` package; the composed build reuses the in-tree target.
+Its executable is staged into the member's `bin/` and installed into the
+prefix's binary directory. Workspace release membership includes the tool,
+so aggregate packaging carries both the executable and file-format bundle.
+The [CLI contract](../design/DESIGN_POLICY.md#54-blend_inspect--the-tool)
+keeps raw Object listing separate from future scene decoding.
+
 ### 1.2 Later, only when their responsibility is real
 
 Named now so the boundaries are designed for them; created only when the

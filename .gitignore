@@ -6,3 +6,6 @@
 **/build/
 **/.strata/
 **/__pycache__/
+/tools/blendInspect/bin/
+/tools/blendInspect/dist/
+/dist/

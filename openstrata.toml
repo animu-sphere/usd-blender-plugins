@@ -7,6 +7,6 @@ platform = "cy2026"
 profile = "usd"
 
 [workspace]
-members = ["libs/blendFile", "plugins/usdBlendFileFormat"]
-release_members = ["usdBlendFileFormat"]
+members = ["libs/blendFile", "plugins/usdBlendFileFormat", "tools/blendInspect"]
+release_members = ["usdBlendFileFormat", "blend_inspect"]
 release_exclude = []

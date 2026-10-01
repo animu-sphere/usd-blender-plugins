@@ -47,7 +47,7 @@ No row says "supported" without a fixture.
 | saved-address pointer map (ID and DATA; exact keys only) | supported | all reference-target addresses in `empty.blend` and both corpus files; synthetic null, unresolved, duplicate, metadata-collision and 64-bit keys in `blendFile.header` | Phase 1 |
 | raw ID datablock type/name enumeration | supported | every ID block in `empty.blend` and both corpus files; synthetic 32/64-bit, little/big-endian layouts, embedded ID offsets and raw name bytes in `blendFile.header` | Phase 1 |
 | raw ID range, index, count and name diagnostics | supported | synthetic out-of-range payloads/indices, size/count mismatches, invalid embedded members and unterminated names in `blendFile.header` | Phase 1 |
-| `blend_inspect` | — | | Phase 1 |
+| `blend_inspect`: summary, `--blocks`, `--dna`, raw `--objects` | supported | `empty.blend` and both real corpus files in `blendInspect.cli`; argument/limit errors, missing/duplicate/malformed DNA1 and UTF-8 path regressions | Phase 1 |
 
 Full-stream byte reading validates compression and the decoded header, not
 blocks, `ENDB` or SDNA. It does not change the importer's header-only path.
@@ -80,6 +80,12 @@ No pointer-valued members, linked libraries, lists or scene graphs are decoded;
 non-ID payloads are not checked against SDNA. Real-file evidence remains
 64-bit little-endian, and other layouts have synthetic evidence. The importer
 continues to read headers only.
+
+The inspection tool reports raw file-wide ID counts and saved Object names,
+not a scene graph. Compressed inputs require explicit limits; unknown block
+codes remain recoverable stderr diagnostics. Its
+[CLI contract](../design/DESIGN_POLICY.md#54-blend_inspect--the-tool) and
+[build commands](../guides/building.md#inspection-tool) define this boundary.
 
 ## 2. Blender versions
 
