@@ -9,3 +9,4 @@
 /tools/blendInspect/bin/
 /tools/blendInspect/dist/
 /dist/
+CMakeUserPresets.json

@@ -133,10 +133,17 @@ authored-stage support. The importer remains header-only.
 | --- | --- | --- | --- |
 | owning object/mesh IR, optional parent and shared-mesh indices | supported | synthetic empty, parented and shared-mesh records and copy-independence checks in `blendScene.ir` | Phase 2 |
 | point/direction basis rotation and mesh/empty world-matrix conjugation | supported | synthetic asymmetric matrix, translated/rotated/scaled parent-child composition, direction-length and right-handed winding checks in `blendScene.ir` | Phase 2 |
+| validated distance/position and affine mesh/empty translation normalization to meters | supported | synthetic scales `1`, `0.01`, `0.001`, `10`, equivalent cube extents, parent-child composition, unchanged non-translation matrix entries and invalid/overflow rejection in `blendScene.ir` | Phase 2 |
+| Blender-written unit-scale equivalence through native decoding and USD authoring | — | | Phase 2 |
 | native scene selection, object/member decoding and graph validation | — | | Phase 2 |
 | parent-relative transforms, topology validation, normals and UV decoding | — | | Phase 2 |
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
-defines row-major, column-vector matrix semantics. Basis helpers perform no
-unit-policy decision or USD authoring. Source unit metadata is retained in
-the IR; STAGE-O1 and NAME-O1 remain open in their owning design documents.
+defines row-major, column-vector matrix semantics and meter-space distances.
+Basis helpers do not scale distances; `UnitConversion` combines source-distance
+normalization with the basis rotation for positions and mesh/empty matrices.
+Source unit metadata is provenance only. STAGE-O1 remains open for
+Blender-written source-field and end-to-end evidence under the selected
+[unit policy](../design/STAGE_CONTRACT.md#61-scene-units); NAME-O1 remains open
+in its owning design document. No helper performs native decoding or USD
+authoring.
