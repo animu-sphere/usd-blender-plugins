@@ -5,3 +5,7 @@ library:
 cmake:
   package: blendScene
   target: blendScene::blendScene
+requires:
+  libraries:
+    - id: blendFile
+      version: "==0.1.0"

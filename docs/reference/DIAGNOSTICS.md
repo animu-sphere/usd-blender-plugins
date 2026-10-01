@@ -108,7 +108,13 @@ Fixture paths are relative to
 | `BLEND_POINTER_UNRESOLVED` | Warning | yes | an exact nonzero old address has no reference-target block; resolution returns null | absent and interior keys in `blendFile.header` |
 | `BLEND_POINTER_LIMIT` | Fatal | no | the input block count exceeds unsigned 32-bit indices | implemented; excessive allocation/count unverified |
 | `BLEND_POINTER_ALLOCATION` | Fatal | no | pointer entries or the unresolved diagnostic cannot be allocated | implemented; allocation failure unverified |
-| `BLEND_SCENE_UNIT_SCALE_INVALID` | Fatal | no | the source unit scale is zero, negative or nonfinite | `UnitConversion` constructor cases in `blendScene.ir` |
+| `BLEND_SCENE_GLOBAL_INVALID` | Fatal | no | GLOB is missing, duplicated or not one FileGlobal | synthetic GLOB absence/count/type cases in `blendScene.ir` |
+| `BLEND_SCENE_ACTIVE_MISSING` | Fatal | no | FileGlobal.curscene is null; no implicit Scene fallback | Scene-only `empty.blend` and synthetic null pointers in `blendScene.ir` |
+| `BLEND_SCENE_REFERENCE_INVALID` | Fatal | no | the saved Scene reference, target code/type/count or semantic member type is incompatible | absent/interior/metadata pointers, wrong pointer types and non-Scene targets in `blendScene.ir` |
+| `BLEND_SCENE_LINKED_UNSUPPORTED` | Fatal | no | the selected Scene has nonzero ID.lib; external data is not followed | synthetic linked active scenes in `blendScene.ir` |
+| `BLEND_SCENE_NAME_INVALID` | Fatal | no | selected Scene ID.name is not a terminated SC-prefixed one-byte char array | wrong prefixes and unterminated arrays in `blendScene.ir` |
+| `BLEND_SCENE_ALLOCATION` | Fatal | no | scene selection cannot allocate its owning output | implemented; allocation failure injection unverified |
+| `BLEND_SCENE_UNIT_SCALE_INVALID` | Fatal | no | the source unit scale is zero, negative or nonfinite | `UnitConversion` constructor and saved Scene selection cases in `blendScene.ir` |
 | `BLEND_SCENE_UNIT_VALUE_INVALID` | Fatal | no | a source distance is nonfinite or its conversion to meters overflows | scalar, position and translation cases in `blendScene.ir` |
 | `BLEND_SCENE_UNIT_TRANSFORM_INVALID` | Fatal | no | unit conversion receives a non-affine mesh/empty world matrix | projective matrix in `blendScene.ir` |
 | `BLEND_HEADER_OPEN_FAILED` | Fatal | no | ArResolver cannot open the resolved asset | implemented; fixture unverified |
@@ -132,6 +138,14 @@ See the [raw boundaries](../design/BLEND_CONTRACT.md#81-pointer-map-boundary).
 selected block index. Binding failures use the block payload offset, or zero
 when no such block exists. No Scene/datablock context is inferred; see the
 [borrowed value boundary](../design/BLEND_CONTRACT.md#83-borrowed-sdna-value-boundary).
+
+`SelectScene` semantic diagnostics attach the referring GLOB or selected
+target's uncompressed payload offset and block index. A missing GLOB or
+allocation failure has no source context. Required-reference resolution
+promotes an unresolved pointer to fatal `BLEND_SCENE_REFERENCE_INVALID` with
+GLOB context; it does not return a recoverable pointer warning and a selection.
+Reader binding/member and pointer-map failures retain their existing context.
+See the [selection boundary](../design/DESIGN_POLICY.md#522-saved-scene-selection-boundary).
 
 The standalone `UnitConversion` helper throws `std::invalid_argument` for
 invalid input or `std::overflow_error` for meter-conversion overflow, with the

@@ -4,8 +4,12 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(blendScene VERSION ${BLEND_VERSION} LANGUAGES CXX)
     include(CTest)
 endif()
-add_library(blendScene STATIC src/Scene.cpp)
+if(NOT TARGET blendFile::blendFile)
+    find_package(blendFile CONFIG REQUIRED)
+endif()
+add_library(blendScene STATIC src/Scene.cpp src/Selection.cpp)
 add_library(blendScene::blendScene ALIAS blendScene)
+target_link_libraries(blendScene PUBLIC blendFile::blendFile)
 target_compile_features(blendScene PUBLIC cxx_std_20)
 set_target_properties(blendScene PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_EXTENSIONS OFF)
 target_include_directories(blendScene PUBLIC
@@ -30,7 +34,10 @@ if(BUILD_TESTING)
     file(WRITE "${CMAKE_BINARY_DIR}/.cmake/api/v1/query/client-blendScene/codemodel-v2" "")
     add_executable(blendSceneTests tests/SceneTests.cpp)
     target_link_libraries(blendSceneTests PRIVATE blendScene::blendScene)
-    add_test(NAME blendScene.ir COMMAND blendSceneTests)
+    add_test(NAME blendScene.ir COMMAND blendSceneTests
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests/fixtures/empty.blend
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests/corpus/blender-4.5.13/Untitled.blend
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests/corpus/blender-5.2.2/Untitled.blend)
     add_test(NAME blendScene.boundary COMMAND ${CMAKE_COMMAND}
         -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/Boundary.cmake)
@@ -41,14 +48,16 @@ if(BUILD_TESTING)
     add_test(NAME blendScene.linkBoundary COMMAND ${CMAKE_COMMAND}
         -DBUILD_DIR=${CMAKE_BINARY_DIR} -DCONFIG=$<CONFIG>
         -DLIBRARY_NAME=blendScene -DBOUNDARY_LABEL=scene
+        -DALLOWED_LIBRARIES=blendFile
         -P ${CMAKE_CURRENT_SOURCE_DIR}/../blendFile/tests/LinkBoundary.cmake)
     set_tests_properties(blendScene.linkBoundary PROPERTIES FIXTURES_REQUIRED blendSceneLinkMetadata)
     add_test(NAME blendScene.linkBoundaryChecks COMMAND ${CMAKE_COMMAND}
         -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/link-boundary-tests
         -DLIBRARY_NAME=blendScene -DBOUNDARY_LABEL=scene
+        -DALLOWED_LIBRARIES=blendFile
         -P ${CMAKE_CURRENT_SOURCE_DIR}/../blendFile/tests/LinkBoundaryTests.cmake)
     get_target_property(BLEND_SCENE_LINKS blendScene LINK_LIBRARIES)
-    if(BLEND_SCENE_LINKS)
-        message(FATAL_ERROR "The Scene IR foundation must have no link dependencies")
+    if(NOT BLEND_SCENE_LINKS STREQUAL "blendFile::blendFile")
+        message(FATAL_ERROR "The native scene library may link only blendFile")
     endif()
 endif()

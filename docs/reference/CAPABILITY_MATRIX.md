@@ -91,8 +91,9 @@ the saved current Scene in both corpus files and read its embedded ID name;
 the Scene-only library fixture has a null `curscene`, not a selected Scene.
 All three files' `Scene.unit.scale_length` values are read as source facts,
 without unit conversion or an end-to-end physical-equivalence claim. No
-Scene-selection API, library fallback, Collection/list walk, graph validation
-or Scene IR publication is provided. The importer and inspection tool remain
+Scene-selection policy, library fallback, Collection/list walk, graph validation
+or Scene IR publication is provided by `blendFile`; the separate semantic
+selection API is listed in section 5. The importer and inspection tool remain
 unchanged; real-file layout evidence is still 64-bit little-endian only.
 
 The inspection tool reports raw file-wide ID counts and saved Object names,
@@ -149,7 +150,9 @@ authored-stage support. The importer remains header-only.
 | point/direction basis rotation and mesh/empty world-matrix conjugation | supported | synthetic asymmetric matrix, translated/rotated/scaled parent-child composition, direction-length and right-handed winding checks in `blendScene.ir` | Phase 2 |
 | validated distance/position and affine mesh/empty translation normalization to meters | supported | synthetic scales `1`, `0.01`, `0.001`, `10`, equivalent cube extents, parent-child composition, unchanged non-translation matrix entries and invalid/overflow rejection in `blendScene.ir` | Phase 2 |
 | Blender-written unit-scale equivalence through native decoding and USD authoring | — | | Phase 2 |
-| native scene selection, object/member decoding and graph validation | — | | Phase 2 |
+| saved active Scene selection and owning source metadata | supported | both normal-save corpus files select `Scene`; Scene-only `empty.blend` fails without fallback; synthetic two-Scene, reordered, 32/64-bit and little/big-endian layouts in `blendScene.ir` | Phase 2 |
+| saved-scene missing/invalid/linked-reference and source-metadata diagnostics | supported | missing/duplicate/wrong GLOB, null/absent/interior/wrong-type references, duplicate addresses, linked ID, invalid names/unit scales and SDNA errors with exact fatal block context in `blendScene.ir` | Phase 2 |
+| native Collection/list traversal, object decoding and graph validation | — | | Phase 2 |
 | parent-relative transforms, topology validation, normals and UV decoding | — | | Phase 2 |
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
@@ -161,3 +164,12 @@ Blender-written source-field and end-to-end evidence under the selected
 [unit policy](../design/STAGE_CONTRACT.md#61-scene-units); NAME-O1 remains open
 in its owning design document. No helper performs native decoding or USD
 authoring.
+
+The separate [saved-scene selection boundary](../design/DESIGN_POLICY.md#522-saved-scene-selection-boundary)
+copies prefix-stripped raw Scene names, header versions and positive finite
+source unit scales. It selects through `FileGlobal.curscene`, never a first-Scene
+fallback, and rejects linked active scenes without external-file access. It
+does not populate objects/meshes, traverse collections or establish native-to-USD
+unit equivalence. Its `blockIndex` refers to the caller's same ordered records.
+Real-file selection evidence remains 64-bit little-endian; other layouts have
+synthetic evidence only. The importer and inspection tool remain unchanged.

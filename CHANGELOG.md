@@ -8,6 +8,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Native saved-scene selection in `blendScene`, using `FileGlobal.curscene`,
+    exact saved-address resolution and SDNA, with owning source name/version/unit
+    metadata and contextual fatal diagnostics for missing, invalid or linked
+    active scenes. Real 4.5.13/5.2.2 corpus and four synthetic layouts prove
+    selection without a first-Scene or library fallback. Standalone and composed
+    packages declare the reader dependency and preserve forbidden-edge gates.
+    No Collection walk, object/mesh decoding, populated Scene IR or importer
+    geometry integration is added.
 - Borrowed SDNA block/member/array views, saved-pointer reads and explicitly
     typed integer/IEEE floating-point reads, with checked ranges, element
     counts and contextual fatal diagnostics. Regressions cover both pointer

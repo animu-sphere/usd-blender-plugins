@@ -172,8 +172,11 @@ ost library test libs/blendScene --target cy2026 --profile usd
 ```
 
 The standalone library exports `blendScene::blendScene` and installs its
-headers and CMake package. It has no link dependencies. The reader-only root
-build also builds and tests it before any OpenUSD resolution.
+headers and CMake package. Its descriptor declares the `blendFile` prerequisite,
+which `ost` builds and installs before resolving the standalone package.
+The composed root reuses the in-tree reader target, including in the reader-only
+build before any OpenUSD resolution. Plain standalone CMake requires installed
+`blendScene` and `blendFile` package prefixes when consuming the exported target.
 
 `blendScene.ir` checks owning empty/parented/shared-mesh records, identity
 defaults, source metadata, `(x, y, z) -> (x, z, -y)`, asymmetric world-matrix
@@ -189,7 +192,21 @@ dependencies. They reuse the reader's link-test helpers without changing its
 default policy. Metadata setup runs serially to avoid simultaneous root
 reconfiguration when CTest uses parallel workers.
 
-These are synthetic IR tests, not native scene decoding or USD mesh tests.
+The same `blendScene.ir` test selects the saved active Scene through
+`FileGlobal.curscene` in both normal-save corpus files and checks owning source
+name/version/unit metadata. The Scene-only `empty.blend` must fail without an
+implicit fallback. Synthetic two-Scene layouts exercise both pointer widths
+and byte orders, non-first selection, block reordering, output ownership,
+missing/duplicate/wrong globals, null/unresolved/interior/wrong-type references,
+duplicate saved addresses, linked IDs, invalid names and unit scales, and
+propagated SDNA failures. Failures require exact fatal codes and source context.
+The scene link gate allows the reader but rejects all other non-system libraries;
+the reader's default forbidden-edge policy remains unchanged.
+
+Selection follows the
+[saved-scene boundary](../design/DESIGN_POLICY.md#522-saved-scene-selection-boundary),
+not a Collection walk, object/mesh decoder or populated Scene IR. Neither these
+selection tests nor the synthetic IR arithmetic tests author USD geometry.
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines matrix storage and ownership; supported scope is in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
