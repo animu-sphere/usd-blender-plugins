@@ -16,7 +16,7 @@ for upcoming work, use the [current tasks](roadmap/current.md).
 | [reference/](reference/) | Facts about the current tree: what is supported, which diagnostics exist. | [CAPABILITY_MATRIX.md](reference/CAPABILITY_MATRIX.md) · [DIAGNOSTICS.md](reference/DIAGNOSTICS.md) |
 | [roadmap/](roadmap/) | Phase status, release mapping and incomplete tasks. | [README.md](roadmap/README.md) · [current.md](roadmap/current.md) |
 | [contributing/](contributing/) | How to maintain these documents. | [documentation.md](contributing/documentation.md) |
-| [guides/](guides/) | Commands verified against the implementation. | [building.md](guides/building.md) |
+| [guides/](guides/) | Commands verified against the implementation. | [building.md](guides/building.md) · [inspecting.md](guides/inspecting.md) |
 
 `releases/` and `reports/` are created when they have real content
 ([contributing/documentation.md](contributing/documentation.md#category-ownership)).

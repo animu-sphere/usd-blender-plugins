@@ -144,6 +144,9 @@ The plugin pyramid below does not run these reader CTests.
 
 ## Inspection tool
 
+For a complete inspection workflow, output interpretation and deliberately
+failing argument examples, see [Inspecting a .blend file](inspecting.md).
+
 The reader preset also builds `tools/blendInspect/bin/blend_inspect` (`.exe`
 on Windows), without finding OpenUSD. `blendInspect.cli` checks summaries and
 all three detail modes against the complete Blender-written fixtures, errors
