@@ -339,6 +339,48 @@ The SDNA is the only source of struct layout. Readers in `blendScene` ask for
 members by name (`Object.parent`, `Mesh.totvert`, …), and a missing member is
 a version difference handled by the decoder, not a crash.
 
+### 7.1 Schema decoding boundary
+
+`ReadDna(span<const byte> payload, const Header&)` receives exactly one
+uncompressed `DNA1` payload and returns `Result<DnaSchema>`. The caller selects
+the payload from `ReadBlocks` and supplies the file header; the pointer size
+must be 4 or 8 and the byte order must be valid. Payload bytes may be released
+after the call: the result owns its names, types, structures and members.
+The span is the parser's byte boundary. Full-file input and output budgets
+remain the responsibility of `ReadFileBytes` and its caller.
+
+`DnaSchema` retains the `NAME` table, named `DnaType` records with their `TLEN`,
+and `DnaStruct` records in stored order, preserving their SDNA indices.
+`DnaMember` retains the type/name indices, parsed base name, pointer level,
+array dimensions, byte offset and total byte size. `FindStruct(typeName)` and
+`DnaStruct::FindMember(baseName)` return a pointer into the owning schema or
+`nullptr` when absent; callers must not retain that pointer after mutating,
+moving or destroying its owner.
+
+Integer fields use the file byte order. Counts are bounded by remaining bytes
+before allocation or iteration; string tables cannot exceed the 65,536 entries
+addressable by 16-bit member indices. Strings must be nonempty and terminated.
+Sections use four-byte payload-relative alignment, not host alignment.
+Duplicate type names, structure types or member base names are rejected.
+
+Member declarations use an ASCII identifier, optional leading pointer stars
+and positive decimal array dimensions. Parenthesized function pointers such
+as `(*callback)()` and `(*callbacks[2])()` are retained as pointer storage,
+not executable functions. Other decorations are rejected rather than guessed.
+Pointer elements use the file pointer size regardless of the pointee `TLEN`;
+value elements use their type's `TLEN`. Array multiplication is checked for
+overflow. Member offsets are cumulative, including explicitly stored padding
+members; no host ABI padding is inserted. The total must equal the enclosing
+type's `TLEN`. A zero-length structure with no members is valid, including the
+`raw_data` sentinel in the Blender 5 corpus; zero-sized value members are not.
+
+Malformed sections, counts, indices, names, sizes and trailing bytes fail with
+fatal `BLEND_DNA_*` diagnostics. Their byte offsets are relative to the DNA1
+payload; no block index is attached by this payload-only API. Allocation
+failures also return a fatal diagnostic. This boundary does not select or
+require exactly one DNA1 block in a file, validate other blocks' SDNA indices
+or element counts, read member values, build a pointer map or decode a scene.
+
 ## 8. ID graph reconstruction
 
 - The **pointer map** maps every block's old address to the block.

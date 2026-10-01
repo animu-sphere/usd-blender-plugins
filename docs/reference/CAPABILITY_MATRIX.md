@@ -42,7 +42,8 @@ No row says "supported" without a fixture.
 | Zstandard header probe (bounded; not full-file validation) | supported | `blendFile.header`; `corpus/blender-5.2.2/Untitled.blend` | Phase 0 |
 | Zstandard full-container decompression (bytes only; explicit limits) | supported | `corpus/blender-5.2.2/Untitled.blend`; raw frames around `empty.blend` and the 4.5.13 corpus bytes; checksum and RLE vectors in `blendFile.header` | Phase 1 |
 | full-file input, output, ratio and window limits | supported | exact byte/ratio boundaries, high-ratio streams, oversized windows and invalid limits in `blendFile.header` | Phase 1 |
-| SDNA | — | | Phase 1 |
+| SDNA tables, member layouts and name lookup | supported | all structures in `empty.blend` and both real corpus files; synthetic 32/64-bit, little/big-endian schemas, arrays, function pointers and empty structures in `blendFile.header` | Phase 1 |
+| SDNA malformed-input diagnostics | supported | all short payload prefixes, invalid sections/counts/indices/names, duplicate records, size mismatches, overflowing arrays and trailing bytes in `blendFile.header` | Phase 1 |
 | `blend_inspect` | — | | Phase 1 |
 
 Full-stream byte reading validates compression and the decoded header, not
@@ -58,6 +59,14 @@ framing without reading payloads or validating SDNA. The real 4.5.13 corpus
 proves the 64-bit little-endian legacy layout; other legacy layouts still
 have only synthetic evidence. Block enumeration establishes no scene
 compatibility and does not change the importer's header-only path.
+
+`ReadDna` separately decodes one bounded DNA1 payload into an owning schema,
+with member offsets and lookup by base name. Its
+[boundary](../design/BLEND_CONTRACT.md#71-schema-decoding-boundary) does not
+validate other blocks against the schema, reconstruct pointers or read scene
+values. Real-file SDNA evidence is limited to 64-bit little-endian files;
+the other layouts have synthetic evidence only. Blender-version and scene
+compatibility remain unclaimed, and the importer remains header-only.
 
 ## 2. Blender versions
 

@@ -41,6 +41,12 @@ payloads. No format-specific or codec types escape this boundary; its
 [framing contract](../design/BLEND_CONTRACT.md#64-block-enumeration-boundary)
 is separate from SDNA and scene validation.
 
+`ReadDna` consumes a bounded DNA1 payload and its file header, returning an
+owning schema with member layouts and name lookup. It does not resolve block
+references or construct scene data; the
+[schema contract](../design/BLEND_CONTRACT.md#71-schema-decoding-boundary)
+defines this separate syntax boundary.
+
 ### 1.2 Later, only when their responsibility is real
 
 Named now so the boundaries are designed for them; created only when the
