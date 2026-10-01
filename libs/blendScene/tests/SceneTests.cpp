@@ -1,7 +1,10 @@
 #include <blendScene/Scene.h>
 
+#include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
+#include <string_view>
 
 namespace {
 
@@ -9,6 +12,23 @@ void Require(bool condition, const char* message) {
   if (!condition) {
     throw std::runtime_error(message);
   }
+}
+
+bool Near(double left, double right) {
+  return std::abs(left - right) <=
+         1e-12 * (1 + std::abs(left) + std::abs(right));
+}
+
+template <typename Exception, typename Operation>
+void RequireFailure(Operation operation, std::string_view code) {
+  try {
+    operation();
+  } catch (const Exception& error) {
+    Require(std::string_view(error.what()).starts_with(code),
+        "Unit failure has the expected diagnostic code");
+    return;
+  }
+  throw std::runtime_error("Expected unit conversion failure");
 }
 
 blend::Vector3 TransformPoint(const blend::Matrix4& transform,
@@ -86,6 +106,92 @@ void CheckBasis() {
       "Basis rotation preserves normal length");
 }
 
+void CheckUnits() {
+  const blend::Matrix4 parent = {{{2, 3, 5, 7},
+      {11, 13, 17, 19},
+      {23, 29, 31, 37},
+      {0, 0, 0, 1}}};
+  const blend::Matrix4 child = {{{0, -1, 0, 3},
+      {1, 0, 0, 5},
+      {0, 0, -2, 7},
+      {0, 0, 0, 1}}};
+  for (const double scale : {1.0, 0.01, 0.001, 10.0}) {
+    const blend::UnitConversion units(scale);
+    Require(units.MetersPerBlenderUnit() == scale,
+        "Validated source scale is retained as provenance");
+    Require(Near(units.Distance(1 / scale), 1),
+        "Equivalent source distances normalize to one meter");
+    const auto position = units.Position({1 / scale, 2 / scale, 3 / scale});
+    const blend::Vector3 expectedPosition = {1, 3, -2};
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      Require(Near(position[axis], expectedPosition[axis]),
+          "Position normalization applies units and basis once");
+    }
+    const auto convertedParent = units.WorldTransform(parent);
+    const auto basisParent = blend::ToUsdBasis(parent);
+    for (std::size_t row = 0; row < 4; ++row) {
+      for (std::size_t column = 0; column < 4; ++column) {
+        const double expected = row < 3 && column == 3
+                                    ? basisParent[row][column] * scale
+                                    : basisParent[row][column];
+        Require(Near(convertedParent[row][column], expected),
+            "Only transform translation is unit-scaled");
+      }
+    }
+    Require(units.WorldTransform(blend::IdentityMatrix) == blend::IdentityMatrix,
+        "Units do not change identity or dimensionless object scale");
+    const blend::Vector3 local = {41, 43, 47};
+    const auto actualWorld = TransformPoint(convertedParent, units.Position(local));
+    const auto expectedWorld = units.Position(TransformPoint(parent, local));
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      Require(Near(actualWorld[axis], expectedWorld[axis]),
+          "Meter-space mesh points and world transform compose");
+    }
+    const auto actualChild = Multiply(convertedParent, units.WorldTransform(child));
+    const auto expectedChild = units.WorldTransform(Multiply(parent, child));
+    for (std::size_t row = 0; row < 4; ++row) {
+      for (std::size_t column = 0; column < 4; ++column) {
+        Require(Near(actualChild[row][column], expectedChild[row][column]),
+            "Unit normalization preserves parent-child composition");
+      }
+    }
+    const double halfWidth = 0.5 / scale;
+    const auto minimum = units.Position({-halfWidth, -halfWidth, -halfWidth});
+    const auto maximum = units.Position({halfWidth, halfWidth, halfWidth});
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      Require(Near(std::abs(maximum[axis] - minimum[axis]), 1),
+          "Equivalent synthetic cubes normalize to one-meter extents");
+    }
+  }
+  for (const double invalid : {0.0, -0.01,
+           std::numeric_limits<double>::quiet_NaN(),
+           std::numeric_limits<double>::infinity(),
+           -std::numeric_limits<double>::infinity()}) {
+    RequireFailure<std::invalid_argument>(
+        [invalid] { blend::UnitConversion units(invalid); },
+        "BLEND_SCENE_UNIT_SCALE_INVALID:");
+  }
+  const blend::UnitConversion units(10);
+  for (const double invalid : {std::numeric_limits<double>::quiet_NaN(),
+           std::numeric_limits<double>::infinity()}) {
+    RequireFailure<std::invalid_argument>([&] { units.Distance(invalid); },
+        "BLEND_SCENE_UNIT_VALUE_INVALID:");
+    RequireFailure<std::invalid_argument>([&] { units.Position({0, invalid, 0}); },
+        "BLEND_SCENE_UNIT_VALUE_INVALID:");
+    auto transform = blend::IdentityMatrix;
+    transform[2][3] = invalid;
+    RequireFailure<std::invalid_argument>([&] { units.WorldTransform(transform); },
+        "BLEND_SCENE_UNIT_VALUE_INVALID:");
+  }
+  RequireFailure<std::overflow_error>(
+      [&] { units.Distance(std::numeric_limits<double>::max()); },
+      "BLEND_SCENE_UNIT_VALUE_INVALID:");
+  auto projective = blend::IdentityMatrix;
+  projective[3][0] = 1;
+  RequireFailure<std::invalid_argument>([&] { units.WorldTransform(projective); },
+      "BLEND_SCENE_UNIT_TRANSFORM_INVALID:");
+}
+
 void CheckScene() {
   blend::Scene scene;
   Require(scene.objects.empty() && scene.meshes.empty(), "Empty Scene IR");
@@ -94,7 +200,8 @@ void CheckScene() {
   scene.metadata.sourceUnitScale = 0.01;
   scene.meshes.emplace_back();
   scene.meshes[0].sourceName = "SharedMesh";
-  scene.meshes[0].points.push_back(blend::ToUsdBasis(blend::Vector3{1, 2, 3}));
+  const blend::UnitConversion units(scene.metadata.sourceUnitScale);
+  scene.meshes[0].points.push_back(units.Position({100, 200, 300}));
   scene.objects.emplace_back();
   scene.objects[0].sourceName = "Parent";
   scene.objects.emplace_back();
@@ -127,8 +234,9 @@ void CheckScene() {
 int main() {
   try {
     CheckBasis();
+    CheckUnits();
     CheckScene();
-    std::cout << "Scene IR and coordinate basis checks passed\n";
+    std::cout << "Scene IR, coordinate basis and unit checks passed\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

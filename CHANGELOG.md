@@ -8,6 +8,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Validated Scene IR unit conversion for stored distances, positions and
+    affine mesh/empty world translations, with meter normalization before
+    basis rotation and no dimensionless scale changes. Synthetic regressions
+    cover four source scales, equivalent cubes, parent-child composition and
+    invalid/overflow failures. The selected stage policy keeps
+    `metersPerUnit = 1`; Blender-written equivalence and native scene/USD
+    integration remain required before STAGE-O1 is frozen.
 - The OpenUSD-independent `blendScene` static library, with an owning
     object/mesh Scene IR, parent and shared-mesh indices, source metadata and
     point/world-matrix basis conversion. Synthetic tests cover ownership,

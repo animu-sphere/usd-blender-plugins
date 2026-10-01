@@ -107,6 +107,9 @@ Fixture paths are relative to
 | `BLEND_POINTER_UNRESOLVED` | Warning | yes | an exact nonzero old address has no reference-target block; resolution returns null | absent and interior keys in `blendFile.header` |
 | `BLEND_POINTER_LIMIT` | Fatal | no | the input block count exceeds unsigned 32-bit indices | implemented; excessive allocation/count unverified |
 | `BLEND_POINTER_ALLOCATION` | Fatal | no | pointer entries or the unresolved diagnostic cannot be allocated | implemented; allocation failure unverified |
+| `BLEND_SCENE_UNIT_SCALE_INVALID` | Fatal | no | the source unit scale is zero, negative or nonfinite | `UnitConversion` constructor cases in `blendScene.ir` |
+| `BLEND_SCENE_UNIT_VALUE_INVALID` | Fatal | no | a source distance is nonfinite or its conversion to meters overflows | scalar, position and translation cases in `blendScene.ir` |
+| `BLEND_SCENE_UNIT_TRANSFORM_INVALID` | Fatal | no | unit conversion receives a non-affine mesh/empty world matrix | projective matrix in `blendScene.ir` |
 | `BLEND_HEADER_OPEN_FAILED` | Fatal | no | ArResolver cannot open the resolved asset | implemented; fixture unverified |
 | `BLEND_USD_AUTHORING_FAILED` | Fatal | no | the temporary stage cannot be created | implemented; fixture unverified |
 | `BLEND_USD_READ_FAILED` | Fatal | no | a C++ exception reaches the importer boundary | implemented; fixture unverified |
@@ -123,6 +126,14 @@ the [schema boundary](../design/BLEND_CONTRACT.md#71-schema-decoding-boundary).
 offset and block index. Pointer-map duplicate errors identify the later
 reference-target block; `Resolve` warnings have no referring-block context.
 See the [raw boundaries](../design/BLEND_CONTRACT.md#81-pointer-map-boundary).
+
+The standalone `UnitConversion` helper throws `std::invalid_argument` for
+invalid input or `std::overflow_error` for meter-conversion overflow, with the
+stable code followed by a colon at the start of `what()`. It does not return a
+`Diagnostic` record or know source offsets/datablocks. A future scene decoder
+must translate these failures into fatal, non-recoverable diagnostics and
+attach Scene/object context, with no fallback geometry. These failures are
+library-tested, not yet reachable through the header-only importer.
 
 The tool prints codes and severity to stderr and preserves available block
 and datablock context. DNA1-relative offsets are translated to decoded file

@@ -155,8 +155,64 @@ Object matrices convert by their data's local convention:
 Local transforms are recomputed from the converted world matrices of the prim
 and its authored parent, so both rows compose under any parent.
 
-One Blender unit is one meter, and `metersPerUnit = 1`. Whether the scene's
-unit scale is applied is STAGE-O1.
+### 6.1 Scene units
+
+The selected unit policy is physical-scale normalization: `blendFile` reads
+stored values unchanged, `blendScene` converts distances to meters and the USD
+basis, and `usdBlendFileFormat` authors those values unchanged with
+`metersPerUnit = 1`. Unit conversion happens exactly once, before values enter
+the Scene IR; neither the output layer metadata nor a root Xform applies the
+source scale again.
+
+The conversion factor is `S = Scene.unit_settings.scale_length` from the
+selected active Scene, not from an arbitrary Scene datablock or host
+preferences. A distance becomes `value * S`; a position follows the canonical
+order `C * (S * position)`. For an affine mesh/empty world matrix, multiply only
+the source translation by `S`, then apply the basis conjugation above. Rotation,
+dimensionless object scale, shear and negative scales are not unit-scaled.
+Convert world matrices first, then reconstruct parent-relative transforms
+from those converted matrices. Mesh points and transform translations must
+use the same conversion factor.
+
+| Quantity | Unit treatment |
+| --- | --- |
+| mesh/curve/point positions, physical radii and widths | meters before entering the IR |
+| object, bone, rest-pose and animated translations | meters before entering the IR |
+| light radius and area dimensions | meters; intensity remains a separate STAGE-O6 decision |
+| camera clipping/focus distances and scene-space orthographic size | distance normalization; property mapping must be fixture-backed |
+| camera focal length and aperture | separate optical-unit mapping, STAGE-O7; never blindly multiply by `S` |
+| normals and directions | basis rotation only, no unit scaling |
+| object scale, angles, UVs, colors, indices, weights and normalized parameters | no unit scaling |
+| future physics quantities | explicit dimensional mapping: length `S`, area `S^2`, volume `S^3`; mass/force/density are not blanket-scaled |
+
+`extent` is computed from already-normalized meter-space mesh points. The
+factor is scene metadata, not an animation channel. Unit-system labels such
+as metric, imperial or none describe source presentation: they must not add
+hard-coded factors on top of `scale_length`.
+
+The original `sourceUnitScale` is provenance only. Future `/Asset` customData
+uses `blend:sourceUnitScale` (`double`) and `blend:sourceUnitSystem` (`string`)
+once scene decoding and the source-system mapping are fixture-backed. These
+are not yet required or authored by the header-only importer, and do not
+change the interpretation of IR or USD geometry.
+
+The scale must be finite and strictly positive. Zero, negative, NaN or infinite
+values fail scene decoding with `BLEND_SCENE_UNIT_SCALE_INVALID`, with no
+guessed `1.0` fallback. Nonfinite source distances and meter-conversion
+overflow also fail, rather than publishing invalid geometry. The current
+[IR helpers](DESIGN_POLICY.md#521-scene-ir-foundation) enforce this boundary;
+they do not read a saved Scene or author USD.
+
+STAGE-O1 remains open for source-field and end-to-end evidence, not for a
+choice between preserving Blender numbers and meter normalization. Before
+freezing it, Blender-written `unit-1m.blend`, `unit-1cm.blend`,
+`unit-1mm.blend` and `unit-10m.blend` must cover scales `1`, `0.01`, `0.001`
+and `10`, each with a cube, a translated object and a parent/child pair.
+Equivalent physical cubes (1, 100, 1000 and 0.1 Blender units wide) must
+produce matching meter-space points and world dimensions, with every authored
+stage still declaring `metersPerUnit = 1`. Camera/light evidence belongs to
+their later schema mappings; synthetic arithmetic alone does not prove saved
+Blender field semantics or authored-stage support.
 
 ## 7. Objects and transforms
 
@@ -189,7 +245,7 @@ each object; sharing it is STAGE-O2.
 
 | Blender | USD | Notes |
 | --- | --- | --- |
-| vertex positions | `points` | in the USD basis (§6) |
+| vertex positions | `points` | meters in the USD basis (§6) |
 | face sizes | `faceVertexCounts` | |
 | face-corner vertex indices | `faceVertexIndices` | Blender's winding; `orientation = "rightHanded"` |
 | — | `subdivisionScheme = "none"` | Blender meshes are polygonal; a Subdivision Surface modifier is not applied |
@@ -337,7 +393,7 @@ schedules them.
 
 | Id | Question | Proposed answer | Blocks |
 | --- | --- | --- | --- |
-| STAGE-O1 | Is the scene's unit scale (`unit_settings.scale_length`) applied to values? | No: one Blender unit is one meter; the scale is recorded in `/Asset` customData. Revisit with a consumer. | Phase 2 |
+| STAGE-O1 | Fixture-backed semantics of the active scene's `unit_settings.scale_length`. | Apply once in `blendScene`: distances and translations become meters, dimensionless values do not scale, and USD keeps `metersPerUnit = 1`. Freeze after the Blender-written equivalence tests in §6.1. | Phase 2 |
 | STAGE-O2 | How is a mesh shared by several objects authored? | Phase 2 duplicates it per object. Later: one prototype and references or instancing, once a fixture shows the cost. | nothing (non-blocking) |
 | STAGE-O3 | Do color attributes become `primvars:displayColor`? | The active render color attribute also becomes `displayColor`; every color attribute is `primvars:<name>`. | Phase 3 |
 | STAGE-O4 | Where does an object go whose parent is in another scope (a camera parented to a mesh)? | In its own scope, with the transform relative to `/Asset`, and the source parent recorded in customData. Animated parents then need baked samples. | Phase 4 |

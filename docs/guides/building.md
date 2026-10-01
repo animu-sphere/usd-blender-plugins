@@ -164,7 +164,12 @@ build also builds and tests it before any OpenUSD resolution.
 `blendScene.ir` checks owning empty/parented/shared-mesh records, identity
 defaults, source metadata, `(x, y, z) -> (x, z, -y)`, asymmetric world-matrix
 conjugation, parent-child composition and preserved right-handed winding and
-direction lengths. Four boundary CTests scan forbidden includes, regenerate
+direction lengths. Unit regressions cover scales `1`, `0.01`, `0.001` and
+`10`, equivalent synthetic one-meter cubes, translation-only matrix scaling,
+parent-child composition, invalid scale/distance/affine inputs and conversion
+overflow. They do not prove Blender-written unit-field semantics; the
+[unit policy](../design/STAGE_CONTRACT.md#61-scene-units) defines that separate
+fixture requirement. Four boundary CTests scan forbidden includes, regenerate
 CMake File API metadata, inspect the generated link line and reject forbidden
 dependencies. They reuse the reader's link-test helpers without changing its
 default policy. Metadata setup runs serially to avoid simultaneous root

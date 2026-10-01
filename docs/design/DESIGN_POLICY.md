@@ -263,7 +263,8 @@ differences, reconstructs the ID graph, and applies **the single
 Blender-to-USD coordinate and unit conversion**
 ([STAGE_CONTRACT.md §6](STAGE_CONTRACT.md#6-coordinate-conversion)), and owns
 identifier generation ([NAMING_POLICY.md](NAMING_POLICY.md)). After decoding
-every value is in the USD basis; nothing downstream flips an axis.
+geometric values are in the USD basis and distances are meters; nothing
+downstream flips an axis or applies the source unit scale again.
 
 The Scene IR is the most important abstraction in the project: it keeps
 Blender binary details and USD schema details from ever meeting.
@@ -300,16 +301,36 @@ to identity. Objects carry world matrices in the USD basis; authoring must
 derive parent-relative matrices and transpose for USD's row-vector convention,
 not reinterpret the stored elements as an OpenUSD matrix.
 
-`ToUsdBasis(Vector3)` performs `(x, y, z) -> (x, z, -y)` for positions and
-directions. `ToUsdBasis(Matrix4)` performs `C * W * inverse(C)` for mesh and
-empty objects. These helpers preserve lengths and right-handed winding and
-compose consistently; callers apply them once while constructing the IR.
-They do not implement the separate camera/light matrix convention, normalize
-normals, derive local transforms, or decide STAGE-O1. `sourceUnitScale` retains
-source metadata independently of this basis rotation.
+`ToUsdBasis(Vector3)` performs `(x, y, z) -> (x, z, -y)` without unit scaling.
+Use it for directions and normals; it does not normalize normal lengths.
+`ToUsdBasis(Matrix4)` performs `C * W * inverse(C)` without unit scaling.
+These low-level basis helpers preserve lengths and right-handed winding.
 
-Meshes carry points, face counts, corner vertex indices, face-varying corner
-normals, and named indexed UV maps with an active-render flag. The initial IR
+`UnitConversion` is explicitly constructed from a finite, strictly positive
+source `scale_length`, with no default or corrupt-value fallback. Its private
+factor is exposed read-only by `MetersPerBlenderUnit()`. `Distance` converts a
+stored distance to meters. `Position` calls `Distance` per component, then
+applies `ToUsdBasis`. `WorldTransform` accepts an affine mesh/empty matrix,
+scales only its translation, then applies the basis conjugation. Rotation,
+shear and dimensionless object scale are preserved apart from basis rotation.
+Create one conversion for the selected Scene and pass it to semantic decoders;
+these APIs accept source-space values, not values already in the IR. Do not
+call them on normalized values during USD authoring.
+
+Invalid scale, nonfinite distance, non-affine transform and conversion overflow
+throw standard C++ exceptions prefixed by stable `BLEND_SCENE_UNIT_*` codes
+([diagnostics](../reference/DIAGNOSTICS.md#3-implemented-codes)). A future native
+decoder must translate them into fatal scene diagnostics with source context
+and publish no affected Scene. The helper validates unit-specific inputs, not
+all matrix or mesh data. It does not implement the separate camera/light
+matrix convention, derive local transforms, select a saved Scene or resolve
+STAGE-O1's Blender-written evidence requirement. `sourceUnitScale` retains
+source provenance; it never changes the downstream interpretation of IR.
+
+Meshes carry meter-space points, face counts, corner vertex indices,
+face-varying corner normals, and named indexed UV maps with an active-render
+flag. Object world translations are also meters. Normals, UVs and topology
+indices are not unit-scaled. The initial IR
 is a value container, not a validator: decoders must validate references,
 cycles, topology and array sizes before publishing a Scene. This boundary does
 not introduce a native `Decode` or backend implementation. Evidence belongs in

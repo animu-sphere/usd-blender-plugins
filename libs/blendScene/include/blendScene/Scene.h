@@ -58,4 +58,16 @@ struct Scene {
 Vector3 ToUsdBasis(const Vector3& value);
 Matrix4 ToUsdBasis(const Matrix4& worldTransform);
 
+class UnitConversion {
+public:
+  explicit UnitConversion(double metersPerBlenderUnit);
+
+  double MetersPerBlenderUnit() const;
+  double Distance(double value) const;
+  Vector3 Position(const Vector3& value) const;
+  Matrix4 WorldTransform(const Matrix4& value) const;
+
+private:
+  double metersPerBlenderUnit_;
+};
 }
