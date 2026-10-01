@@ -31,8 +31,8 @@ usd:
   # Where this bundle's plugInfo.json lives, relative to the bundle root.
   plug_info: plugin/resources/usdBlendFileFormat/plugInfo.json
 tests:
-  smoke: [tests/fixtures/header_only.blend]
-  roundtrip: [tests/fixtures/header_only.blend]
+  smoke: [tests/fixtures/empty.blend, tests/fixtures/header_only.blend]
+  roundtrip: [tests/fixtures/header_only.blend, tests/fixtures/empty.blend]
   negative:
     - tests/fixtures/invalid.blend
     - tests/fixtures/truncated.blend

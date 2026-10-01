@@ -21,8 +21,12 @@ All notable changes to this project are recorded here. The format follows
     with container-version/header-size metadata and regression tests for the
     real corpus file, truncation, corrupt streams, frame splits and limits.
 - The missing upstream Zstandard 1.5.7 error header required by its public API.
-- A verified Windows build guide. Blender-written fixtures, container decoding
-    and Windows/Linux CI remain unfinished.
+- A Blender 5.2.2 LTS empty-scene fixture and generator, with non-destructive
+    Blender content validation, real-file stage contract tests, and L3-L5
+    verification against a second golden. Byte-identical Blender regeneration
+    remains unresolved.
+- A verified Windows build guide. Container decoding and Windows/Linux CI
+    remain unfinished.
 - The documentation baseline: the design policy, the stage, blend, material,
   naming and backend contracts, the workspace contract, external dependencies,
   the capability matrix and diagnostics reference, the roadmap, and the

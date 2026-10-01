@@ -63,13 +63,15 @@ The manifest declares the `blendFile` edge; `ost` builds and installs the
 library into its workspace prefix before configuring the standalone bundle.
 L0-L5 report 12 passes, zero failures; four checks are skipped because there
 are no extra runtime paths or Python ABI declaration and C++ ABI is inherited.
-The four stage tests assert hierarchy, metadata, diagnostic codes, repeat-read
-determinism and contract-version preservation through a reference.
+The five stage tests assert hierarchy, metadata, diagnostic codes, repeat-read
+determinism and contract-version preservation through a reference. Both the
+synthetic header and Blender-written empty scene exercise the stage contract.
 
-The six fixtures are synthetic legacy headers, not valid complete Blender
-scenes. The current parser deliberately stops after the header. L5 compares
-the flattened minimal stage against a golden; the generated source comment
-has its path removed by `ost` normalization. USDA files must use LF endings.
+Six fixtures are synthetic legacy headers; `empty.blend` is a complete,
+uncompressed file written by Blender 5.2.2 LTS. The current parser deliberately
+stops after the header. L3/L4 use the real fixture; L5 compares both flattened
+minimal stages against their goldens. The generated source comment has its
+path removed by `ost` normalization. USDA files must use LF endings.
 
 ## Plain CMake with the installed SDK
 
@@ -95,5 +97,23 @@ the expanded five-test suite has not been rerun in this mode.
 ./tests/fixtures/generate.ps1 -Check
 ```
 
-All six fixture byte arrays match the generator. A Blender-written
-`empty.blend` and its generator remain Phase 0 work.
+All six synthetic fixture byte arrays match the generator.
+
+The Blender fixture generator requires Blender 5.2.2 LTS (verified build
+`d13f752e3b9c`). On the verified Windows installation:
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation/Blender 5.2/blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests/fixtures/generate_blender.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests/fixtures/generate_blender.py -- --check
+```
+
+Generation writes `plugins/usdBlendFileFormat/tests/fixtures/empty.blend`, then
+reopens it in Blender to verify an empty scene with unit scale 1. `--check`
+validates the committed file without modifying it. `--output <path.blend>`
+selects a different destination for either mode.
+
+Two separate Blender runs produced 487,593-byte files with different SHA256
+values. Scene-content validation and deterministic USD output pass, but
+byte-identical Blender regeneration has not been achieved; task 0.8 remains
+in progress. No Blender 4.5 fixture or Linux run is claimed.
