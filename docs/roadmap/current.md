@@ -12,7 +12,6 @@ minimal `/Asset` stage.
 
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
-| 0.1 | Finish repository policy files: `LICENSE` (Apache-2.0), `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md` | the files exist; version, changelog, README, `.gitattributes` and root `.clang-format` already exist | 🚧 |
 | 0.5 | Finish `openstrata.ci.yaml` | the root CMake, presets, modules and workspace manifest already build through plain CMake and `ost`; the CI matrix exists | 🚧 |
 | 0.8 | Add the Blender fixture generator for `empty.blend` | generator and non-destructive Blender content check exist; separate-process saves differ in bytes, so byte-identical regeneration remains unresolved | 🚧 |
 | 0.9 | CI on Windows and Linux; `ost plugin build`, `doctor`, `test` L0-L5 | local Windows tests pass; CI is green on both | ⬜ |

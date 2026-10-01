@@ -8,6 +8,8 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Root Apache-2.0 license, contribution guidelines, security reporting policy
+    and Code of Conduct, linked from the repository and documentation indexes.
 - The `usdBlendFileFormat` bundle from OpenStrata's `usd-fileformat-cpp`
     template, pinned to OpenUSD 26.08, with ArResolver-backed header validation
     and the minimal `/Asset` stage, contract version 1 and kind `component`.
