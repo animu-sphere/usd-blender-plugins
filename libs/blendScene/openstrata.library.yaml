@@ -1,0 +1,7 @@
+schema: openstrata.library/v1alpha1
+library:
+  id: blendScene
+  version: 0.1.0
+cmake:
+  package: blendScene
+  target: blendScene::blendScene

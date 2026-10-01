@@ -8,6 +8,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- The OpenUSD-independent `blendScene` static library, with an owning
+    object/mesh Scene IR, parent and shared-mesh indices, source metadata and
+    point/world-matrix basis conversion. Synthetic tests cover ownership,
+    asymmetric transforms, parent-child composition and right-handed winding;
+    standalone/composed builds install its CMake package and enforce include
+    and generated-link boundaries through shared reader test helpers. This
+    adds no native scene decoder or USD geometry to the header-only importer.
 - Reproducible compression measurements for the generated empty scene and
     both real corpus files, with pinned stored/decoded sizes and minimum
     integer-ratio/window allowances. Reader regressions require identical

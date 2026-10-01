@@ -31,7 +31,7 @@ Completion does not imply that the planned release has been tagged.
 | --- | --- | --- | --- |
 | 0 | workspace skeleton, minimal file format | ✅ | v0.1.0 (planned) |
 | 1 | container and SDNA, `blend_inspect` | 🚧 | v0.2.0 (planned) |
-| 2 | objects and meshes | ⬜ | v0.3.0 (planned) |
+| 2 | objects and meshes | 🚧 | v0.3.0 (planned) |
 | 3 | materials and images | ⬜ | v0.4.0 (planned) |
 | 4 | cameras, lights and collections | ⬜ | v0.5.0 (planned) |
 | 5 | object animation | ⬜ | v0.6.0 (planned) |
