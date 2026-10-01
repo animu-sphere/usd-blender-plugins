@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <limits>
 #include <memory>
 #include <new>
@@ -422,6 +423,171 @@ Result<DnaSchema> ReadDna(std::span<const std::byte> payload, const Header& head
   } catch (const std::length_error&) {
     return Result<DnaSchema>(Fatal("BLEND_DNA_ALLOCATION", "SDNA tables exceed addressable memory", 0));
   }
+}
+
+DnaValueView::DnaValueView(std::span<const std::byte> bytes, const DnaSchema& schema, const Header& header,
+    std::uint16_t typeIndex, std::uint32_t pointerLevel, std::span<const std::uint64_t> dimensions,
+    std::uint64_t offset, std::uint32_t blockIndex)
+    : bytes_(bytes), schema_(&schema), header_(header), typeIndex_(typeIndex), pointerLevel_(pointerLevel),
+      dimensions_(dimensions), offset_(offset), blockIndex_(blockIndex) {
+}
+
+Diagnostic DnaValueView::Error(const char* code, const char* message) const {
+  auto diagnostic = Fatal(code, message, offset_);
+  diagnostic.blockIndex = blockIndex_;
+  return diagnostic;
+}
+
+const DnaType& DnaValueView::Type() const {
+  return schema_->types[typeIndex_];
+}
+
+std::span<const std::byte> DnaValueView::Bytes() const {
+  return bytes_;
+}
+
+std::uint32_t DnaValueView::PointerLevel() const {
+  return pointerLevel_;
+}
+
+std::span<const std::uint64_t> DnaValueView::ArrayDimensions() const {
+  return dimensions_;
+}
+
+Result<DnaValueView> DnaValueView::Member(std::string_view name) const {
+  if (pointerLevel_ != 0 || !dimensions_.empty()) {
+    return Result<DnaValueView>(Error("BLEND_DNA_MEMBER", "Member access requires a scalar embedded structure"));
+  }
+  const auto* structure = schema_->FindStruct(Type().name);
+  const auto* member = structure ? structure->FindMember(name) : nullptr;
+  if (!member) {
+    return Result<DnaValueView>(Error("BLEND_DNA_MEMBER", "SDNA structure member was not found"));
+  }
+  if (member->typeIndex >= schema_->types.size()) {
+    return Result<DnaValueView>(Error("BLEND_DNA_INDEX", "SDNA member type index is out of range"));
+  }
+  std::uint64_t size = member->pointerLevel == 0 ? schema_->types[member->typeIndex].length : header_.pointerSize;
+  for (const auto dimension : member->arrayDimensions) {
+    if (dimension == 0 || size == 0 || dimension > std::numeric_limits<std::uint64_t>::max() / size) {
+      return Result<DnaValueView>(Error("BLEND_DNA_SIZE", "SDNA member dimensions are invalid"));
+    }
+    size *= dimension;
+  }
+  if (size == 0 || size != member->size || member->offset > bytes_.size() || size > bytes_.size() - member->offset) {
+    return Result<DnaValueView>(Error("BLEND_DNA_SIZE", "SDNA member does not fit its structure"));
+  }
+  return Result<DnaValueView>(DnaValueView(bytes_.subspan(static_cast<std::size_t>(member->offset),
+                                               static_cast<std::size_t>(size)),
+      *schema_, header_, member->typeIndex, member->pointerLevel,
+      member->arrayDimensions, offset_ + member->offset, blockIndex_));
+}
+
+Result<DnaValueView> DnaValueView::Element(std::uint64_t index) const {
+  if (dimensions_.empty() || index >= dimensions_.front()) {
+    return Result<DnaValueView>(Error("BLEND_DNA_INDEX", "SDNA array element index is out of range"));
+  }
+  if (bytes_.size() % dimensions_.front() != 0) {
+    return Result<DnaValueView>(Error("BLEND_DNA_SIZE", "SDNA array dimensions do not fit the value"));
+  }
+  const auto size = bytes_.size() / dimensions_.front();
+  const auto displacement = static_cast<std::size_t>(index * size);
+  return Result<DnaValueView>(DnaValueView(bytes_.subspan(displacement, static_cast<std::size_t>(size)),
+      *schema_, header_, typeIndex_, pointerLevel_, dimensions_.subspan(1), offset_ + displacement, blockIndex_));
+}
+
+Result<std::uint64_t> DnaValueView::Pointer() const {
+  if (pointerLevel_ == 0 || !dimensions_.empty() || bytes_.size() != header_.pointerSize) {
+    return Result<std::uint64_t>(Error("BLEND_DNA_VALUE", "Pointer access requires one saved pointer"));
+  }
+  return Result<std::uint64_t>(IntegerBits());
+}
+
+std::uint64_t DnaValueView::IntegerBits() const {
+  std::uint64_t value = 0;
+  for (std::size_t index = 0; index < bytes_.size(); ++index) {
+    const auto shift = header_.byteOrder == ByteOrder::Little ? index : bytes_.size() - 1 - index;
+    value |= std::uint64_t(std::to_integer<unsigned char>(bytes_[index])) << (shift * 8);
+  }
+  return value;
+}
+
+Result<std::int64_t> DnaValueView::SignedInteger() const {
+  const auto& type = Type();
+  const bool supported = ((type.name == "int8_t" || type.name == "signed char") && type.length == 1) ||
+                         (type.name == "short" && type.length == 2) || (type.name == "int" && type.length == 4) ||
+                         (type.name == "long" && (type.length == 4 || type.length == 8)) ||
+                         (type.name == "int64_t" && type.length == 8);
+  if (pointerLevel_ != 0 || !dimensions_.empty() || !supported || bytes_.size() != type.length) {
+    return Result<std::int64_t>(Error("BLEND_DNA_VALUE", "Signed integer access requires a supported scalar type and width"));
+  }
+  auto value = IntegerBits();
+  const auto bitCount = bytes_.size() * 8;
+  if (bitCount < 64 && (value & (std::uint64_t{1} << (bitCount - 1))) != 0) {
+    value |= std::numeric_limits<std::uint64_t>::max() << bitCount;
+  }
+  return Result<std::int64_t>(std::bit_cast<std::int64_t>(value));
+}
+
+Result<std::uint64_t> DnaValueView::UnsignedInteger() const {
+  const auto& type = Type();
+  const bool supported = ((type.name == "uint8_t" || type.name == "uchar" || type.name == "unsigned char") && type.length == 1) ||
+                         (type.name == "ushort" && type.length == 2) || (type.name == "uint" && type.length == 4) ||
+                         (type.name == "ulong" && (type.length == 4 || type.length == 8)) ||
+                         (type.name == "uint64_t" && type.length == 8);
+  if (pointerLevel_ != 0 || !dimensions_.empty() || !supported || bytes_.size() != type.length) {
+    return Result<std::uint64_t>(Error("BLEND_DNA_VALUE", "Unsigned integer access requires a supported scalar type and width"));
+  }
+  return Result<std::uint64_t>(IntegerBits());
+}
+
+Result<double> DnaValueView::FloatingPoint() const {
+  static_assert(sizeof(float) == 4 && sizeof(double) == 8 && std::numeric_limits<float>::is_iec559 &&
+                std::numeric_limits<double>::is_iec559);
+  const auto& type = Type();
+  if (pointerLevel_ == 0 && dimensions_.empty() && bytes_.size() == type.length) {
+    if (type.name == "float" && type.length == 4) {
+      return Result<double>(static_cast<double>(std::bit_cast<float>(static_cast<std::uint32_t>(IntegerBits()))));
+    }
+    if (type.name == "double" && type.length == 8) {
+      return Result<double>(std::bit_cast<double>(IntegerBits()));
+    }
+  }
+  return Result<double>(Error("BLEND_DNA_VALUE", "Floating-point access requires an IEEE binary32 or binary64 scalar"));
+}
+
+Result<DnaValueView> ViewDnaBlock(std::span<const std::byte> bytes,
+    std::span<const BlendBlock> blocks, const DnaSchema& schema, const Header& header,
+    std::uint32_t blockIndex, std::uint64_t elementIndex) {
+  const auto fail = [&](const char* code, const char* message) {
+    auto diagnostic = Fatal(code, message, blockIndex < blocks.size() ? blocks[blockIndex].offset : 0);
+    diagnostic.blockIndex = blockIndex;
+    return Result<DnaValueView>(std::move(diagnostic));
+  };
+  if ((header.pointerSize != 4 && header.pointerSize != 8) ||
+      (header.byteOrder != ByteOrder::Little && header.byteOrder != ByteOrder::Big)) {
+    return fail("BLEND_DNA_LAYOUT", "Invalid SDNA pointer size or byte order");
+  }
+  if (blockIndex >= blocks.size()) {
+    return fail("BLEND_DNA_INDEX", "SDNA block index is out of range");
+  }
+  const auto& block = blocks[blockIndex];
+  if (block.offset > bytes.size() || block.length > bytes.size() - block.offset) {
+    return fail("BLEND_BLOCK_SIZE", "SDNA block payload exceeds the supplied bytes");
+  }
+  if (block.sdnaIndex >= schema.structs.size() || schema.structs[block.sdnaIndex].typeIndex >= schema.types.size()) {
+    return fail("BLEND_DNA_INDEX", "SDNA block structure index is out of range");
+  }
+  const auto typeIndex = schema.structs[block.sdnaIndex].typeIndex;
+  const auto size = schema.types[typeIndex].length;
+  if (size == 0 || block.length % size != 0 || block.count != block.length / size) {
+    return fail("BLEND_DNA_SIZE", "SDNA block count and structure length do not match the payload");
+  }
+  if (elementIndex >= block.count) {
+    return fail("BLEND_DNA_INDEX", "SDNA block element index is out of range");
+  }
+  const auto offset = block.offset + elementIndex * size;
+  return Result<DnaValueView>(DnaValueView(bytes.subspan(static_cast<std::size_t>(offset), size), schema,
+      header, typeIndex, 0, {}, offset, blockIndex));
 }
 
 Result<std::vector<RawDatablock>> ListDatablocks(std::span<const std::byte> bytes,

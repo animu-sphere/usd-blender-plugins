@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <set>
@@ -451,6 +453,38 @@ void CheckFileFixture(const std::filesystem::path& path, bool compressed, const 
     }
     Require(schema.FindStruct("Scene") != nullptr && schema.FindStruct("Object") != nullptr,
         "Real-file SDNA is missing core structures");
+    std::size_t globals = 0;
+    for (std::size_t index = 0; index < blocks.GetValue().size(); ++index) {
+      if (blocks.GetValue()[index].code != std::array{'G', 'L', 'O', 'B'}) {
+        continue;
+      }
+      ++globals;
+      const auto global = blend::ViewDnaBlock(bytes, blocks.GetValue(), schema, header.GetValue(), static_cast<std::uint32_t>(index));
+      Require(global.HasValue() && global.GetValue().Type().name == "FileGlobal", "FileGlobal view rejected");
+      const auto current = global.GetValue().Member("curscene");
+      Require(current.HasValue() && current.GetValue().Type().name == "Scene" && current.GetValue().PointerLevel() == 1,
+          "Current Scene member rejected");
+      const auto address = current.GetValue().Pointer();
+      Require(address.HasValue(), "Current Scene pointer rejected");
+      if (path.filename() == "empty.blend") {
+        Require(address.GetValue() == 0, "Scene-only library must preserve its null current Scene pointer");
+        const auto resolved = pointers.GetValue().Resolve(address.GetValue());
+        Require(resolved.HasValue() && !resolved.GetValue() && resolved.Diagnostics().empty(), "Null Scene pointer must not warn");
+        continue;
+      }
+      Require(address.GetValue() != 0, "Saved file has no current Scene pointer");
+      const auto resolved = pointers.GetValue().Resolve(address.GetValue());
+      Require(resolved.HasValue() && resolved.GetValue() && resolved.Diagnostics().empty(), "Current Scene did not resolve");
+      const auto scene = blend::ViewDnaBlock(bytes, blocks.GetValue(), schema, header.GetValue(), *resolved.GetValue());
+      Require(scene.HasValue() && scene.GetValue().Type().name == "Scene", "Current Scene target has the wrong type");
+      const auto id = scene.GetValue().Member("id");
+      Require(id.HasValue() && id.GetValue().Type().name == "ID", "Scene embedded ID rejected");
+      const auto name = id.GetValue().Member("name");
+      Require(name.HasValue() && name.GetValue().Bytes().size() >= 8 &&
+                  std::string_view(reinterpret_cast<const char*>(name.GetValue().Bytes().data()), 8) == std::string_view("SCScene\0", 8),
+          "Current Scene name differs");
+    }
+    Require(globals == 1, "Fixture must contain exactly one FileGlobal");
     const auto datablocks = blend::ListDatablocks(bytes, blocks.GetValue(), schema);
     if (!datablocks.HasValue()) {
       std::cerr << datablocks.GetError().code << ": " << datablocks.GetError().message << '\n';
@@ -492,6 +526,17 @@ void CheckFileFixture(const std::filesystem::path& path, bool compressed, const 
       Require(value.oldAddress == candidate.oldAddress && !value.typeName.empty() && value.name.size() >= 2 &&
                   value.typeName == schema.types[schema.structs[candidate.sdnaIndex].typeIndex].name,
           "Real-file raw datablock identity differs");
+      if (value.typeName == "Scene") {
+        const auto scene = blend::ViewDnaBlock(bytes, blocks.GetValue(), schema, header.GetValue(), value.blockIndex);
+        Require(scene.HasValue(), "Scene value view rejected");
+        const auto units = scene.GetValue().Member("unit");
+        Require(units.HasValue() && units.GetValue().Type().name == "UnitSettings", "Scene unit settings rejected");
+        const auto scale = units.GetValue().Member("scale_length");
+        Require(scale.HasValue() && scale.GetValue().FloatingPoint().HasValue(), "Scene scale_length rejected");
+        const auto factor = scale.GetValue().FloatingPoint().GetValue();
+        Require(std::isfinite(factor) && factor > 0 && (path.filename() != "empty.blend" || factor == 1),
+            "Scene source unit scale differs");
+      }
     }
     if (path.filename() != "empty.blend") {
       Require(std::any_of(datablocks.GetValue().begin(), datablocks.GetValue().end(), [&](const blend::RawDatablock& value) {
@@ -568,6 +613,159 @@ void ExpectDnaError(std::string_view text, bool little, std::uint8_t pointerSize
       "Wrong SDNA diagnostic severity or payload-relative location");
 }
 
+void CheckDnaViews() {
+  for (const bool little : {false, true}) {
+    for (const std::uint8_t pointerSize : {4, 8}) {
+      const auto dna = ParseDna(DnaFixture(little, pointerSize), little, pointerSize);
+      Require(dna.HasValue(), "Value-view SDNA rejected");
+      const auto& schema = dna.GetValue();
+      const blend::Header header{pointerSize, little ? blend::ByteOrder::Little : blend::ByteOrder::Big, 405};
+      std::string bytes(3, '\0');
+      for (std::size_t record = 0; record < 2; ++record) {
+        AppendInteger(bytes, 0xfffffffd, 4, little);
+        for (std::size_t index = 0; index < 6; ++index) {
+          AppendInteger(bytes, std::bit_cast<std::uint32_t>(static_cast<float>(index) + 0.25f), 4, little);
+        }
+        AppendInteger(bytes, 0, pointerSize, little);
+        AppendInteger(bytes, pointerSize == 4 ? 0xfedcba98ULL : 0xfedcba9876543210ULL, pointerSize, little);
+        AppendInteger(bytes, 42, pointerSize, little);
+      }
+      std::vector<blend::BlendBlock> blocks{{{'D', 'A', 'T', 'A'}, bytes.size() - 3, 1, 0, 2, 3}};
+      const auto viewAt = [&](std::uint64_t element = 0) {
+        return blend::ViewDnaBlock(std::as_bytes(std::span(bytes.data(), bytes.size())), blocks, schema, header, 0, element);
+      };
+      const auto root = viewAt(1);
+      Require(root.HasValue() && root.GetValue().Type().name == "Sample" && root.GetValue().Bytes().size() == 28 + 3 * pointerSize,
+          "Unaligned second block element rejected");
+      const auto integer = root.GetValue().Member("value");
+      Require(integer.HasValue() && integer.GetValue().SignedInteger().HasValue() && integer.GetValue().SignedInteger().GetValue() == -3,
+          "Signed integer byte order or sign extension differs");
+      const auto matrix = root.GetValue().Member("values");
+      Require(matrix.HasValue() && matrix.GetValue().ArrayDimensions().size() == 2, "Array shape lost");
+      for (std::uint64_t row = 0; row < 2; ++row) {
+        const auto rowView = matrix.GetValue().Element(row);
+        Require(rowView.HasValue() && rowView.GetValue().ArrayDimensions().size() == 1, "Array row rejected");
+        for (std::uint64_t column = 0; column < 3; ++column) {
+          const auto value = rowView.GetValue().Element(column);
+          Require(value.HasValue() && value.GetValue().FloatingPoint().HasValue() &&
+                      value.GetValue().FloatingPoint().GetValue() == static_cast<double>(row * 3 + column) + 0.25,
+              "Multidimensional float array decoded incorrectly");
+        }
+      }
+      const auto links = root.GetValue().Member("links");
+      Require(links.HasValue() && links.GetValue().PointerLevel() == 2, "Pointer indirection lost");
+      const auto null = links.GetValue().Element(0);
+      const auto address = links.GetValue().Element(1);
+      Require(null.HasValue() && null.GetValue().Pointer().HasValue() && null.GetValue().Pointer().GetValue() == 0 &&
+                  address.HasValue() && address.GetValue().Pointer().HasValue() &&
+                  address.GetValue().Pointer().GetValue() == (pointerSize == 4 ? 0xfedcba98ULL : 0xfedcba9876543210ULL),
+          "Saved pointer width or byte order differs");
+      const auto callback = root.GetValue().Member("callback");
+      Require(callback.HasValue() && callback.GetValue().Pointer().HasValue() && callback.GetValue().Pointer().GetValue() == 42,
+          "Function pointer bits rejected");
+      const auto expect = [&](const auto& result, std::string_view code, std::uint64_t offset) {
+        Require(!result.HasValue() && result.GetError().code == code && result.GetError().blockIndex == 0 &&
+                    result.GetError().byteOffset == offset && result.GetError().severity == blend::Severity::Fatal &&
+                    !result.GetError().recoverable,
+            "Invalid value view did not fail with exact source context");
+      };
+      const auto rootOffset = 3 + schema.types[3].length;
+      expect(root.GetValue().Member("absent"), "BLEND_DNA_MEMBER", rootOffset);
+      expect(integer.GetValue().Member("value"), "BLEND_DNA_MEMBER", rootOffset);
+      expect(matrix.GetValue().Member("value"), "BLEND_DNA_MEMBER", rootOffset + 4);
+      expect(matrix.GetValue().Element(2), "BLEND_DNA_INDEX", rootOffset + 4);
+      expect(matrix.GetValue().Element(0).GetValue().Element(3), "BLEND_DNA_INDEX", rootOffset + 4);
+      expect(integer.GetValue().Element(0), "BLEND_DNA_INDEX", rootOffset);
+      expect(integer.GetValue().Pointer(), "BLEND_DNA_VALUE", rootOffset);
+      expect(integer.GetValue().FloatingPoint(), "BLEND_DNA_VALUE", rootOffset);
+      expect(integer.GetValue().UnsignedInteger(), "BLEND_DNA_VALUE", rootOffset);
+      expect(links.GetValue().Pointer(), "BLEND_DNA_VALUE", rootOffset + 28);
+      expect(address.GetValue().Member("value"), "BLEND_DNA_MEMBER", rootOffset + 28 + pointerSize);
+      expect(address.GetValue().SignedInteger(), "BLEND_DNA_VALUE", rootOffset + 28 + pointerSize);
+      expect(viewAt(2), "BLEND_DNA_INDEX", 3);
+      expect(viewAt(std::numeric_limits<std::uint64_t>::max()), "BLEND_DNA_INDEX", 3);
+      auto invalidHeader = header;
+      invalidHeader.pointerSize = 16;
+      expect(blend::ViewDnaBlock(std::as_bytes(std::span(bytes.data(), bytes.size())), blocks, schema, invalidHeader, 0),
+          "BLEND_DNA_LAYOUT", 3);
+      invalidHeader = header;
+      invalidHeader.byteOrder = static_cast<blend::ByteOrder>(2);
+      expect(blend::ViewDnaBlock(std::as_bytes(std::span(bytes.data(), bytes.size())), blocks, schema, invalidHeader, 0),
+          "BLEND_DNA_LAYOUT", 3);
+      blocks[0].count = std::numeric_limits<std::uint64_t>::max();
+      expect(viewAt(), "BLEND_DNA_SIZE", 3);
+      blocks[0].count = 2;
+      --blocks[0].length;
+      expect(viewAt(), "BLEND_DNA_SIZE", 3);
+      ++blocks[0].length;
+      blocks[0].sdnaIndex = static_cast<std::uint32_t>(schema.structs.size());
+      expect(viewAt(), "BLEND_DNA_INDEX", 3);
+      blocks[0].sdnaIndex = 0;
+      for (std::size_t size = 0; size < bytes.size(); ++size) {
+        expect(blend::ViewDnaBlock(std::as_bytes(std::span(bytes.data(), size)), blocks, schema, header, 0),
+            "BLEND_BLOCK_SIZE", 3);
+      }
+      blocks[0].offset = std::numeric_limits<std::uint64_t>::max();
+      expect(viewAt(), "BLEND_BLOCK_SIZE", blocks[0].offset);
+      auto invalidSchema = schema;
+      invalidSchema.structs[0].typeIndex = static_cast<std::uint16_t>(schema.types.size());
+      blocks[0].offset = 3;
+      expect(blend::ViewDnaBlock(std::as_bytes(std::span(bytes.data(), bytes.size())), blocks, invalidSchema, header, 0),
+          "BLEND_DNA_INDEX", 3);
+      invalidSchema = schema;
+      invalidSchema.structs[0].members[0].offset = blocks[0].length;
+      const auto badMember = blend::ViewDnaBlock(std::as_bytes(std::span(bytes.data(), bytes.size())), blocks, invalidSchema, header, 0);
+      Require(badMember.HasValue(), "Malformed member probe could not bind block");
+      expect(badMember.GetValue().Member("value"), "BLEND_DNA_SIZE", 3);
+      const auto missing = blend::ViewDnaBlock(std::as_bytes(std::span(bytes.data(), bytes.size())), blocks, schema, header, 1);
+      Require(!missing.HasValue() && missing.GetError().code == "BLEND_DNA_INDEX" && missing.GetError().blockIndex == 1,
+          "Out-of-range block index accepted");
+    }
+  }
+  for (const bool little : {false, true}) {
+    for (const auto& type : std::vector<blend::DnaType>{{"int8_t", 1}, {"signed char", 1}, {"short", 2}, {"int", 4}, {"long", 4},
+             {"long", 8}, {"int64_t", 8}, {"uint8_t", 1}, {"uchar", 1}, {"unsigned char", 1}, {"ushort", 2}, {"uint", 4}, {"ulong", 4}, {"ulong", 8}, {"uint64_t", 8},
+             {"float", 4}, {"double", 8}, {"char", 1}, {"int", 8}}) {
+      const blend::DnaSchema schema{{}, {type}, {{0, {}}}};
+      std::string bytes;
+      AppendInteger(bytes, std::numeric_limits<std::uint64_t>::max(), type.length, little);
+      const std::array<blend::BlendBlock, 1> blocks{{{{'D', 'A', 'T', 'A'}, type.length, 1, 0, 1, 0}}};
+      const blend::Header header{8, little ? blend::ByteOrder::Little : blend::ByteOrder::Big, 405};
+      const auto view = blend::ViewDnaBlock(std::as_bytes(std::span(bytes.data(), bytes.size())), blocks, schema, header, 0);
+      Require(view.HasValue(), "Numeric probe view rejected");
+      if (type.name == "float" || type.name == "double") {
+        Require(view.GetValue().FloatingPoint().HasValue() && std::isnan(view.GetValue().FloatingPoint().GetValue()),
+            "Nonfinite source value was silently changed");
+        const auto bits = type.length == 4 ? std::uint64_t(std::bit_cast<std::uint32_t>(-1.5f)) : std::bit_cast<std::uint64_t>(-1.5);
+        std::string finite;
+        AppendInteger(finite, bits, type.length, little);
+        const auto finiteView = blend::ViewDnaBlock(std::as_bytes(std::span(finite.data(), finite.size())), blocks, schema, header, 0);
+        Require(finiteView.HasValue() && finiteView.GetValue().FloatingPoint().HasValue() &&
+                    finiteView.GetValue().FloatingPoint().GetValue() == -1.5,
+            "Finite floating-point scalar decoded incorrectly");
+      } else if (type.name.starts_with("u")) {
+        const auto value = view.GetValue().UnsignedInteger();
+        const auto maximum = type.length == 8 ? std::numeric_limits<std::uint64_t>::max() : (std::uint64_t{1} << (type.length * 8)) - 1;
+        Require(value.HasValue() && value.GetValue() == maximum, "Unsigned integer width differs");
+      } else if (type.name == "char" || (type.name == "int" && type.length == 8)) {
+        Require(!view.GetValue().SignedInteger().HasValue() && !view.GetValue().UnsignedInteger().HasValue() &&
+                    !view.GetValue().FloatingPoint().HasValue(),
+            "Ambiguous or unsupported scalar type accepted");
+      } else {
+        Require(view.GetValue().SignedInteger().HasValue() && view.GetValue().SignedInteger().GetValue() == -1,
+            "Signed integer width differs");
+        std::string minimumBytes;
+        AppendInteger(minimumBytes, std::uint64_t{1} << (type.length * 8 - 1), type.length, little);
+        const auto minimum = blend::ViewDnaBlock(std::as_bytes(std::span(minimumBytes.data(), minimumBytes.size())), blocks, schema, header, 0);
+        const auto expected = type.length == 8 ? std::numeric_limits<std::int64_t>::min() : -(std::int64_t{1} << (type.length * 8 - 1));
+        Require(minimum.HasValue() && minimum.GetValue().SignedInteger().HasValue() &&
+                    minimum.GetValue().SignedInteger().GetValue() == expected,
+            "Signed minimum value decoded incorrectly");
+      }
+    }
+  }
+}
+
 void CheckDatablocks() {
   for (const bool little : {false, true}) {
     for (const std::uint8_t pointerSize : {4, 8}) {
@@ -610,6 +808,14 @@ void CheckDatablocks() {
       const auto result = list();
       Require(result.HasValue() && result.GetValue() == std::vector<blend::RawDatablock>{{0, 0x1234, "Object", "OBCube"}},
           "Synthetic datablock type, name or identity differs");
+      const blend::Header header{pointerSize, little ? blend::ByteOrder::Little : blend::ByteOrder::Big, 405};
+      const auto object = blend::ViewDnaBlock(std::as_bytes(std::span(payload.data(), payload.size())), blocks, schema, header, 0);
+      Require(object.HasValue(), "Synthetic Object view rejected");
+      const auto embeddedId = object.GetValue().Member("id");
+      Require(embeddedId.HasValue(), "Synthetic embedded ID view rejected");
+      const auto next = embeddedId.GetValue().Member("next");
+      Require(next.HasValue() && next.GetValue().Pointer().HasValue() && next.GetValue().Pointer().GetValue() == 0,
+          "Nested saved null pointer rejected");
       const auto originalPayload = payload;
       payload = payload.substr(payload.size() - 4) + payload.substr(0, payload.size() - 4);
       std::swap(schema.structs[1].members[0], schema.structs[1].members[1]);
@@ -1103,6 +1309,7 @@ int main(int argumentCount, char** arguments) {
       CheckGzipHeaders();
       CheckFileBytes();
       CheckDna();
+      CheckDnaViews();
       CheckPointerMap();
       CheckDatablocks();
       CheckFileFixture(arguments[2], true, {97310, 571812, 6, 19});

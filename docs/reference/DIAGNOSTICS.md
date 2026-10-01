@@ -85,7 +85,7 @@ Fixture paths are relative to
 | `BLEND_BLOCK_NEGATIVE_LENGTH` | Fatal | no | the signed stored payload length is negative | legacy and format-1 sign-bit cases in `blendFile.header` |
 | `BLEND_BLOCK_NEGATIVE_SDNA` | Fatal | no | the signed stored SDNA index is negative | all block layouts in `blendFile.header` |
 | `BLEND_BLOCK_NEGATIVE_COUNT` | Fatal | no | the signed stored element count is negative | legacy and format-1 sign-bit cases in `blendFile.header` |
-| `BLEND_BLOCK_SIZE` | Fatal | no | a declared payload exceeds the source or an ID range exceeds the supplied decoded bytes | short payloads, maximum signed lengths and raw ID range errors in `blendFile.header` |
+| `BLEND_BLOCK_SIZE` | Fatal | no | a declared payload exceeds the source or an ID/value-view range exceeds the supplied decoded bytes | short payloads, maximum signed lengths, raw ID range errors and every short value-view span in `blendFile.header` |
 | `BLEND_BLOCK_ENDB` | Fatal | no | `ENDB` declares a nonempty payload | synthetic containers in `blendFile.header` |
 | `BLEND_BLOCK_TRAILING` | Fatal | no | bytes or another block follow `ENDB` | trailing byte and duplicate `ENDB` cases in `blendFile.header` |
 | `BLEND_BLOCK_MISSING_ENDB` | Fatal | no | the source ends at a block boundary without `ENDB` | header-only and terminal payload truncations in `blendFile.header` |
@@ -95,11 +95,12 @@ Fixture paths are relative to
 | `BLEND_DNA_TRUNCATED` | Fatal | no | an integer, tag, string terminator, type length or alignment padding is incomplete | short SDNA payload prefixes in `blendFile.header` |
 | `BLEND_DNA_SECTION` | Fatal | no | an SDNA section tag differs from its required identifier | every section tag corrupted in `blendFile.header` |
 | `BLEND_DNA_COUNT` | Fatal | no | a table or member count exceeds remaining records or the index range | oversized NAME/TYPE/STRC and member counts in `blendFile.header` |
-| `BLEND_DNA_INDEX` | Fatal | no | a structure type, member type/name or raw ID SDNA index is out of range | each schema index kind and raw ID indices in `blendFile.header` |
+| `BLEND_DNA_INDEX` | Fatal | no | a structure type, member type/name, raw ID SDNA index or value-view block/element/array index is out of range | each schema index kind, raw ID indices and value-view indices in `blendFile.header` |
 | `BLEND_DNA_NAME` | Fatal | no | a schema name/declarator is malformed, or raw ID.name lacks a bounded terminator or two-byte prefix | invalid identifiers, arrays, function pointers and raw ID names in `blendFile.header` |
 | `BLEND_DNA_DUPLICATE` | Fatal | no | a type name, structure type or member base name is duplicated | each duplicate kind in `blendFile.header` |
-| `BLEND_DNA_SIZE` | Fatal | no | schema sizes overflow or differ from TLEN, or an ID count/length/member range is invalid | schema array/length errors and raw ID count/size/member-range errors in `blendFile.header` |
-| `BLEND_DNA_MEMBER` | Fatal | no | a raw ID lacks an embedded ID or bounded char name array of the required type | wrong pointer/member types in `blendFile.header` |
+| `BLEND_DNA_SIZE` | Fatal | no | schema sizes overflow or differ from TLEN, or an ID/value-view count/length/member range is invalid | schema array/length errors, raw ID count/size/member-range errors and value-view count/range errors in `blendFile.header` |
+| `BLEND_DNA_MEMBER` | Fatal | no | a raw ID lacks a required member, or a value-view member is absent or selected on a pointer/array/non-struct | wrong pointer/member types and invalid value-view member access in `blendFile.header` |
+| `BLEND_DNA_VALUE` | Fatal | no | a value-view pointer or numeric read has an incompatible scalar type, width or shape | wrong numeric types, pointers and unselected arrays in `blendFile.header` |
 | `BLEND_DNA_TRAILING` | Fatal | no | bytes remain after the STRC records | trailing payload byte in `blendFile.header` |
 | `BLEND_DNA_ALLOCATION` | Fatal | no | the owning schema or raw datablock records cannot be allocated | implemented; allocation failure unverified |
 | `BLEND_DNA_BLOCK` | Fatal | no | the tool finds no DNA1 block or more than one | modified empty-scene containers in `blendInspect.cli` |
@@ -126,6 +127,11 @@ the [schema boundary](../design/BLEND_CONTRACT.md#71-schema-decoding-boundary).
 offset and block index. Pointer-map duplicate errors identify the later
 reference-target block; `Resolve` warnings have no referring-block context.
 See the [raw boundaries](../design/BLEND_CONTRACT.md#81-pointer-map-boundary).
+
+`DnaValueView` errors attach the current view's uncompressed file offset and
+selected block index. Binding failures use the block payload offset, or zero
+when no such block exists. No Scene/datablock context is inferred; see the
+[borrowed value boundary](../design/BLEND_CONTRACT.md#83-borrowed-sdna-value-boundary).
 
 The standalone `UnitConversion` helper throws `std::invalid_argument` for
 invalid input or `std::overflow_error` for meter-conversion overflow, with the

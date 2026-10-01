@@ -47,6 +47,8 @@ No row says "supported" without a fixture.
 | saved-address pointer map (ID and DATA; exact keys only) | supported | all reference-target addresses in `empty.blend` and both corpus files; synthetic null, unresolved, duplicate, metadata-collision and 64-bit keys in `blendFile.header` | Phase 1 |
 | raw ID datablock type/name enumeration | supported | every ID block in `empty.blend` and both corpus files; synthetic 32/64-bit, little/big-endian layouts, embedded ID offsets and raw name bytes in `blendFile.header` | Phase 1 |
 | raw ID range, index, count and name diagnostics | supported | out-of-range SDNA indices for every ID in `empty.blend` and both corpus files; synthetic out-of-range payloads/indices, size/count mismatches, invalid embedded members and unterminated names in `blendFile.header` | Phase 1 |
+| borrowed SDNA block/member/array views and saved pointer reads | supported | both corpus files' `FileGlobal.curscene` resolve to `Scene` / `SCScene`; Scene-only `empty.blend` preserves null `curscene`; synthetic 32/64-bit, little/big-endian nested members, second block elements, multidimensional arrays and pointer/function-pointer storage in `blendFile.header` | Phase 2 |
+| typed SDNA scalar reads and view diagnostics | supported | `Scene.unit.scale_length` in all three real files; synthetic signed minima, unsigned maxima, IEEE float/double, nonfinite values, wrong types/shapes, truncated spans and invalid ranges/counts/indices in `blendFile.header` | Phase 2 |
 | `blend_inspect`: summary, `--blocks`, `--dna`, raw `--objects` | supported | `empty.blend` and both real corpus files in `blendInspect.cli`; argument/limit errors, missing/duplicate/malformed DNA1 and UTF-8 path regressions | Phase 1 |
 
 Full-stream byte reading validates compression and the decoded header, not
@@ -76,10 +78,22 @@ compatibility remain unclaimed, and the importer remains header-only.
 [raw ID records](../design/BLEND_CONTRACT.md#82-raw-datablock-boundary).
 Metadata blocks do not enter the pointer map. Names retain their stored
 two-byte prefixes, which can differ from block codes (`SN`/`SR` screens).
-No pointer-valued members, linked libraries, lists or scene graphs are decoded;
-non-ID payloads are not checked against SDNA. Real-file evidence remains
+These APIs do not read pointer-valued members, linked libraries, lists or scene
+graphs; non-ID payloads are not checked against SDNA by them. Real-file evidence remains
 64-bit little-endian, and other layouts have synthetic evidence. The importer
 continues to read headers only.
+
+`ViewDnaBlock` separately validates one caller-selected block against SDNA,
+then exposes borrowed member/array views, saved pointers and typed scalar
+values under the [value boundary](../design/BLEND_CONTRACT.md#83-borrowed-sdna-value-boundary).
+The backing bytes and schema must remain alive and unmodified. Tests resolve
+the saved current Scene in both corpus files and read its embedded ID name;
+the Scene-only library fixture has a null `curscene`, not a selected Scene.
+All three files' `Scene.unit.scale_length` values are read as source facts,
+without unit conversion or an end-to-end physical-equivalence claim. No
+Scene-selection API, library fallback, Collection/list walk, graph validation
+or Scene IR publication is provided. The importer and inspection tool remain
+unchanged; real-file layout evidence is still 64-bit little-endian only.
 
 The inspection tool reports raw file-wide ID counts and saved Object names,
 not a scene graph. Compressed inputs require explicit limits; unknown block

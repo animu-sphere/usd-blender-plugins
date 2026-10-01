@@ -65,7 +65,7 @@ cmake --build --preset reader
 ctest --preset reader
 ```
 
-The five reader CTests cover byte-source/header/compression/block/SDNA/raw-ID behavior, forbidden-include
+The five reader CTests cover byte-source/header/compression/block/SDNA/raw-ID/value-view behavior, forbidden-include
 scanning, generated link metadata setup, generated link boundary inspection,
 and link-boundary rejection checks. The library has no external link
 dependencies. The metadata setup fixture reconfigures the existing build;
@@ -146,8 +146,22 @@ checked with SDNA indices at the first out-of-range value and the signed and
 unsigned 32-bit maxima, requiring `BLEND_DNA_INDEX` with that block's context.
 See the
 [raw ID boundary](../design/BLEND_CONTRACT.md#82-raw-datablock-boundary).
-These checks do not traverse pointer graphs or read scene values; the importer
-remains header-only.
+These raw-ID checks do not traverse pointer graphs; the importer remains
+header-only.
+
+Borrowed SDNA value tests select unaligned block elements, embedded members,
+multidimensional array elements and pointer arrays in all four synthetic
+pointer-width/byte-order layouts. They cover signed minima, unsigned maxima,
+float/double values, nonfinite source values, wrong scalar types/shapes and
+exact fatal offsets/indices for malformed ranges, counts and short spans.
+Both real corpus files' `FileGlobal.curscene` pointers resolve to `Scene`
+records with the expected embedded ID names. The library-written `empty.blend`
+instead stores a null current Scene pointer, which is preserved without an
+inferred fallback. All three files' Scene unit scales are read through SDNA;
+this does not prove multi-scale physical equivalence or populate a Scene IR.
+See the [value boundary](../design/BLEND_CONTRACT.md#83-borrowed-sdna-value-boundary)
+for borrowing and accepted scalar types. No Collection/list traversal or
+scene-selection policy is exercised.
 The plugin pyramid below does not run these reader CTests.
 
 ## Scene IR without OpenUSD

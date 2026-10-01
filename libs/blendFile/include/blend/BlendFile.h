@@ -147,6 +147,42 @@ struct DnaSchema {
 
 Result<DnaSchema> ReadDna(std::span<const std::byte> payload, const Header& header);
 
+class DnaValueView {
+public:
+  const DnaType& Type() const;
+  std::span<const std::byte> Bytes() const;
+  std::uint32_t PointerLevel() const;
+  std::span<const std::uint64_t> ArrayDimensions() const;
+  Result<DnaValueView> Member(std::string_view name) const;
+  Result<DnaValueView> Element(std::uint64_t index) const;
+  Result<std::uint64_t> Pointer() const;
+  Result<std::int64_t> SignedInteger() const;
+  Result<std::uint64_t> UnsignedInteger() const;
+  Result<double> FloatingPoint() const;
+
+private:
+  DnaValueView(std::span<const std::byte> bytes, const DnaSchema& schema, const Header& header,
+      std::uint16_t typeIndex, std::uint32_t pointerLevel, std::span<const std::uint64_t> dimensions,
+      std::uint64_t offset, std::uint32_t blockIndex);
+  Diagnostic Error(const char* code, const char* message) const;
+  std::uint64_t IntegerBits() const;
+  std::span<const std::byte> bytes_;
+  const DnaSchema* schema_;
+  Header header_;
+  std::uint16_t typeIndex_;
+  std::uint32_t pointerLevel_;
+  std::span<const std::uint64_t> dimensions_;
+  std::uint64_t offset_;
+  std::uint32_t blockIndex_;
+  friend Result<DnaValueView> ViewDnaBlock(std::span<const std::byte> bytes,
+      std::span<const BlendBlock> blocks, const DnaSchema& schema, const Header& header,
+      std::uint32_t blockIndex, std::uint64_t elementIndex);
+};
+
+Result<DnaValueView> ViewDnaBlock(std::span<const std::byte> bytes,
+    std::span<const BlendBlock> blocks, const DnaSchema& schema, const Header& header,
+    std::uint32_t blockIndex, std::uint64_t elementIndex = 0);
+
 struct RawDatablock {
   std::uint32_t blockIndex;
   std::uint64_t oldAddress;

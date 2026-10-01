@@ -26,7 +26,7 @@ transforms and mesh data under the
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
 | 2.2 | Resolve STAGE-O1 and NAME-O1 | the selected meter-normalization policy is proven by Blender-written multi-scale cube/parenting fixtures through native decoding and USD authoring; the naming contract records its fixture-backed identifier policy | 🚧 |
-| 2.3 | Native scene decoding and ID graph | `blendScene` selects the saved scene and its objects through SDNA and saved references; missing, linked, invalid and cyclic references have bounded diagnostics | ⬜ |
+| 2.3 | Native scene decoding and ID graph | `blendScene` selects the saved scene and its objects through SDNA and saved references; missing, linked, invalid and cyclic references have bounded diagnostics | 🚧 |
 | 2.4 | Objects, parenting and transforms | mesh and empty objects retain render visibility and hierarchy; converted world matrices produce local transforms matching a Blender oracle, including nonuniform and negative scales | ⬜ |
 | 2.5 | Version-aware mesh decoding | 4.5 and 5.x source positions, topology, corner normals and indexed UV maps populate the IR; empty meshes, invalid indices and unsupported storage have tested diagnostics | ⬜ |
 | 2.6 | Deterministic identifiers | names and sibling collisions follow the naming contract, preserve source names and remain stable across repeated reads and input enumeration order | ⬜ |
