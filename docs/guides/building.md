@@ -8,6 +8,45 @@ Run commands from the repository root.
 `ost` generates a machine-local `strata.lock`; it is ignored until a
 cross-platform locking policy is established with the CI matrix.
 
+## CI matrix
+
+[openstrata.ci.yaml](../../openstrata.ci.yaml) pins `ost` 0.23.14 and
+digest-pinned OpenUSD 26.08 `gl` SDKs for Windows and Linux. The runners are
+GitHub-hosted `windows-2022` (MSVC 2022) and `ubuntu-24.04`, with host Python
+3.13. Linux cells install `libx11-dev` and `libxt-dev`, required by the
+runtime's exported MaterialX package even for a non-imaging consumer.
+
+The five pull-request cells are:
+
+- one workspace graph check, without materializing a runtime;
+- two root CMake build/CTest checks, including all five reader tests and
+	their include/link boundary gates;
+- two standalone bundle build, L0-L5 and package checks, exercising the
+	manifest's installed `blendFile` dependency.
+
+The generated workflow is
+[ost-source-ci.yml](../../.github/workflows/ost-source-ci.yml). Change the
+matrix and regenerate it; do not hand-edit generated jobs. It uses read-only
+repository permissions, no secrets and no publication. Hosted jobs can incur
+GitHub Actions charges, as acknowledged by the runner declarations.
+
+```powershell
+ost ci validate
+ost ci plan
+ost ci generate github
+```
+
+These commands pass locally on Windows; regeneration also matches the
+checked-in workflow. When replacing an existing workflow, add `--force` to
+the generation command. `ost ci validate --resolve` was also run: the Windows
+runtime resolves locally, but the Linux digest is not in the local registry,
+so that check fails. This does not verify its remote availability or execution.
+
+Hosted Windows/Linux jobs have not yet run. The generated bundle pyramid is
+not a separate `ost plugin doctor` invocation, and neither job kind runs
+`test_stage.py`; both explicit checks still need CI wiring under task 0.9.
+The regular jobs use committed fixtures and do not install or run Blender.
+
 ## Reader without OpenUSD
 
 ```powershell

@@ -94,7 +94,11 @@ allows only `blendFile` and standard OS libraries; compression is currently
 compiled into `blendFile`. `blendFile.linkMetadata` is its CTest setup fixture:
 it reconfigures the existing build so even a fresh build has a File API reply.
 `blendFile.linkBoundaryChecks` tests allowed and forbidden library fragments.
-CI wiring remains pending in Phase 0.
+The [CI matrix](../../openstrata.ci.yaml) generates the
+[source workflow](../../.github/workflows/ost-source-ci.yml): a graph job,
+root CMake/CTest jobs on Windows and Linux, and standalone bundle L0-L5 jobs
+on both platforms. Hosted execution remains unverified; see
+[the build guide](../guides/building.md#ci-matrix).
 
 ## 3. Directory layout
 

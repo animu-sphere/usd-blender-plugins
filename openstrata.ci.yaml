@@ -1,0 +1,95 @@
+schema: 1
+
+bootstrap:
+  ost:
+    version: "0.23.14"
+    repository: animu-sphere/open-strata
+
+runners:
+  windows-hosted:
+    kind: github-hosted
+    image: windows-2022
+    billing:
+      acknowledgement: required
+  linux-hosted:
+    kind: github-hosted
+    image: ubuntu-24.04
+    billing:
+      acknowledgement: required
+
+cells:
+  - name: workspace-graph-pr
+    kind: workspace
+    lane: pull_request
+    runner: linux-hosted
+    runtime_artifact: sha256:3bf31789daa60ef650df35ab276bd67d0c0ee44a960311f78835cc0962efe261
+    runtime_remote:
+      uri: oci://ghcr.io/animu-sphere/openstrata-runtime-cy2026-usd@sha256:8d2d599489ee623044f4360ad3a2b979e2966e6ad2f949e5aa9083570e59cc4f
+      expected_oci_digest: sha256:8d2d599489ee623044f4360ad3a2b979e2966e6ad2f949e5aa9083570e59cc4f
+    platform: cy2026
+    profile: usd
+    verify: graph
+
+  - name: workspace-pr-windows
+    kind: workspace
+    lane: pull_request
+    runner: windows-hosted
+    runtime_artifact: sha256:ebb0c7da509ee14ada19ee5b461de6996aad0024b5c9640f12dde76912e849b5
+    runtime_remote:
+      uri: oci://ghcr.io/animu-sphere/openstrata-runtime-cy2026-usd@sha256:d3ff79a6f330558c3b9a427a927d340fe3dcab1fe89107faa0ea9f66a104b7bf
+      expected_oci_digest: sha256:d3ff79a6f330558c3b9a427a927d340fe3dcab1fe89107faa0ea9f66a104b7bf
+    platform: cy2026
+    profile: usd
+    require_openusd: cy2026/windows/x86_64/gl
+    require_openusd_version: "26.08"
+    host_python: "3.13"
+    verify: test
+
+  - name: workspace-pr-linux
+    kind: workspace
+    lane: pull_request
+    runner: linux-hosted
+    runtime_artifact: sha256:3bf31789daa60ef650df35ab276bd67d0c0ee44a960311f78835cc0962efe261
+    runtime_remote:
+      uri: oci://ghcr.io/animu-sphere/openstrata-runtime-cy2026-usd@sha256:8d2d599489ee623044f4360ad3a2b979e2966e6ad2f949e5aa9083570e59cc4f
+      expected_oci_digest: sha256:8d2d599489ee623044f4360ad3a2b979e2966e6ad2f949e5aa9083570e59cc4f
+    platform: cy2026
+    profile: usd
+    require_openusd: cy2026/linux/x86_64/gl
+    require_openusd_version: "26.08"
+    host_python: "3.13"
+    host_packages:
+      apt: [libx11-dev, libxt-dev]
+    verify: test
+
+  - name: usdblendfileformat-pr-windows
+    lane: pull_request
+    runner: windows-hosted
+    runtime_artifact: sha256:ebb0c7da509ee14ada19ee5b461de6996aad0024b5c9640f12dde76912e849b5
+    runtime_remote:
+      uri: oci://ghcr.io/animu-sphere/openstrata-runtime-cy2026-usd@sha256:d3ff79a6f330558c3b9a427a927d340fe3dcab1fe89107faa0ea9f66a104b7bf
+      expected_oci_digest: sha256:d3ff79a6f330558c3b9a427a927d340fe3dcab1fe89107faa0ea9f66a104b7bf
+    bundle: plugins/usdBlendFileFormat
+    platform: cy2026
+    profile: usd
+    require_openusd: cy2026/windows/x86_64/gl
+    require_openusd_version: "26.08"
+    host_python: "3.13"
+    up_to: 5
+
+  - name: usdblendfileformat-pr-linux
+    lane: pull_request
+    runner: linux-hosted
+    runtime_artifact: sha256:3bf31789daa60ef650df35ab276bd67d0c0ee44a960311f78835cc0962efe261
+    runtime_remote:
+      uri: oci://ghcr.io/animu-sphere/openstrata-runtime-cy2026-usd@sha256:8d2d599489ee623044f4360ad3a2b979e2966e6ad2f949e5aa9083570e59cc4f
+      expected_oci_digest: sha256:8d2d599489ee623044f4360ad3a2b979e2966e6ad2f949e5aa9083570e59cc4f
+    bundle: plugins/usdBlendFileFormat
+    platform: cy2026
+    profile: usd
+    require_openusd: cy2026/linux/x86_64/gl
+    require_openusd_version: "26.08"
+    host_python: "3.13"
+    host_packages:
+      apt: [libx11-dev, libxt-dev]
+    up_to: 5

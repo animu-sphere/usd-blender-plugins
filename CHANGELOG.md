@@ -27,8 +27,12 @@ All notable changes to this project are recorded here. The format follows
     Blender content validation, real-file stage contract tests, and L3-L5
     verification against a second golden. Byte-identical Blender regeneration
     remains unresolved.
-- A verified Windows build guide. Container decoding and Windows/Linux CI
-    remain unfinished.
+- A Windows/Linux OpenStrata CI matrix and generated pull-request workflow,
+    with digest-pinned OpenUSD 26.08 SDKs, workspace graph and reader CTest
+    gates, and standalone bundle L0-L5 checks. Hosted runs remain unverified;
+    explicit doctor and stage-contract CI checks remain pending.
+- A verified Windows build guide. Container decoding and hosted Windows/Linux
+    verification remain unfinished.
 - The documentation baseline: the design policy, the stage, blend, material,
   naming and backend contracts, the workspace contract, external dependencies,
   the capability matrix and diagnostics reference, the roadmap, and the
