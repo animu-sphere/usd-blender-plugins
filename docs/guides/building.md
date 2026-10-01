@@ -1,6 +1,6 @@
 # Building and testing
 
-The local commands below were exercised on Windows on 2026-10-01 with
+The local commands below were exercised on Windows on 2026-10-01 and 2026-10-02 with
 `ost` 0.23.14, Visual Studio 2026
 (MSVC 19.51), and the local OpenStrata `cy2026` / `usd` OpenUSD 26.08 artifact.
 This records the local command environment, not current platform or CI status;
@@ -22,7 +22,7 @@ The five pull-request cells are:
 
 - one workspace graph check, without materializing a runtime;
 - two root CMake build/CTest checks, including all five reader tests and
-	their include/link boundary gates;
+	their include/link boundary gates, plus the inspection CLI test;
 - two standalone bundle build, L0-L5 and package checks, exercising the
 	manifest's installed `blendFile` dependency.
 
@@ -65,7 +65,7 @@ cmake --build --preset reader
 ctest --preset reader
 ```
 
-Five CTests are registered: byte-source/header/compression/block/SDNA/raw-ID behavior, forbidden-include
+The five reader CTests cover byte-source/header/compression/block/SDNA/raw-ID behavior, forbidden-include
 scanning, generated link metadata setup, generated link boundary inspection,
 and link-boundary rejection checks. The library has no external link
 dependencies. The metadata setup fixture reconfigures the existing build;
@@ -129,6 +129,48 @@ block codes and `SR` name prefixes remain distinct. See the
 These checks do not traverse pointer graphs or read scene values; the importer
 remains header-only.
 The plugin pyramid below does not run these reader CTests.
+
+## Inspection tool
+
+The reader preset also builds `tools/blendInspect/bin/blend_inspect` (`.exe`
+on Windows), without finding OpenUSD. `blendInspect.cli` checks summaries and
+all three detail modes against the complete Blender-written fixtures, errors
+and recoverable diagnostics, malformed DNA1 and space-containing UTF-8 paths.
+Header-only synthetic fixtures fail because inspection requires a full
+container with one DNA1 schema.
+
+OpenStrata builds the same target through the root workspace:
+
+```powershell
+ost build --target cy2026 --profile usd
+ost test --target cy2026 --profile usd
+tools/blendInspect/bin/blend_inspect.exe plugins/usdBlendFileFormat/tests/corpus/blender-4.5.13/Untitled.blend
+tools/blendInspect/bin/blend_inspect.exe plugins/usdBlendFileFormat/tests/fixtures/empty.blend --blocks --dna --objects
+tools/blendInspect/bin/blend_inspect.exe plugins/usdBlendFileFormat/tests/corpus/blender-5.2.2/Untitled.blend --objects --max-input-bytes 67108864 --max-output-bytes 67108864 --max-expansion-ratio 2048 --max-window-log 23
+```
+
+On Linux, omit `.exe`. Uncompressed inputs need no limit options; compressed
+inputs require all four. The numbers above are test budgets, not production
+defaults or the resolution of BLEND-O5. Names keep their stored prefixes;
+non-ASCII and control bytes are escaped. `--objects` does not decode
+transforms, geometry or scene membership. See the
+[CLI contract](../design/DESIGN_POLICY.md#54-blend_inspect--the-tool) for
+output and exit-status semantics.
+
+`tools/blendInspect` also configures standalone with an installed `blendFile`
+prefix on `CMAKE_PREFIX_PATH`. Both modes stage the executable in the tool
+member's `bin/`; `cmake --install` installs it into the prefix's binary
+directory. The tool descriptor and workspace release membership allow:
+
+```powershell
+ost plugin test --workspace --graph-only
+ost plugin package --workspace --product --target cy2026 --profile usd
+```
+
+Packaging requires built outputs. It writes the tool archive beneath
+`tools/blendInspect/dist/` and the aggregate beneath root `dist/`, without
+publishing either. The aggregate carries both `blend_inspect` and
+`usdBlendFileFormat`.
 
 ## OpenStrata bundle
 

@@ -305,6 +305,31 @@ blend_inspect scene.blend --dna
 blend_inspect scene.blend --objects
 ```
 
+Each invocation validates the full container, one DNA1 schema and raw ID
+records before writing a summary. Detail flags can be combined. `--blocks`
+reports decoded payload offsets, lengths, saved addresses, SDNA indices and
+element counts; `--dna` reports structure sizes and member declarations,
+offsets and sizes. `--objects` reports raw Object ID names, including their
+stored two-byte prefix, not scene membership, transforms or geometry.
+Counts cover all stored ID records, including unused ones. Non-ASCII and
+control bytes in names are escaped as `\xNN`; quotes and backslashes are
+escaped too, without interpreting or changing the source name.
+
+Compressed inputs require all four caller-supplied limits:
+`--max-input-bytes`, `--max-output-bytes`, `--max-expansion-ratio` and
+`--max-window-log`. Values are positive decimal integers; window log is
+10 through 30. For uncompressed inputs without options, both byte limits
+are the file size; no corpus-derived decompression default is chosen.
+The block budget is bounded by decoded byte size and unsigned 32-bit indices.
+Full-stream limits retain the
+[blend contract's semantics](BLEND_CONTRACT.md#41-full-stream-byte-reading).
+
+The summary and details go to stdout; diagnostics go to stderr. Exit status
+is 0 on success, including recoverable unsupported-block diagnostics, 1 on
+input/validation failures, and 2 on invalid arguments. Header-only synthetic
+fixtures are not full containers and fail inspection. Commands and build
+modes are in [the build guide](../guides/building.md#inspection-tool).
+
 ### 5.5 `blendHost` — the Blender host backend (Phase 7)
 
 A plain C++ library that implements `IBlendBackend` by running a separately

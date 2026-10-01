@@ -1,0 +1,11 @@
+schema: openstrata.tool/v1alpha1
+tool:
+  id: blend_inspect
+  version: 0.1.0
+  license: Apache-2.0
+executables: [blend_inspect]
+directories: [bin]
+requires:
+  libraries:
+    - id: blendFile
+      version: ">=0.1,<0.2"

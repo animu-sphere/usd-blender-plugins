@@ -1,0 +1,41 @@
+cmake_minimum_required(VERSION 3.22)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/../../VERSION" BLEND_VERSION LIMIT_COUNT 1)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    project(blendInspect VERSION ${BLEND_VERSION} LANGUAGES CXX)
+    include(CTest)
+endif()
+if(NOT TARGET blendFile::blendFile)
+    find_package(blendFile CONFIG REQUIRED)
+endif()
+add_executable(blend_inspect src/main.cpp)
+target_link_libraries(blend_inspect PRIVATE blendFile::blendFile)
+target_compile_features(blend_inspect PRIVATE cxx_std_20)
+set_target_properties(blend_inspect PROPERTIES CXX_EXTENSIONS OFF
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")
+foreach(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    set_target_properties(blend_inspect PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY_${config} "${CMAKE_CURRENT_SOURCE_DIR}/bin")
+endforeach()
+if(MSVC)
+    target_compile_options(blend_inspect PRIVATE /utf-8)
+    target_compile_definitions(blend_inspect PRIVATE NOMINMAX)
+    target_sources(blend_inspect PRIVATE src/utf8.manifest)
+endif()
+include(GNUInstallDirs)
+install(TARGETS blend_inspect RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+if(BUILD_TESTING)
+    add_executable(blendInspectFixtureWriter tests/FixtureWriter.cpp)
+    target_compile_features(blendInspectFixtureWriter PRIVATE cxx_std_20)
+    set_target_properties(blendInspectFixtureWriter PROPERTIES CXX_EXTENSIONS OFF)
+    if(MSVC)
+        target_compile_options(blendInspectFixtureWriter PRIVATE /utf-8)
+        target_compile_definitions(blendInspectFixtureWriter PRIVATE NOMINMAX)
+        target_sources(blendInspectFixtureWriter PRIVATE src/utf8.manifest)
+    endif()
+    add_test(NAME blendInspect.cli COMMAND "${CMAKE_COMMAND}"
+        "-DTOOL=$<TARGET_FILE:blend_inspect>"
+        "-DWRITER=$<TARGET_FILE:blendInspectFixtureWriter>"
+        "-DFIXTURES=${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests"
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cli-tests"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/Cli.cmake")
+endif()
