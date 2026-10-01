@@ -46,7 +46,8 @@ Where things stand, as of 2026-10-01:
 
 - Phase 0 is in progress: the template bundle, header reader, minimal stage
   and Windows verification exist, including a generated Blender 5.2.2 empty
-  fixture. Byte-identical Blender regeneration, policy files and CI remain.
+  fixture. The Windows/Linux CI matrix and generated workflow exist;
+  byte-identical Blender regeneration and hosted CI verification remain.
 - The first *useful* milestone, a cube that opens in `usdview` as a
   `UsdGeomMesh`, is still Phase 2. See the
   [capability matrix](../reference/CAPABILITY_MATRIX.md) for current behavior.
