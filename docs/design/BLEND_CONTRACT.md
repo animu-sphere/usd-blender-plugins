@@ -383,7 +383,8 @@ or element counts, read member values, build a pointer map or decode a scene.
 
 ## 8. ID graph reconstruction
 
-- The **pointer map** maps every block's old address to the block.
+- The **pointer map** maps addressable ID and `DATA` blocks' nonzero old
+   addresses to their block indices. Metadata blocks are not reference targets.
 - An **ID block** is followed by `DATA` blocks that hold its owned arrays and
   sub-structs.
 - **References** between datablocks (object → mesh, object → parent, mesh →
@@ -392,6 +393,65 @@ or element counts, read member values, build a pointer map or decode a scene.
   map with a length limit and cycle detection.
 - **Linked data** — IDs that live in another `.blend`, referenced through `LI`
   library blocks — is reported, not followed (BLEND-O3).
+
+### 8.1 Pointer-map boundary
+
+`BuildPointerMap(span<const BlendBlock>)` returns an owning `PointerMap`.
+ID codes are two uppercase ASCII letters followed by two NUL bytes. Only
+these blocks and `DATA` enter the map; zero addresses are excluded. `GLOB`,
+`REND`, `TEST`, `USER`, `DNA1`, `ENDB` and unknown non-ID codes are excluded.
+The 5.2.2 corpus stores the same nonzero value, 16, in `REND` and `GLOB`;
+metadata values must not be treated as unique saved object addresses.
+
+Entries retain the original zero-based block indices, not pointers into the
+caller's vector. The caller must interpret returned indices against the same
+block sequence. Construction is bounded by that sequence, whose count budget
+is imposed by `ReadBlocks`; more than the maximum unsigned 32-bit count fails.
+Entries are sorted for logarithmic lookup. Duplicate nonzero addresses among
+reference targets fail with `BLEND_POINTER_DUPLICATE`, attaching the later
+block's payload offset and index. No first/last-wins aliasing is allowed.
+
+`PointerMap::Resolve(uint64_t)` returns `Result<optional<uint32_t>>`. Zero
+returns null without a diagnostic. An exact saved address returns its block
+index; an absent nonzero address returns null with a recoverable
+`BLEND_POINTER_UNRESOLVED` warning. Interior addresses are not inferred.
+Lookup has no referring-block context, so that warning has no byte offset or
+block index; a consumer may add context. Allocation failures and an excessive
+block count produce fatal `BLEND_POINTER_ALLOCATION` and `BLEND_POINTER_LIMIT`
+diagnostics. This API neither reads pointer-valued members nor traverses graphs.
+
+### 8.2 Raw datablock boundary
+
+`ListDatablocks(span<const byte> bytes, span<const BlendBlock> blocks,
+const DnaSchema&)` consumes the same uncompressed bytes and ordered records
+used for `ReadBlocks`, plus their decoded `ReadDna` schema. It returns owning
+`RawDatablock` records in file order: `blockIndex`, `oldAddress`, `typeName`
+and `name`. Output contains every two-letter ID block, not `DATA` or metadata.
+The caller retains full-file and block budgets; no production defaults are
+introduced. This does not select or verify the file's DNA1 block count.
+
+Each ID payload must fit the supplied bytes, have a valid SDNA struct/type
+index, and contain exactly one structure with length equal to its `TLEN`.
+The structure is either `ID` itself or contains a non-pointer, non-array `id`
+member of type `ID`. The embedded member and its `name` must fit their enclosing
+structures. `ID.name` must be a non-pointer, one-dimensional `char` array,
+contain its two-byte prefix, and have a NUL terminator within that array.
+
+`name` preserves the bytes before the first NUL, including the stored prefix;
+UTF-8 validation, normalization and prefix removal belong to consumers. The
+prefix need not match the block code: both corpus files have `SN` screen
+blocks with `bScreen` SDNA type and `SR` name prefixes. Layout comes only from
+SDNA, not host structs or hard-coded version offsets. Output remains valid
+after the input bytes, blocks or schema are released.
+
+Invalid ID ranges use `BLEND_BLOCK_SIZE`; invalid indices, missing or wrongly
+typed members, size/count mismatches and invalid names use `BLEND_DNA_INDEX`,
+`BLEND_DNA_MEMBER`, `BLEND_DNA_SIZE` and `BLEND_DNA_NAME`. These fatal diagnostics
+attach the ID payload's uncompressed file offset and block index, unlike the
+payload-relative `ReadDna` API. Allocation failures use `BLEND_DNA_ALLOCATION`;
+an excessive record count uses `BLEND_BLOCK_COUNT_LIMIT`. Non-ID payloads are
+not schema-validated, and no member values other than ID names, linked-file
+references, lists, scene objects or USD are decoded.
 
 ## 9. Version support
 

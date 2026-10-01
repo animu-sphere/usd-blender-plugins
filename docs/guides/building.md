@@ -65,7 +65,7 @@ cmake --build --preset reader
 ctest --preset reader
 ```
 
-Five CTests are registered: byte-source/header/compression/block/SDNA behavior, forbidden-include
+Five CTests are registered: byte-source/header/compression/block/SDNA/raw-ID behavior, forbidden-include
 scanning, generated link metadata setup, generated link boundary inspection,
 and link-boundary rejection checks. The library has no external link
 dependencies. The metadata setup fixture reconfigures the existing build;
@@ -116,8 +116,18 @@ pointer arrays, function pointers, empty structures, all short payload
 prefixes, invalid sections/counts/indices/names, duplicates, size mismatches,
 array overflow and trailing bytes. See the
 [schema boundary](../design/BLEND_CONTRACT.md#71-schema-decoding-boundary)
-for payload ownership and diagnostic offsets. These checks do not read scene
-values or reconstruct pointers; the importer remains header-only.
+for payload ownership and diagnostic offsets.
+
+Raw datablock cases resolve every nonzero reference-target address and list
+every ID block's SDNA type and stored name in the same three real files.
+Synthetic cases cover null/unresolved pointers, duplicate keys, excluded
+metadata collisions, both pointer widths and byte orders, non-leading
+embedded ID members, output ownership, raw name bytes and invalid ID ranges,
+indices, counts, members and terminators. Real screen blocks verify that `SN`
+block codes and `SR` name prefixes remain distinct. See the
+[raw ID boundary](../design/BLEND_CONTRACT.md#82-raw-datablock-boundary).
+These checks do not traverse pointer graphs or read scene values; the importer
+remains header-only.
 The plugin pyramid below does not run these reader CTests.
 
 ## OpenStrata bundle

@@ -8,6 +8,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- An owning exact-key pointer map for ID and DATA blocks, with null and
+    unresolved-reference handling, duplicate-key diagnostics and exclusion of
+    metadata address collisions. Raw datablock enumeration uses SDNA to list
+    every ID's type and stored name in the generated empty scene and both real
+    corpus files, preserving prefixes and byte values without graph traversal
+    or changes to the header-only importer. Synthetic regressions cover all
+    pointer-width/byte-order layouts and malformed ID ranges and metadata.
 - Owning SDNA schema decoding with NAME/TYPE/TLEN/STRC tables, member offsets,
     multidimensional arrays, pointer and function-pointer storage, and lookup
     by struct/member name. Regressions decode every structure in the generated

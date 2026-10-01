@@ -47,6 +47,14 @@ references or construct scene data; the
 [schema contract](../design/BLEND_CONTRACT.md#71-schema-decoding-boundary)
 defines this separate syntax boundary.
 
+`BuildPointerMap` owns saved-address-to-block-index entries for ID and `DATA`
+blocks, and `PointerMap::Resolve` diagnoses unresolved nonzero addresses.
+`ListDatablocks` uses decoded bytes, block records and SDNA to return owning
+raw ID type/name records. These remain syntax-only operations inside
+`blendFile`; no graph traversal, scene construction or dependency edge is
+added. Their [boundaries](../design/BLEND_CONTRACT.md#81-pointer-map-boundary)
+separate raw references from the ID graph owned by `blendScene`.
+
 ### 1.2 Later, only when their responsibility is real
 
 Named now so the boundaries are designed for them; created only when the
