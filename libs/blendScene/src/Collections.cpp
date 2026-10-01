@@ -67,13 +67,14 @@ public:
       }
       enter(child, referrer);
     }
-    ValidateParents();
+    ValidateObjects();
     return std::move(objects_);
   }
 
 private:
-  void ValidateParents() {
+  void ValidateObjects() {
     std::unordered_map<std::uint32_t, std::optional<std::uint32_t>> parents;
+    std::unordered_map<std::uint32_t, std::optional<std::uint32_t>> data;
     std::unordered_set<std::uint32_t> completed;
     for (auto& selected : objects_) {
       std::vector<std::uint32_t> chain;
@@ -87,11 +88,12 @@ private:
         if (chain.size() >= limits_.maxDepth) {
           Fail("BLEND_SCENE_DEPTH_LIMIT", "Object parent depth exceeds the caller's limit", referrer);
         }
-        if (objectIndices_.insert(current).second) {
+        if (objectIndices_.insert(current).second && !dataIndices_.contains(current)) {
           Visit(referrer);
         }
         const auto object = Bind(current, "Object", {'O', 'B', 0, 0});
         Name(object, "OB", current);
+        data.emplace(current, ValidateData(object, current));
         chain.push_back(current);
         const auto address = Pointer(object, "parent", "Object", current);
         const auto parent = address == 0 ? std::optional<std::uint32_t>{} : Resolve(address, current);
@@ -104,7 +106,36 @@ private:
       }
       completed.insert(chain.begin(), chain.end());
       selected.parentBlockIndex = parents.at(selected.blockIndex);
+      selected.dataBlockIndex = data.at(selected.blockIndex);
     }
+  }
+
+  std::optional<std::uint32_t> ValidateData(const DnaValueView& object,
+      std::uint32_t referrer) {
+    const auto member = Take(object.Member("data"));
+    if ((member.Type().name != "void" && member.Type().name != "ID") ||
+        member.PointerLevel() != 1 || !member.ArrayDimensions().empty()) {
+      Fail("BLEND_SCENE_REFERENCE_INVALID", "Object data must be a scalar void or ID pointer", referrer);
+    }
+    const auto address = Take(member.Pointer());
+    if (address == 0) {
+      return {};
+    }
+    const auto index = Resolve(address, referrer);
+    if (dataIndices_.insert(index).second) {
+      if (!objectIndices_.contains(index)) {
+        Visit(referrer);
+      }
+      const auto& block = blocks_[index];
+      if (block.count != 1 || block.code[0] < 'A' || block.code[0] > 'Z' ||
+          block.code[1] < 'A' || block.code[1] > 'Z' ||
+          block.code[2] != 0 || block.code[3] != 0) {
+        Fail("BLEND_SCENE_REFERENCE_INVALID", "Object data must target a single ID block", index);
+      }
+      const auto view = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, index));
+      Name(view, std::string_view(block.code.data(), 2), index);
+    }
+    return index;
   }
 
   [[noreturn]] void Fail(const char* code, const char* message, std::uint32_t index) const {
@@ -164,7 +195,7 @@ private:
       std::uint32_t index) const {
     const auto id = Embedded(view, "id", "ID", index);
     if (Pointer(id, "lib", "Library", index) != 0) {
-      Fail("BLEND_SCENE_LINKED_UNSUPPORTED", "Linked Collection/Object IDs are not followed", index);
+      Fail("BLEND_SCENE_LINKED_UNSUPPORTED", "Linked IDs are not followed", index);
     }
     const auto name = Take(id.Member("name"));
     const auto bytes = name.Bytes();
@@ -174,7 +205,7 @@ private:
         bytes.size() < 3 || bytes[0] != static_cast<std::byte>(prefix[0]) ||
         bytes[1] != static_cast<std::byte>(prefix[1]) ||
         end == bytes.end() || end < bytes.begin() + 2) {
-      Fail("BLEND_SCENE_NAME_INVALID", "Collection/Object ID.name has invalid prefix or termination", index);
+      Fail("BLEND_SCENE_NAME_INVALID", "ID.name has invalid prefix or termination", index);
     }
     return {reinterpret_cast<const char*>(bytes.data() + 2),
         static_cast<std::size_t>(end - bytes.begin() - 2)};
@@ -216,7 +247,7 @@ private:
         if (objectIndices_.insert(target).second) {
           Visit(index);
           const auto object = Bind(target, "Object", {'O', 'B', 0, 0});
-          objects_.push_back({target, Name(object, "OB", target), {}});
+          objects_.push_back({target, Name(object, "OB", target), {}, {}});
         }
       } else {
         targets.push_back(target);
@@ -238,6 +269,7 @@ private:
   std::unordered_map<std::uint32_t, bool> active_;
   std::unordered_set<std::uint32_t> listNodes_;
   std::unordered_set<std::uint32_t> objectIndices_;
+  std::unordered_set<std::uint32_t> dataIndices_;
   std::vector<SelectedObject> objects_;
 };
 

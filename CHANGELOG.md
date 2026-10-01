@@ -8,6 +8,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Bounded saved Object data ID-reference validation in `blendScene` selection,
+    accepting stored `void *` and `ID *` declarations and returning optional
+    caller-sequence data block indices. Selected and parent-only Objects share
+    exact-address, local-ID and explicit visit-budget checks without partial
+    output. Four synthetic layouts cover shared/reordered data, malformed
+    references and budget boundaries; both corpus files resolve Camera/Cube/Light
+    to Camera/Mesh/Lamp and cover pointer mutations. This adds no Object-kind
+    data requirements, data-internal traversal, Mesh values, instance graph,
+    populated Scene IR or changes to fixture bytes or the header-only importer.
 - Bounded saved Object parent-reference validation in `blendScene` selection,
     returning optional caller-sequence parent block indices without adding
     parent-only Objects to Collection membership. Exact SDNA references and
