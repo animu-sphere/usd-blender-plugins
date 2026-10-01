@@ -98,6 +98,14 @@ limits, high-ratio streams, and byte-identical gzip/Zstandard round trips of
 the generated empty scene and both decoded corpus files. Their explicit limits are
 test budgets, not production defaults.
 
+The same test prints and pins the committed files' stored/decoded sizes,
+minimum integer expansion ratio and minimum accepted decoder-window log.
+Exact byte budgets must preserve all decoded bytes; reducing an input/output
+limit by one, or the compressed file's ratio/window allowance below its
+minimum, must produce the matching `BLEND_COMPRESSION_*` diagnostic. See the
+[compression measurements](../../plugins/usdBlendFileFormat/tests/corpus/README.md#compression-measurements)
+for values, measurement semantics and corpus limitations.
+
 Block cases enumerate both legacy pointer widths and byte orders and the
 format-1 layout, including the generated empty scene, the real uncompressed
 4.5.13 legacy corpus and the decoded 5.2.2 corpus. The two corpus files'

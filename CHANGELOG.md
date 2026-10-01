@@ -8,6 +8,11 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Reproducible compression measurements for the generated empty scene and
+    both real corpus files, with pinned stored/decoded sizes and minimum
+    integer-ratio/window allowances. Reader regressions require identical
+    output at exact budgets and matching diagnostics immediately below them;
+    the small corpus does not establish production decompression defaults.
 - A verified inspection guide for `blend_inspect`, covering summaries, block
     and SDNA listings, raw Object names, explicit compressed-input budgets,
     diagnostic context and normal/error exit codes on committed fixtures.
