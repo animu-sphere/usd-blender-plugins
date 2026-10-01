@@ -8,6 +8,9 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Header regression tests for the 2.99/3.0 version boundary across legacy
+    pointer widths and byte orders, and for Blender 4.5 format-1 headers with
+    and without Zstandard compression.
 - Root Apache-2.0 license, contribution guidelines, security reporting policy
     and Code of Conduct, linked from the repository and documentation indexes.
 - The `usdBlendFileFormat` bundle from OpenStrata's `usd-fileformat-cpp`
@@ -41,6 +44,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- The blend contract distinguishes the native decoder's 3.0 design floor
+    from structural header recognition, and records the fixture requirements
+    for legacy big-endian and 32-bit-pointer compatibility claims.
+- The blend contract records the Blender 5 format-1 block-header offsets,
+    signed 64-bit lengths and counts, and contiguous block boundaries,
+    confirmed against the tagged format definition and the generated fixture.
 - Documentation status is centralized: phase status and release mapping in the
     roadmap table, incomplete task status in the current roadmap, and supported
     behavior in the capability matrix. Other pages link to these owners rather

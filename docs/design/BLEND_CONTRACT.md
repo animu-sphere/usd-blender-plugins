@@ -165,7 +165,7 @@ The layout is confirmed against the
 [Blender 5.0 release notes](https://developer.blender.org/docs/release_notes/5.0/core/#large-buffers-in-blend-files),
 the [5.0 header definition](https://github.com/blender/blender/blob/v5.0.0/source/blender/blenloader_core/BLO_core_blend_header.hh),
 and the contributor-provided `blender-5.2.2/Untitled.blend` corpus file.
-The block layout portion of BLEND-O1 remains open.
+The confirmed block layout is in §6.2.
 
 ## 6. Block layout
 
@@ -182,10 +182,41 @@ block. Each block is a block header followed by its data.
 | `SDNAnr` | 4 | index of the data's struct in SDNA |
 | `nr` | 4 | number of structs in the data |
 
+The header is 20 bytes with 4-byte pointers and 24 bytes with 8-byte
+pointers. The legacy reader decodes integers using the byte order and
+pointer size declared by the file, including big-endian and 32-bit-pointer
+layouts, regardless of the host. These paths require their own container and
+SDNA fixtures before compatibility is claimed; synthetic header tests alone
+establish only recognition of the declared layout. Format 1 has no such
+variants (§5.2).
+
 ### 6.2 Blender 5 block header
 
-Blender 5 block headers carry 64-bit lengths. The container reader normalizes
-both layouts into one in-memory block record, so nothing above
+Format 1 uses a 32-byte block header. Unlike the legacy layout, the SDNA
+index precedes the old address, and both the data length and element count
+are signed 64-bit integers:
+
+| Offset | Field | Size | Meaning |
+| --- | --- | --- | --- |
+| 0 | `code` | 4 | block code (§6.3) |
+| 4 | `SDNAnr` | 4 | signed index of the data's struct in SDNA |
+| 8 | `old` | 8 | unsigned old address; the pointer-map key |
+| 16 | `len` | 8 | signed data length in bytes, after the header |
+| 24 | `nr` | 8 | signed number of structs in the data |
+
+There is no padding between fields. Format 1 is little-endian with 8-byte
+pointers (§5.2). A reader must reject negative lengths, counts and SDNA
+indices before converting them to the normalized unsigned representation.
+It must not decode this header as the 24-byte legacy 64-bit-pointer layout.
+The field order and widths follow the
+[Blender 5.0 block-header definition](https://github.com/blender/blender/blob/v5.0.0/source/blender/blenloader_core/BLO_core_bhead.hh).
+The next block starts immediately after the declared payload, without
+rounding to a pointer-alignment boundary. The repository-generated fixture
+confirms this layout through the terminal `ENDB` header; the verification
+evidence is recorded in [§12.1](#121-resolved-decisions).
+
+The container reader normalizes both layouts into one in-memory block
+record, so nothing above
 `BlendContainerReader` knows which layout a file used:
 
 ```text
@@ -251,12 +282,20 @@ a version difference handled by the decoder, not a crash.
 | Blender 3.x – 4.4 | read where the decoders already cover it; not claimed |
 | older than 3.0 | not targeted |
 
+Blender 3.0 is the native decoder's minimum design target (BLEND-O2), not a
+minimum enforced by `ReadHeader`. Header recognition validates syntax and
+reports the stored version and layout, even for older versions; it does not
+promise container or scene compatibility. A successful probe must not be
+used as evidence that scene decoding supports that version. The file's
+container format, not its Blender version, selects the block layout: a 4.5
+file can use format 1 (§5.2).
+
 Mesh storage moved during 3.x and 4.x from fixed structs to generic attributes
 and offset arrays. `blendScene` keeps one decoder per storage form, selected
 from the SDNA and the file version, all producing the same Scene IR. The
 supported range is restated, with a fixture behind each version, in
 [reference/CAPABILITY_MATRIX.md](../reference/CAPABILITY_MATRIX.md) — never
-claimed here. The minimum is BLEND-O2.
+claimed here.
 
 ## 10. Source concepts
 
@@ -303,8 +342,36 @@ with a diagnostic. Evaluated data comes only from the Blender host backend
 
 | Id | Question | Proposed answer | Blocks |
 | --- | --- | --- | --- |
-| BLEND-O1 | The exact byte layout of the Blender 5 block header; the file header is confirmed in §5.2. | Confirm against Blender 5.0's release notes and fixtures written by Blender 5.x; record the remaining layout in §6.2. | Phase 1 |
-| BLEND-O2 | The minimum Blender version read. | 3.0, the first with Zstandard; claimed only from 4.5 LTS. | Phase 1 |
 | BLEND-O3 | What happens to data linked from another `.blend`? | Reported in Phases 0–6. Later, possibly authored as a USD reference to the other `.blend`, which this file format then opens. | nothing (non-blocking) |
-| BLEND-O4 | Are big-endian and 32-bit-pointer files supported? | Read by the legacy container reader where fixtures exist; not claimed. | Phase 1 |
 | BLEND-O5 | The decompression size and ratio limits. | Set from a measured corpus of real files in Phase 1, overridable by the caller. | Phase 1 |
+
+### 12.1 Resolved decisions
+
+- **BLEND-O1 (2026-10-02):** format 1 uses the seventeen-byte file header
+   in §5.2 and the 32-byte block header in §6.2. The Blender 5.0 release notes
+   and tagged header definitions are the format references, not code adopted
+   by this reader. An independent byte-level walk of the repository's
+   [Blender 5.2.2 empty-scene fixture](../../plugins/usdBlendFileFormat/tests/fixtures/README.md#blender-written-empty-scene)
+   verified 266 consecutive blocks: 262 `DATA`, one `GLOB`, one `SC`, one
+   `DNA1` and one `ENDB`. Each payload fit the remaining bytes, and each
+   length, count and SDNA index was nonnegative. `DNA1` at offset 53,922 had
+   134,572 payload bytes beginning with `SDNA`; the zero-length, zero-count
+   `ENDB` header at offset 188,526 ended exactly at byte 188,558. The fixture
+   SHA256 matched its recorded provenance. This establishes the byte layout,
+   not implemented container or SDNA support.
+
+- **BLEND-O2 (2026-10-02):** retain 3.0 as the native decoder's minimum
+   design target and 4.5 LTS/5.x as the first stable release targets (§9).
+   Keep structural header recognition independent of scene-version policy.
+   The `blendFile.header` regressions verify that valid legacy headers for
+   2.99, 3.0 and 4.5 are recognized, and that format-1 headers for 4.5 are
+   recognized both uncompressed and through the Zstandard probe. These are
+   synthetic headers, not scene-compatibility evidence.
+
+- **BLEND-O4 (2026-10-02):** the legacy container reader is designed to
+   handle both pointer widths and byte orders using explicit byte decoding
+   (§6.1); format 1 remains 64-bit little-endian only. Compatibility claims
+   for legacy variants require container and SDNA fixtures. The
+   `blendFile.header` regressions cover every legacy pointer-width/byte-order
+   combination at versions 2.99, 3.0 and 4.5, but do not establish block or
+   SDNA decoding.
