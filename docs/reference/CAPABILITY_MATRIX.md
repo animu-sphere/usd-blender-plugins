@@ -123,3 +123,20 @@ codes remain recoverable stderr diagnostics. Its
 | --- | --- | --- |
 | native | — | Phase 1 onward |
 | Blender host | — | Phase 7 |
+
+## 5. Scene IR
+
+These are library-only capabilities, not `.blend` scene compatibility or
+authored-stage support. The importer remains header-only.
+
+| Capability | Status | Fixture | Intended in |
+| --- | --- | --- | --- |
+| owning object/mesh IR, optional parent and shared-mesh indices | supported | synthetic empty, parented and shared-mesh records and copy-independence checks in `blendScene.ir` | Phase 2 |
+| point/direction basis rotation and mesh/empty world-matrix conjugation | supported | synthetic asymmetric matrix, translated/rotated/scaled parent-child composition, direction-length and right-handed winding checks in `blendScene.ir` | Phase 2 |
+| native scene selection, object/member decoding and graph validation | — | | Phase 2 |
+| parent-relative transforms, topology validation, normals and UV decoding | — | | Phase 2 |
+
+The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
+defines row-major, column-vector matrix semantics. Basis helpers perform no
+unit-policy decision or USD authoring. Source unit metadata is retained in
+the IR; STAGE-O1 and NAME-O1 remain open in their owning design documents.

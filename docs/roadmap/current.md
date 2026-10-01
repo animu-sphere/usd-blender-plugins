@@ -16,9 +16,24 @@ looked at.
 | 1.1 | Resolve BLEND-O5 | the owning document records the answer | 🚧 |
 | 1.2 | Compression: gzip and Zstandard, with size and ratio limits | compressed and uncompressed fixtures read identically; a bomb fixture fails with `BLEND_COMPRESSION_*` | 🚧 |
 
-## After Phase 1
+## Phase 2 — objects and meshes
 
-Phase 2 builds `blendScene` and reaches the first useful milestone: **a
-`.blend` containing a cube opens directly in `usdview` as a `UsdGeomMesh`**
-at `/Asset/geo/Cube/mesh`. Its tasks are written here when Phase 1 is nearly
-done.
+Goal: a `.blend` containing a cube opens directly in `usdview` as a
+`UsdGeomMesh` at `/Asset/geo/Cube/mesh`, with deterministic hierarchy,
+transforms and mesh data under the
+[stage contract](../design/STAGE_CONTRACT.md).
+
+| # | Task | Done when | Status |
+| --- | --- | --- | --- |
+| 2.2 | Resolve STAGE-O1 and NAME-O1 | the stage and naming contracts record the unit-scale and identifier policies, with fixture-backed tests | ⬜ |
+| 2.3 | Native scene decoding and ID graph | `blendScene` selects the saved scene and its objects through SDNA and saved references; missing, linked, invalid and cyclic references have bounded diagnostics | ⬜ |
+| 2.4 | Objects, parenting and transforms | mesh and empty objects retain render visibility and hierarchy; converted world matrices produce local transforms matching a Blender oracle, including nonuniform and negative scales | ⬜ |
+| 2.5 | Version-aware mesh decoding | 4.5 and 5.x source positions, topology, corner normals and indexed UV maps populate the IR; empty meshes, invalid indices and unsupported storage have tested diagnostics | ⬜ |
+| 2.6 | Deterministic identifiers | names and sibling collisions follow the naming contract, preserve source names and remain stable across repeated reads and input enumeration order | ⬜ |
+| 2.7 | USD authoring from the Scene IR | the importer authors object Xforms and Mesh children under `/Asset/geo`, with local matrices, extent, right-handed polygon topology, normals and UVs; shared meshes are duplicated per object and no second basis conversion occurs | ⬜ |
+| 2.8 | Cube milestone and regression fixtures | a reproducible `single_cube.blend` opens at `/Asset/geo/Cube/mesh`; parenting, transforms, normals and UV fixtures match an oracle, repeated reads author the same stage, and both build modes and dependency gates pass | ⬜ |
+
+The [Scene IR boundary](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
+keeps basis conversion separate from binary decoding and USD authoring.
+Phase 1's open compression decision remains open; compressed importer inputs
+must not acquire arbitrary production defaults to reach this milestone.

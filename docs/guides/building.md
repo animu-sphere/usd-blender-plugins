@@ -21,8 +21,8 @@ runtime's exported MaterialX package even for a non-imaging consumer.
 The five pull-request cells are:
 
 - one workspace graph check, without materializing a runtime;
-- two root CMake build/CTest checks, including all five reader tests and
-	their include/link boundary gates, plus the inspection CLI test;
+- two root CMake build/CTest checks, including the reader and Scene IR tests
+	and their include/link boundary gates, plus the inspection CLI test;
 - two standalone bundle build, L0-L5 and package checks, exercising the
 	manifest's installed `blendFile` dependency.
 
@@ -149,6 +149,31 @@ See the
 These checks do not traverse pointer graphs or read scene values; the importer
 remains header-only.
 The plugin pyramid below does not run these reader CTests.
+
+## Scene IR without OpenUSD
+
+```powershell
+ost library build libs/blendScene --target cy2026 --profile usd
+ost library test libs/blendScene --target cy2026 --profile usd
+```
+
+The standalone library exports `blendScene::blendScene` and installs its
+headers and CMake package. It has no link dependencies. The reader-only root
+build also builds and tests it before any OpenUSD resolution.
+
+`blendScene.ir` checks owning empty/parented/shared-mesh records, identity
+defaults, source metadata, `(x, y, z) -> (x, z, -y)`, asymmetric world-matrix
+conjugation, parent-child composition and preserved right-handed winding and
+direction lengths. Four boundary CTests scan forbidden includes, regenerate
+CMake File API metadata, inspect the generated link line and reject forbidden
+dependencies. They reuse the reader's link-test helpers without changing its
+default policy. Metadata setup runs serially to avoid simultaneous root
+reconfiguration when CTest uses parallel workers.
+
+These are synthetic IR tests, not native scene decoding or USD mesh tests.
+The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
+defines matrix storage and ownership; supported scope is in the
+[capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 
 ## Inspection tool
 

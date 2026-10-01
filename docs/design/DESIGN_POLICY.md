@@ -283,6 +283,38 @@ struct Scene {
 }
 ```
 
+### 5.2.1 Scene IR foundation
+
+The initial public types live in `blendScene/Scene.h`. They are owning values:
+`SceneMetadata`, `Object`, `Mesh` and `UvMap`, using only standard C++ types.
+`Scene` contains object and mesh vectors; later data categories are added when
+their decoders exist. An object's optional `parent` and `mesh` are indices into
+those vectors, not saved Blender pointers. Several objects may refer to the
+same mesh. No parent means a root object, and no mesh means an empty object in
+this initial scope. Source names and assigned identifiers remain separate.
+
+`Vector2` and `Vector3` use doubles. `Matrix4` is row-major storage with
+column-vector mathematics: translation occupies `[0][3]`, `[1][3]`, `[2][3]`,
+and a child world matrix is `parentWorld * childLocal`. Object matrices default
+to identity. Objects carry world matrices in the USD basis; authoring must
+derive parent-relative matrices and transpose for USD's row-vector convention,
+not reinterpret the stored elements as an OpenUSD matrix.
+
+`ToUsdBasis(Vector3)` performs `(x, y, z) -> (x, z, -y)` for positions and
+directions. `ToUsdBasis(Matrix4)` performs `C * W * inverse(C)` for mesh and
+empty objects. These helpers preserve lengths and right-handed winding and
+compose consistently; callers apply them once while constructing the IR.
+They do not implement the separate camera/light matrix convention, normalize
+normals, derive local transforms, or decide STAGE-O1. `sourceUnitScale` retains
+source metadata independently of this basis rotation.
+
+Meshes carry points, face counts, corner vertex indices, face-varying corner
+normals, and named indexed UV maps with an active-render flag. The initial IR
+is a value container, not a validator: decoders must validate references,
+cycles, topology and array sizes before publishing a Scene. This boundary does
+not introduce a native `Decode` or backend implementation. Evidence belongs in
+the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
+
 ### 5.3 `usdBlendFileFormat` — the importer
 
 The OpenUSD `SdfFileFormat` bundle, scaffolded from OpenStrata's

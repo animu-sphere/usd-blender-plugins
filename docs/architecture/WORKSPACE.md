@@ -55,6 +55,18 @@ raw ID type/name records. These remain syntax-only operations inside
 added. Their [boundaries](../design/BLEND_CONTRACT.md#81-pointer-map-boundary)
 separate raw references from the ID graph owned by `blendScene`.
 
+`blendScene` exposes the owning object/mesh Scene IR and the single basis
+conversion through `blendScene/Scene.h`, under the
+[IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation).
+Its foundation has no link dependencies; the permitted `blendFile` edge is
+added when native decoding consumes syntax. The root adds it before resolving
+OpenUSD, and its standalone CMake package exports `blendScene::blendScene`.
+Both build modes run the IR and forbidden-include tests, generated link
+metadata and link-boundary checks, and rejection tests. The generated-link
+test helpers are shared with `blendFile`, keeping the existing reader defaults.
+The plugin and inspection tool still consume `blendFile` alone; no new runtime
+consumer edge is implied by registering the library as a workspace member.
+
 `blend_inspect` composes these syntax APIs through `blendFile` alone in
 Phase 1. Its tool descriptor declares that library edge, and the root adds
 `tools/blendInspect` before resolving OpenUSD. The standalone tool finds the
