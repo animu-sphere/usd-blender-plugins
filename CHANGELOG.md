@@ -8,6 +8,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Borrowed SDNA block/member/array views, saved-pointer reads and explicitly
+    typed integer/IEEE floating-point reads, with checked ranges, element
+    counts and contextual fatal diagnostics. Regressions cover both pointer
+    widths and byte orders, numeric boundaries, malformed access and real
+    Scene unit fields. Both normal-save corpus files' current Scene pointers
+    resolve through the existing map; the Scene-only library fixture's null
+    pointer is preserved. No Scene-selection fallback, graph traversal, Scene
+    IR publication or changes to the header-only importer are added.
 - Validated Scene IR unit conversion for stored distances, positions and
     affine mesh/empty world translations, with meter normalization before
     basis rotation and no dimensionless scale changes. Synthetic regressions

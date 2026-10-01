@@ -454,8 +454,63 @@ typed members, size/count mismatches and invalid names use `BLEND_DNA_INDEX`,
 attach the ID payload's uncompressed file offset and block index, unlike the
 payload-relative `ReadDna` API. Allocation failures use `BLEND_DNA_ALLOCATION`;
 an excessive record count uses `BLEND_BLOCK_COUNT_LIMIT`. Non-ID payloads are
-not schema-validated, and no member values other than ID names, linked-file
-references, lists, scene objects or USD are decoded.
+not schema-validated by this API, and it reads no member values other than
+ID names. Linked-file references, lists, scene objects and USD are outside
+this boundary.
+
+### 8.3 Borrowed SDNA value boundary
+
+`ViewDnaBlock(bytes, blocks, schema, header, blockIndex, elementIndex = 0)`
+binds one structure element of a caller-selected uncompressed block. It
+returns a `DnaValueView`, not an owning scene record. The caller supplies the
+same decoded bytes, ordered blocks, `ReadDna` schema and layout header. Bytes
+and schema, including their strings and member vectors, must remain alive
+and unmodified for every derived view; blocks and header are not borrowed.
+Moving or releasing the backing bytes/schema invalidates the views. Binding
+does not find DNA1 or choose semantic blocks for the caller.
+
+Binding validates the header layout, block/structure/type indices, payload
+range, nonzero TLEN, exact `length / TLEN == count` and the selected element
+index without overflowing a count multiplication. Zero-length structures
+remain legal in the schema but cannot be bound as block elements. No view
+reads beyond its validated span or uses host struct layout/alignment.
+
+`Type`, `Bytes`, `PointerLevel` and `ArrayDimensions` expose borrowed source
+facts. `Member(baseName)` selects a member of a scalar, non-pointer embedded
+structure and checks its declared size, dimensions and range. `Element(index)`
+consumes one leading array dimension; multidimensional arrays require repeated
+selection. Neither method follows saved pointers, traverses lists or recurses
+automatically. A `Pointer` read requires a scalar pointer value, preserves null
+and all 32/64-bit address bits, and uses the stored byte order. Multiple and
+function pointers expose storage bits only, never dereference or execution.
+
+Scalar readers require non-pointer, non-array values and explicit type/width
+matches:
+
+| Reader | Accepted SDNA types and TLEN |
+| --- | --- |
+| `SignedInteger` | `int8_t` / `signed char`: 1; `short`: 2; `int`: 4; `long`: 4 or 8; `int64_t`: 8 |
+| `UnsignedInteger` | `uint8_t` / `uchar` / `unsigned char`: 1; `ushort`: 2; `uint`: 4; `ulong`: 4 or 8; `uint64_t`: 8 |
+| `FloatingPoint` | IEEE `float`: 4; IEEE `double`: 8; returned as `double` |
+
+Signed reads sign-extend; unsigned reads retain all bits. Plain `char`, `bool`,
+unknown names and mismatched widths are not inferred as numeric types; use
+bounded `Bytes` for raw character storage. Floating-point reads retain
+nonfinite numeric values, leaving semantic validation to consumers. No basis,
+unit, string encoding or identifier conversion happens here.
+
+Failures are fatal and non-recoverable: `BLEND_BLOCK_SIZE`, `BLEND_DNA_LAYOUT`,
+`BLEND_DNA_INDEX`, `BLEND_DNA_MEMBER`, `BLEND_DNA_SIZE` and `BLEND_DNA_VALUE`.
+They attach the selected block index and the current view's uncompressed file
+offset; binding failures use the block payload offset (zero if the block index
+is absent). No automatic unresolved-reference policy is added. The caller
+passes saved address values to `PointerMap::Resolve` separately.
+
+Fixture evidence is owned by the
+[capability matrix](../reference/CAPABILITY_MATRIX.md#1-container), including
+normal saves' `FileGlobal.curscene` references and the Scene-only library's
+stored null reference. This boundary does not define a Scene-selection fallback
+for libraries or publish a Scene IR.
 
 ## 9. Version support
 

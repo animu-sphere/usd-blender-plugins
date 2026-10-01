@@ -254,6 +254,11 @@ scene policy**: a block has a code, a size, an SDNA struct and an address,
 never a `pxr::SdfPath` and never an `Object`
 ([BLEND_CONTRACT.md](BLEND_CONTRACT.md)).
 
+The [borrowed SDNA value boundary](BLEND_CONTRACT.md#83-borrowed-sdna-value-boundary)
+exposes bounded structure/member/array storage, saved pointers and typed
+scalars. It does not select a Scene, follow references or convert values; the
+semantic decoder owns those decisions and copies results into the owning IR.
+
 ### 5.2 `blendScene` — the Scene IR and native decoding
 
 A plain C++ library with **no OpenUSD dependency**. It owns the Scene IR —
