@@ -5,7 +5,8 @@ document describes intended behavior and links here.
 
 As of 2026-10-01 Phase 0 is in progress. Only header validation and minimal
 stage scaffolding are implemented; no Blender scene version is supported yet.
-Synthetic fixtures below live in `plugins/usdBlendFileFormat/tests/fixtures/`;
+Synthetic headers and the Blender-written `empty.blend` below live in
+`plugins/usdBlendFileFormat/tests/fixtures/`;
 the contributor-provided Blender file lives in `tests/corpus/` beside them.
 Header validation does not establish scene compatibility. Windows verification is recorded
 in [the build guide](../guides/building.md); Linux remains unverified.
@@ -27,9 +28,9 @@ No row says "supported" without a fixture.
 
 | Capability | Status | Fixture | Intended in |
 | --- | --- | --- | --- |
-| `.blend` registration (`usd-fileformat:blend`) | supported | `header_only.blend` | Phase 0 |
+| `.blend` registration (`usd-fileformat:blend`) | supported | `header_only.blend`; `empty.blend` | Phase 0 |
 | legacy header | supported | `header_only.blend`; malformed header fixtures; `blendFile.header` | Phase 0 |
-| Blender 5 header | supported | `blendFile.header`; `corpus/blender-5.2.2/Untitled.blend` | Phase 0 |
+| Blender 5 header | supported | `empty.blend`; `blendFile.header`; `corpus/blender-5.2.2/Untitled.blend` | Phase 0 |
 | legacy block layout | — | | Phase 1 |
 | Blender 5 block layout | — | | Phase 1 |
 | gzip | — | | Phase 1 |
@@ -49,8 +50,8 @@ No row says "supported" without a fixture.
 
 | Capability | Status | Fixture | Intended in |
 | --- | --- | --- | --- |
-| `/Asset`, `defaultPrim`, `geo`, `mtl` | supported | `header_only.blend`, `test_stage.py`, golden | Phase 0 |
-| Y-up, meters | supported | `header_only.blend`, `test_stage.py`, golden | Phase 0 |
+| `/Asset`, `defaultPrim`, `geo`, `mtl` | supported | `header_only.blend`, `empty.blend`, `test_stage.py`, goldens | Phase 0 |
+| Y-up, meters | supported | `header_only.blend`, `empty.blend`, `test_stage.py`, goldens | Phase 0 |
 | objects, parenting, transforms | — | | Phase 2 |
 | meshes: topology, normals, UVs | — | | Phase 2 |
 | deterministic identifiers | — | | Phase 2 |
