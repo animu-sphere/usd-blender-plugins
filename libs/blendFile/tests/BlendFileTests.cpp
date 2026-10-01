@@ -6,6 +6,7 @@
 #include <array>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #include <string_view>
 
@@ -242,7 +243,8 @@ void CheckFileBytes() {
   Require(ParseFile(metadata).HasValue(), "Full-file gzip metadata across chunks rejected");
 }
 
-void CheckFileFixture(const std::filesystem::path& path, bool compressed) {
+void CheckFileFixture(const std::filesystem::path& path, bool compressed,
+    std::uint16_t version = 502, std::uint8_t headerSize = 17) {
   constexpr blend::CompressionLimits limits{64 * 1024 * 1024, 64 * 1024 * 1024, 2048, 23};
   blend::FileByteSource source(path);
   Require(source.IsOpen(), "Full-file fixture could not be opened");
@@ -253,8 +255,12 @@ void CheckFileFixture(const std::filesystem::path& path, bool compressed) {
   Require(decoded.HasValue(), "Full-file fixture rejected");
   blend::MemoryByteSource memory(decoded.GetValue());
   const auto header = blend::ReadHeader(memory);
-  Require(header.HasValue() && header.GetValue().version == 502 && header.GetValue().headerSize == 17,
+  Require(header.HasValue() && header.GetValue().version == version && header.GetValue().headerSize == headerSize,
       "Decoded Blender fixture has the wrong header");
+  const auto containerVersion = headerSize == 12 ? blend::BlendContainerVersion::Legacy : blend::BlendContainerVersion::Blender5;
+  Require(header.GetValue().containerVersion == containerVersion && header.GetValue().pointerSize == 8 &&
+              header.GetValue().byteOrder == blend::ByteOrder::Little,
+      "Decoded Blender fixture has the wrong layout");
   if (!compressed) {
     std::vector<std::byte> original(static_cast<std::size_t>(source.Size()));
     Require(source.Read(0, original) && original == decoded.GetValue(), "Uncompressed file bytes changed");
@@ -429,7 +435,7 @@ void CheckBlocks() {
   Require(lts.HasValue() && lts.GetValue().size() == 1, "Format-1 block layout incorrectly restricted to Blender 5");
 }
 
-void CheckBlockFixture(const std::filesystem::path& path, bool empty) {
+std::vector<blend::BlendBlock> CheckBlockFixture(const std::filesystem::path& path, bool empty) {
   blend::FileByteSource source(path);
   constexpr blend::CompressionLimits limits{64 * 1024 * 1024, 64 * 1024 * 1024, 2048, 23};
   const auto bytes = blend::ReadFileBytes(source, limits);
@@ -454,6 +460,15 @@ void CheckBlockFixture(const std::filesystem::path& path, bool empty) {
         "Known empty-scene block positions changed");
     Require(parsed.Diagnostics().empty(), "Known empty-scene codes reported as unsupported");
   }
+  return blocks;
+}
+
+std::set<std::array<char, 4>> BlockKinds(const std::vector<blend::BlendBlock>& blocks) {
+  std::set<std::array<char, 4>> kinds;
+  for (const auto& block : blocks) {
+    kinds.insert(block.code);
+  }
+  return kinds;
 }
 
 class CompressedReadFailure final : public blend::ByteSource {
@@ -592,15 +607,28 @@ public:
 
 int main(int argumentCount, char** arguments) {
     try {
-      Require(argumentCount == 4, "Expected temporary, compressed and uncompressed Blender fixture paths");
+      Require(argumentCount == 5, "Expected temporary, compressed, uncompressed and legacy Blender fixture paths");
       CheckZlibDecoder();
       CheckGzipHeaders();
       CheckFileBytes();
       CheckFileFixture(arguments[2], true);
       CheckFileFixture(arguments[3], false);
+      CheckFileFixture(arguments[4], false, 405, 12);
       CheckBlocks();
-      CheckBlockFixture(arguments[2], false);
+      const auto modernBlocks = CheckBlockFixture(arguments[2], false);
       CheckBlockFixture(arguments[3], true);
+      const auto legacyBlocks = CheckBlockFixture(arguments[4], false);
+      Require(legacyBlocks.size() == 1240 && legacyBlocks.back().offset == 504759,
+          "Known legacy-scene block count or end changed");
+      const auto legacyDna = std::find_if(legacyBlocks.begin(), legacyBlocks.end(), [](const blend::BlendBlock& block) {
+        return block.code == std::array{'D', 'N', 'A', '1'};
+      });
+      Require(legacyDna != legacyBlocks.end() && legacyDna->offset == 372491 && legacyDna->length == 132244,
+          "Known legacy-scene DNA1 positions changed");
+      const auto modernKinds = BlockKinds(modernBlocks);
+      const auto legacyKinds = BlockKinds(legacyBlocks);
+      Require(legacyKinds.size() == 20 && legacyKinds == modernKinds,
+          "Blender 4.5 and 5.x corpus block kinds differ");
       blend::FileByteSource realFile(arguments[2]);
       const auto realHeader = blend::ReadHeader(realFile);
       if (!realHeader.HasValue()) {

@@ -19,8 +19,15 @@
       },
       "generationScript": null,
       "compression": "zstandard",
-      "readerStatus": "header-only",
-      "purpose": "Real-file regression input for compressed Blender 5 header reading"
+      "readerStatus": "block-enumeration",
+      "readerEvidence": {
+        "headerVersion": 502,
+        "containerLayout": "format-1",
+        "comparedBlockKinds": 20,
+        "comparisonFile": "../blender-4.5.13/Untitled.blend",
+        "scope": "Header, full-stream decompression, generated gzip/Zstandard byte round trips and block framing only; no SDNA or scene validation"
+      },
+      "purpose": "Real-file regression input for compressed Blender 5 header reading, full-stream bytes and Blender 4.5/5.x block-kind comparison"
     }
   ]
 }

@@ -95,15 +95,19 @@ Probe cases cover decoder-window/input limits and stopping before trailing
 checksum validation. Full-stream byte cases cover final checksums,
 truncation, metadata across chunks, trailing garbage, exact input/output/ratio
 limits, high-ratio streams, and byte-identical gzip/Zstandard round trips of
-both the generated empty scene and decoded corpus. Their explicit limits are
+the generated empty scene and both decoded corpus files. Their explicit limits are
 test budgets, not production defaults.
 
 Block cases enumerate both legacy pointer widths and byte orders and the
-format-1 layout, including the generated empty scene and decoded corpus.
+format-1 layout, including the generated empty scene, the real uncompressed
+4.5.13 legacy corpus and the decoded 5.2.2 corpus. The two corpus files'
+complete block-kind sets are compared; the 4.5.13 block count and `DNA1`/`ENDB`
+positions are fixed by the regression. See the
+[corpus comparison evidence](../../plugins/usdBlendFileFormat/tests/corpus/README.md#real-file-comparison).
 They cover contiguous unaligned payloads, large 64-bit fields in a sparse
 source, exact count limits, negative fields, truncated boundaries, oversized
 lengths, source read failures, unknown-code diagnostics, and terminal `ENDB`
-checks. Synthetic legacy containers are not Blender-written 4.5 fixtures.
+checks. Other legacy pointer-width/byte-order combinations remain synthetic.
 These checks do not decode SDNA or scenes; the importer remains header-only.
 The plugin pyramid below does not run these reader CTests.
 

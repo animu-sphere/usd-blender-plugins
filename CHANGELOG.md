@@ -8,6 +8,11 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- A contributor-provided Blender 4.5.13 legacy corpus file, preserving the
+    original bytes with explicit commit permission and manifest provenance.
+    Reader regressions cover its header, full-file byte round trips, known
+    block positions and identical block-kind sets with the 5.2.2 corpus,
+    without claiming SDNA or scene compatibility.
 - Explicit-limit block enumeration for legacy and Blender 5 containers,
     normalized to one record with validated framing, terminal `ENDB`,
     recoverable unknown-code diagnostics and no payload allocation. Tests
