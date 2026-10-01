@@ -42,3 +42,35 @@ unverified. Commands are in the
 [build guide](../../../../docs/guides/building.md#reader-through-openstrata).
 Supported behavior is recorded in the
 [capability matrix](../../../../docs/reference/CAPABILITY_MATRIX.md).
+
+## Compression measurements
+
+`blendFile.header` measures the committed inputs through `ReadFileBytes` and
+pins the following values. The table also includes the generated empty-scene
+fixture, which is not a contributor-provided corpus file.
+
+| Input | Stored bytes | Decoded bytes | Minimum integer expansion ratio | Minimum accepted `maxWindowLog` |
+| --- | --- | --- | --- | --- |
+| [blender-5.2.2/Untitled.blend](blender-5.2.2/Untitled.blend) (Zstandard) | 97,310 | 571,812 | 6 | 19 |
+| [../fixtures/empty.blend](../fixtures/empty.blend) (uncompressed) | 188,558 | 188,558 | not applied | not applied |
+| [blender-4.5.13/Untitled.blend](blender-4.5.13/Untitled.blend) (uncompressed) | 504,759 | 504,759 | not applied | not applied |
+
+The integer ratio is the decoded size divided by stored size, rounded up.
+The window column is the smallest allowed decoder-window log that succeeds
+in a sweep from 10 through 23; it is not a frame-header window-size
+measurement. Log 19 permits a 512 KiB window. Uncompressed files also succeed
+with the API's lowest valid window log, 10, and ratio 1, but neither policy
+restricts their decoding.
+
+Each file must decode to identical bytes with exact input and output limits.
+Reducing either byte limit by one must report `BLEND_COMPRESSION_INPUT_LIMIT`
+or `BLEND_COMPRESSION_OUTPUT_LIMIT`. For the compressed file, ratio 5 must
+report `BLEND_COMPRESSION_RATIO_LIMIT`, and window logs 10 through 18 must
+report `BLEND_COMPRESSION_WINDOW_LIMIT`. These checks were exercised locally
+on Windows on 2026-10-02; they do not provide Linux execution evidence.
+
+These are small regression inputs, with only one Blender-written compressed
+file and no Blender-written gzip file. They do not sample large scenes,
+packed assets or highly repetitive production data. The values above are
+fixture minima, not production defaults; the policy remains the owning
+[BLEND-O5 decision](../../../../docs/design/BLEND_CONTRACT.md#12-open-questions).

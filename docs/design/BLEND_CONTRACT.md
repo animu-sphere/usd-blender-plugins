@@ -154,8 +154,12 @@ The entire decoded stream must begin with a valid `.blend` header, not
 another compression envelope.
 
 This caller-specified policy deliberately has no production defaults.
-BLEND-O5 still requires real-corpus measurements before choosing defaults;
-the limits in unit tests are test budgets, not a supported file-size policy.
+The [committed-input measurements](../../plugins/usdBlendFileFormat/tests/corpus/README.md#compression-measurements)
+pin exact byte, integer-ratio and decoder-window acceptance boundaries.
+BLEND-O5 still requires representative large and highly compressible real
+files before choosing defaults: the current small inputs contain only one
+Blender-written compressed file, and no Blender-written gzip file. The limits
+in unit tests are test budgets, not a supported file-size policy.
 The importer continues to use the separate header probe.
 
 ## 5. File header

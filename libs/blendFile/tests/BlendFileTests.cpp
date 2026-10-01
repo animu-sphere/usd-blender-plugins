@@ -339,7 +339,7 @@ void CheckMalformedBlocks(std::span<const std::byte> bytes, const blend::Header&
   }
 }
 
-void CheckFileFixture(const std::filesystem::path& path, bool compressed,
+void CheckFileFixture(const std::filesystem::path& path, bool compressed, const blend::CompressionLimits& expectedLimits,
     std::uint16_t version = 502, std::uint8_t headerSize = 17) {
   constexpr blend::CompressionLimits limits{64 * 1024 * 1024, 64 * 1024 * 1024, 2048, 23};
   blend::FileByteSource source(path);
@@ -362,6 +362,46 @@ void CheckFileFixture(const std::filesystem::path& path, bool compressed,
     Require(source.Read(0, original) && original == decoded.GetValue(), "Uncompressed file bytes changed");
   }
   const auto& bytes = decoded.GetValue();
+  auto measuredLimits = limits;
+  measuredLimits.maxInputBytes = source.Size();
+  measuredLimits.maxOutputBytes = bytes.size();
+  measuredLimits.maxExpansionRatio = std::max<std::uint64_t>(1, bytes.size() / source.Size() + (bytes.size() % source.Size() != 0));
+  for (measuredLimits.maxWindowLog = 10; measuredLimits.maxWindowLog < limits.maxWindowLog; ++measuredLimits.maxWindowLog) {
+    const auto result = blend::ReadFileBytes(source, measuredLimits);
+    if (result.HasValue()) {
+      Require(result.GetValue() == bytes, "Measured window changed decoded fixture bytes");
+      break;
+    }
+    Require(result.GetError().code == "BLEND_COMPRESSION_WINDOW_LIMIT", "Window measurement failed for another reason");
+  }
+  Require(measuredLimits.maxInputBytes == expectedLimits.maxInputBytes &&
+              measuredLimits.maxOutputBytes == expectedLimits.maxOutputBytes &&
+              measuredLimits.maxExpansionRatio == expectedLimits.maxExpansionRatio &&
+              measuredLimits.maxWindowLog == expectedLimits.maxWindowLog,
+      "Committed fixture compression measurements changed");
+  const auto exact = blend::ReadFileBytes(source, measuredLimits);
+  Require(exact.HasValue() && exact.GetValue() == bytes, "Measured fixture limits rejected exact bytes");
+  auto smallerLimits = measuredLimits;
+  --smallerLimits.maxInputBytes;
+  const auto inputLimited = blend::ReadFileBytes(source, smallerLimits);
+  Require(!inputLimited.HasValue() && inputLimited.GetError().code == "BLEND_COMPRESSION_INPUT_LIMIT",
+      "Real-file input limit did not reject one byte less");
+  smallerLimits = measuredLimits;
+  --smallerLimits.maxOutputBytes;
+  const auto outputLimited = blend::ReadFileBytes(source, smallerLimits);
+  Require(!outputLimited.HasValue() && outputLimited.GetError().code == "BLEND_COMPRESSION_OUTPUT_LIMIT",
+      "Real-file output limit did not reject one byte less");
+  if (compressed && measuredLimits.maxExpansionRatio > 1) {
+    smallerLimits = measuredLimits;
+    --smallerLimits.maxExpansionRatio;
+    const auto ratioLimited = blend::ReadFileBytes(source, smallerLimits);
+    Require(!ratioLimited.HasValue() && ratioLimited.GetError().code == "BLEND_COMPRESSION_RATIO_LIMIT",
+        "Real-file ratio limit did not reject one integer less");
+  }
+  std::cout << "Compression evidence: " << path.parent_path().filename().string() << '/' << path.filename().string()
+            << " input=" << source.Size() << " output=" << bytes.size()
+            << " integer-ratio=" << measuredLimits.maxExpansionRatio
+            << " minimum-accepted-window-log=" << measuredLimits.maxWindowLog << '\n';
   const auto blocks = blend::ReadBlocks(memory, 10000);
   Require(blocks.HasValue(), "SDNA fixture block enumeration failed");
   CheckMalformedBlocks(bytes, header.GetValue(), blocks.GetValue());
@@ -1065,9 +1105,9 @@ int main(int argumentCount, char** arguments) {
       CheckDna();
       CheckPointerMap();
       CheckDatablocks();
-      CheckFileFixture(arguments[2], true);
-      CheckFileFixture(arguments[3], false);
-      CheckFileFixture(arguments[4], false, 405, 12);
+      CheckFileFixture(arguments[2], true, {97310, 571812, 6, 19});
+      CheckFileFixture(arguments[3], false, {188558, 188558, 1, 10});
+      CheckFileFixture(arguments[4], false, {504759, 504759, 1, 10}, 405, 12);
       CheckBlocks();
       const auto modernBlocks = CheckBlockFixture(arguments[2], false);
       CheckBlockFixture(arguments[3], true);
