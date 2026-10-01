@@ -413,4 +413,116 @@ Result<Header> ReadHeader(ByteSource& source) {
         endian == 'v' ? ByteOrder::Little : ByteOrder::Big, version});
 }
 
+Result<std::vector<BlendBlock>> ReadBlocks(ByteSource& source, std::uint64_t maxBlocks) {
+  using BlocksResult = Result<std::vector<BlendBlock>>;
+  std::uint64_t offset = 0;
+  std::uint32_t blockIndex = 0;
+  const auto fail = [&](const char* code, const char* message, std::uint64_t position) {
+    auto diagnostic = Fatal(code, message, position);
+    diagnostic.blockIndex = blockIndex;
+    return BlocksResult(std::move(diagnostic));
+  };
+  if (maxBlocks == 0 || maxBlocks > std::numeric_limits<std::uint32_t>::max()) {
+    return fail("BLEND_BLOCK_LIMITS", "A positive block limit fitting a 32-bit index is required", 0);
+  }
+  try {
+    const auto sourceSize = source.Size();
+    std::array<std::byte, 4> prefix{};
+    const auto prefixSize = static_cast<std::size_t>(std::min<std::uint64_t>(sourceSize, prefix.size()));
+    if (!source.Read(0, std::span(prefix).first(prefixSize))) {
+      return BlocksResult(Fatal("BLEND_HEADER_READ_FAILED", "Could not read the header", 0));
+    }
+    if ((prefixSize >= 2 && prefix[0] == std::byte{0x1f} && prefix[1] == std::byte{0x8b}) ||
+        (prefixSize == 4 && prefix == std::array{std::byte{0x28}, std::byte{0xb5}, std::byte{0x2f}, std::byte{0xfd}})) {
+      return fail("BLEND_BLOCK_COMPRESSED", "ReadFileBytes must decode compressed input before block enumeration", 0);
+    }
+    const auto parsed = ReadHeader(source);
+    if (!parsed.HasValue()) {
+      return BlocksResult(parsed.GetError());
+    }
+    const auto& header = parsed.GetValue();
+    const bool modern = header.containerVersion == BlendContainerVersion::Blender5;
+    const std::size_t blockHeaderSize = modern ? 32 : 16 + header.pointerSize;
+    offset = header.headerSize;
+    std::vector<BlendBlock> blocks;
+    std::vector<Diagnostic> diagnostics;
+    while (offset < sourceSize) {
+      blockIndex = static_cast<std::uint32_t>(blocks.size());
+      if (blocks.size() == maxBlocks) {
+        return fail("BLEND_BLOCK_COUNT_LIMIT", "Block count exceeds the caller's budget", offset);
+      }
+      if (blockHeaderSize > sourceSize - offset) {
+        return fail("BLEND_BLOCK_TRUNCATED", "Incomplete block header", offset);
+      }
+      std::array<std::byte, 32> bytes{};
+      if (!source.Read(offset, std::span(bytes).first(blockHeaderSize))) {
+        return fail("BLEND_BLOCK_READ_FAILED", "Could not read the block header", offset);
+      }
+      const auto integer = [&](std::size_t position, std::size_t width) {
+        std::uint64_t value = 0;
+        for (std::size_t index = 0; index < width; ++index) {
+          const auto shift = header.byteOrder == ByteOrder::Little ? index : width - 1 - index;
+          value |= std::to_integer<std::uint64_t>(bytes[position + index]) << (8 * shift);
+        }
+        return value;
+      };
+      const std::size_t lengthPosition = modern ? 16 : 4;
+      const std::size_t sdnaPosition = modern ? 4 : 8 + header.pointerSize;
+      const std::size_t countPosition = modern ? 24 : sdnaPosition + 4;
+      const auto length = integer(lengthPosition, modern ? 8 : 4);
+      const auto sdna = integer(sdnaPosition, 4);
+      const auto count = integer(countPosition, modern ? 8 : 4);
+      const auto signedMaximum = modern ? static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())
+                                        : static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max());
+      if (length > signedMaximum) {
+        return fail("BLEND_BLOCK_NEGATIVE_LENGTH", "Block length is negative", offset + lengthPosition);
+      }
+      if (sdna > static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max())) {
+        return fail("BLEND_BLOCK_NEGATIVE_SDNA", "Block SDNA index is negative", offset + sdnaPosition);
+      }
+      if (count > signedMaximum) {
+        return fail("BLEND_BLOCK_NEGATIVE_COUNT", "Block element count is negative", offset + countPosition);
+      }
+      const auto payloadOffset = offset + blockHeaderSize;
+      if (length > sourceSize - payloadOffset) {
+        return fail("BLEND_BLOCK_SIZE", "Block payload exceeds the remaining source bytes", offset + lengthPosition);
+      }
+      BlendBlock block{{}, length, integer(8, header.pointerSize), static_cast<std::uint32_t>(sdna), count, payloadOffset};
+      for (std::size_t index = 0; index < block.code.size(); ++index) {
+        block.code[index] = std::to_integer<char>(bytes[index]);
+      }
+      const std::string_view code(block.code.data(), block.code.size());
+      const bool end = code == "ENDB";
+      if (end && length != 0) {
+        return fail("BLEND_BLOCK_ENDB", "ENDB must have an empty payload", offset);
+      }
+      constexpr std::string_view idCodes = "AC AR BR CA CF CU CV GD GR HA IM KE LA LI LP LS LT MA MB MC ME MS NT OB PA PC PL PT SC SO SP SR TE TX VF VO WM WS";
+      bool knownId = false;
+      if (block.code[2] == '\0' && block.code[3] == '\0') {
+        for (std::size_t index = 0; index + 2 <= idCodes.size(); index += 3) {
+          knownId = knownId || code.substr(0, 2) == idCodes.substr(index, 2);
+        }
+      }
+      if (!end && !knownId && code != "DATA" && code != "GLOB" && code != "DNA1" &&
+          code != "REND" && code != "TEST" && code != "USER") {
+        diagnostics.push_back(Diagnostic{"BLEND_BLOCK_UNKNOWN_CODE", Severity::Unsupported,
+            "Unknown block code; payload is not interpreted", offset, blockIndex, {}, true});
+      }
+      blocks.push_back(block);
+      offset = payloadOffset + length;
+      if (end) {
+        if (offset != sourceSize) {
+          return fail("BLEND_BLOCK_TRAILING", "Bytes follow the terminal ENDB block", offset);
+        }
+        return BlocksResult(std::move(blocks), std::move(diagnostics));
+      }
+    }
+    blockIndex = static_cast<std::uint32_t>(blocks.size());
+    return fail("BLEND_BLOCK_MISSING_ENDB", "The container has no terminal ENDB block", offset);
+  } catch (const std::bad_alloc&) {
+    return fail("BLEND_BLOCK_ALLOCATION", "Could not allocate block records or diagnostics", offset);
+  } catch (const std::length_error&) {
+    return fail("BLEND_BLOCK_COUNT_LIMIT", "Block records exceed the addressable size", offset);
+  }
+}
 }

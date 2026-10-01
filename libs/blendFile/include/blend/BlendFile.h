@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -92,4 +93,16 @@ struct CompressionLimits {
 };
 
 Result<std::vector<std::byte>> ReadFileBytes(ByteSource& source, const CompressionLimits& limits);
+
+struct BlendBlock {
+  std::array<char, 4> code;
+  std::uint64_t length;
+  std::uint64_t oldAddress;
+  std::uint32_t sdnaIndex;
+  std::uint64_t count;
+  std::uint64_t offset;
+  bool operator==(const BlendBlock&) const = default;
+};
+
+Result<std::vector<BlendBlock>> ReadBlocks(ByteSource& source, std::uint64_t maxBlocks);
 }

@@ -35,6 +35,12 @@ no codec types escape the library. The
 [blend contract](../design/BLEND_CONTRACT.md#41-full-stream-byte-reading)
 defines the limit and validation semantics.
 
+`ReadBlocks` consumes an uncompressed `ByteSource` under an explicit block
+count limit and returns normalized `BlendBlock` records without reading
+payloads. No format-specific or codec types escape this boundary; its
+[framing contract](../design/BLEND_CONTRACT.md#64-block-enumeration-boundary)
+is separate from SDNA and scene validation.
+
 ### 1.2 Later, only when their responsibility is real
 
 Named now so the boundaries are designed for them; created only when the

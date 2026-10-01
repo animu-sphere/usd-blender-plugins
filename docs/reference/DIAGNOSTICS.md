@@ -51,8 +51,10 @@ as `TF_RUNTIME_ERROR` and the rest as `TF_WARN`, and authors what it can.
 
 ## 3. Implemented codes
 
-All current codes are fatal and non-recoverable. Fixture paths are relative
-to `plugins/usdBlendFileFormat/tests/fixtures/`.
+Codes are fatal and non-recoverable unless the table specifies otherwise.
+Block enumeration also returns recoverable `Unsupported` diagnostics for
+unknown codes. Fixture paths are relative to
+`plugins/usdBlendFileFormat/tests/fixtures/`.
 
 | Code | Severity | Recoverable | Raised when | Evidence |
 | --- | --- | --- | --- | --- |
@@ -73,6 +75,20 @@ to `plugins/usdBlendFileFormat/tests/fixtures/`.
 | `BLEND_COMPRESSION_LIMITS` | Fatal | no | a full-file byte or ratio limit is zero, or window log is outside 10 through 30 | invalid limit configurations in `blendFile.header` |
 | `BLEND_COMPRESSION_OUTPUT_LIMIT` | Fatal | no | decoded bytes exceed the caller's output budget or the addressable vector size | uncompressed, gzip and Zstandard output boundaries in `blendFile.header`; address-space exhaustion unverified |
 | `BLEND_COMPRESSION_RATIO_LIMIT` | Fatal | no | decoded bytes exceed source size times the caller's expansion ratio | gzip DEFLATE/Zstandard RLE bomb vectors and exact ratio boundaries in `blendFile.header` |
+| `BLEND_BLOCK_LIMITS` | Fatal | no | the caller's block limit is zero or exceeds the maximum unsigned 32-bit index | invalid budgets in `blendFile.header` |
+| `BLEND_BLOCK_COMPRESSED` | Fatal | no | block enumeration receives gzip or Zstandard bytes instead of an uncompressed source | encoded synthetic containers in `blendFile.header` |
+| `BLEND_BLOCK_COUNT_LIMIT` | Fatal | no | the next block would exceed the caller's budget, or the record vector exceeds its addressable size | exact count boundary in `blendFile.header`; address-space exhaustion unverified |
+| `BLEND_BLOCK_TRUNCATED` | Fatal | no | insufficient bytes remain for the selected block-header layout | all short block-header prefixes in `blendFile.header` |
+| `BLEND_BLOCK_READ_FAILED` | Fatal | no | a bounded block-header read fails | source failures at successive block headers in `blendFile.header` |
+| `BLEND_BLOCK_NEGATIVE_LENGTH` | Fatal | no | the signed stored payload length is negative | legacy and format-1 sign-bit cases in `blendFile.header` |
+| `BLEND_BLOCK_NEGATIVE_SDNA` | Fatal | no | the signed stored SDNA index is negative | all block layouts in `blendFile.header` |
+| `BLEND_BLOCK_NEGATIVE_COUNT` | Fatal | no | the signed stored element count is negative | legacy and format-1 sign-bit cases in `blendFile.header` |
+| `BLEND_BLOCK_SIZE` | Fatal | no | a nonnegative declared payload length exceeds the remaining bytes | short payloads and maximum signed lengths in `blendFile.header` |
+| `BLEND_BLOCK_ENDB` | Fatal | no | `ENDB` declares a nonempty payload | synthetic containers in `blendFile.header` |
+| `BLEND_BLOCK_TRAILING` | Fatal | no | bytes or another block follow `ENDB` | trailing byte and duplicate `ENDB` cases in `blendFile.header` |
+| `BLEND_BLOCK_MISSING_ENDB` | Fatal | no | the source ends at a block boundary without `ENDB` | header-only and terminal payload truncations in `blendFile.header` |
+| `BLEND_BLOCK_ALLOCATION` | Fatal | no | block records or diagnostics cannot be allocated | implemented; allocation failure unverified |
+| `BLEND_BLOCK_UNKNOWN_CODE` | Unsupported | yes | a code is not recognized; its record is retained and its payload skipped | synthetic unknown block in `blendFile.header` |
 | `BLEND_HEADER_OPEN_FAILED` | Fatal | no | ArResolver cannot open the resolved asset | implemented; fixture unverified |
 | `BLEND_USD_AUTHORING_FAILED` | Fatal | no | the temporary stage cannot be created | implemented; fixture unverified |
 | `BLEND_USD_READ_FAILED` | Fatal | no | a C++ exception reaches the importer boundary | implemented; fixture unverified |

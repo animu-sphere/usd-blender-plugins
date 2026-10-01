@@ -230,6 +230,9 @@ SDNA fixtures before compatibility is claimed; synthetic header tests alone
 establish only recognition of the declared layout. Format 1 has no such
 variants (§5.2).
 
+Legacy `len`, `SDNAnr` and `nr` are signed 32-bit fields. Negative values are
+rejected before conversion, just as for format 1.
+
 ### 6.2 Blender 5 block header
 
 Format 1 uses a 32-byte block header. Unlike the legacy layout, the SDNA
@@ -278,7 +281,42 @@ BlendContainerReader
 | `REND`, `TEST`, `USER` | render info, thumbnail, preferences — ignored |
 | `ENDB` | end of file |
 
-An unknown code is skipped with an `unsupported-but-readable` diagnostic.
+An unknown code's payload is skipped with an `unsupported-but-readable`
+diagnostic; its record remains in the block enumeration.
+
+### 6.4 Block enumeration boundary
+
+`ReadBlocks(ByteSource&, uint64_t maxBlocks)` takes an uncompressed source
+and returns `Result<std::vector<BlendBlock>>`. A compressed source must first
+pass through `ReadFileBytes` (§4.1), then be wrapped in `MemoryByteSource`
+while the decoded bytes remain alive. No production defaults are selected
+by either API, and the importer keeps its header-only path.
+
+`BlendBlock` normalizes both layouts as follows:
+
+| Field | Representation | Meaning |
+| --- | --- | --- |
+| `code` | four raw characters, including NUL padding | stored block code, not a host-endian integer |
+| `length` | unsigned 64-bit | validated payload length |
+| `oldAddress` | unsigned 64-bit | old pointer bits, zero-extended for 32-bit files |
+| `sdnaIndex` | unsigned 32-bit | nonnegative stored SDNA index, not yet checked against SDNA |
+| `count` | unsigned 64-bit | nonnegative element count, not yet checked against a struct length |
+| `offset` | unsigned 64-bit | payload start in the uncompressed source; the block header precedes it |
+
+`maxBlocks` is required, from 1 through the maximum unsigned 32-bit value,
+and includes the terminal `ENDB` record. Header reads, declared payload
+ranges and offset arithmetic are bounded by the source size. Enumeration
+does not allocate or read payloads; it advances directly to each next header.
+`ENDB` must have an empty payload and end exactly at the source size.
+Missing or truncated headers, negative fields, oversized payloads, trailing
+bytes, allocation failures and budget exhaustion return fatal diagnostics
+with the uncompressed byte offset and block index. File-header failures keep
+their `BLEND_HEADER_*` codes. Unknown codes return a recoverable
+`BLEND_BLOCK_UNKNOWN_CODE` diagnostic with `Unsupported` severity.
+
+This boundary validates framing only. It does not require or decode `DNA1`,
+validate SDNA indices against a schema, check `count` against struct sizes,
+build a pointer map, or claim Blender-version or scene compatibility.
 
 ## 7. SDNA
 

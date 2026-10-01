@@ -15,12 +15,16 @@ looked at.
 | --- | --- | --- | --- |
 | 1.1 | Resolve BLEND-O5 | the owning document records the answer | 🚧 |
 | 1.2 | Compression: gzip and Zstandard, with size and ratio limits | compressed and uncompressed fixtures read identically; a bomb fixture fails with `BLEND_COMPRESSION_*` | 🚧 |
-| 1.3 | Container readers: legacy and Blender 5 block layouts, normalized to one block record | fixtures from 4.5 LTS and 5.x enumerate the same block kinds | ⬜ |
+| 1.3 | Container readers: legacy and Blender 5 block layouts, normalized to one block record | fixtures from 4.5 LTS and 5.x enumerate the same block kinds | 🚧 |
 | 1.4 | SDNA: `NAME`, `TYPE`, `TLEN`, `STRC`; member offsets; member lookup by name | every struct in each fixture's SDNA decodes; malformed SDNA fixtures fail with `BLEND_DNA_*` | ⬜ |
 | 1.5 | Pointer map and raw datablock enumeration | every ID block in each fixture is listed with its type and name | ⬜ |
 | 1.6 | `blend_inspect`: summary, `--blocks`, `--dna`, `--objects` | the tool reports version and datablock counts for every fixture, e.g. `Objects: 12, Meshes: 5` | ⬜ |
 | 1.7 | Malformed-input tests: truncation at every block boundary, oversized lengths, invalid indices | no crash, no over-read, every failure a diagnostic | ⬜ |
 | 1.8 | `guides/inspecting.md` | every command in it has been run | ⬜ |
+
+Task 1.3 still requires a Blender-written 4.5 LTS fixture for the real-file
+block-kind comparison. Synthetic legacy containers do not meet that
+completion criterion.
 
 ## After Phase 1
 

@@ -33,8 +33,9 @@ No row says "supported" without a fixture.
 | `.blend` registration (`usd-fileformat:blend`) | supported | `header_only.blend`; `empty.blend` | Phase 0 |
 | legacy header | supported | `header_only.blend`; malformed header fixtures; `blendFile.header` | Phase 0 |
 | Blender 5 header | supported | `empty.blend`; `blendFile.header`; `corpus/blender-5.2.2/Untitled.blend` | Phase 0 |
-| legacy block layout | — | | Phase 1 |
-| Blender 5 block layout | — | | Phase 1 |
+| legacy block layout (enumeration only) | supported | synthetic 4.5 containers for both pointer widths and byte orders in `blendFile.header`; no Blender-written 4.5 container fixture | Phase 1 |
+| Blender 5 block layout (enumeration only) | supported | `empty.blend`; `corpus/blender-5.2.2/Untitled.blend`; synthetic format-1 containers and sparse 64-bit fields in `blendFile.header` | Phase 1 |
+| block framing and caller-supplied count limit | supported | terminal `ENDB`, exact count limits, negative fields, unaligned payloads, truncated boundaries, oversized lengths, trailing bytes, failed reads and unknown codes in `blendFile.header` | Phase 1 |
 | gzip header probe (bounded; not full-file validation) | supported | synthetic stored-block members and an independently encoded DEFLATE stream in `blendFile.header` | Phase 1 |
 | gzip full-container decompression (bytes only; explicit limits) | supported | generated gzip members around `empty.blend` and decoded corpus bytes; stored-block and independent DEFLATE vectors in `blendFile.header`; no Blender-written gzip fixture | Phase 1 |
 | Zstandard header probe (bounded; not full-file validation) | supported | `blendFile.header`; `corpus/blender-5.2.2/Untitled.blend` | Phase 0 |
@@ -48,6 +49,13 @@ blocks, `ENDB` or SDNA. It does not change the importer's header-only path.
 Caller-supplied limits and their semantics are defined in the
 [blend contract](../design/BLEND_CONTRACT.md#41-full-stream-byte-reading);
 production defaults remain the open BLEND-O5 decision in that document.
+
+`ReadBlocks` separately enumerates an uncompressed source, including `ENDB`,
+under an explicit block-count limit. Its
+[boundary](../design/BLEND_CONTRACT.md#64-block-enumeration-boundary) checks
+framing without reading payloads or validating SDNA. Synthetic legacy
+containers do not establish Blender 4.5 file or scene compatibility, and
+block enumeration does not change the importer's header-only path.
 
 ## 2. Blender versions
 
