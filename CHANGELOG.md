@@ -8,6 +8,9 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- A verified inspection guide for `blend_inspect`, covering summaries, block
+    and SDNA listings, raw Object names, explicit compressed-input budgets,
+    diagnostic context and normal/error exit codes on committed fixtures.
 - Malformed-input reader regressions across every block in the generated
     empty scene and both real corpus files, plus every synthetic container
     layout: boundary/header-prefix and payload cut points, oversized lengths,
