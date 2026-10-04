@@ -32,9 +32,9 @@ blend::Vector3 ReadVector(std::istream& input) {
 }
 
 void Compare(const blend::Vector3& actual, const blend::Vector3& expected,
-    const std::string& name) {
+    const std::string& name, double tolerance = 2e-5) {
   for (std::size_t axis = 0; axis < 3; ++axis) {
-    Require(std::abs(actual[axis] - expected[axis]) <= 2e-5,
+    Require(std::abs(actual[axis] - expected[axis]) <= tolerance,
         name + " differs at axis " + std::to_string(axis) + ": got " +
             std::to_string(actual[axis]) + ", expected " + std::to_string(expected[axis]));
   }
@@ -62,7 +62,10 @@ void CheckFixture(const std::filesystem::path& path) {
   oraclePath.replace_extension(".oracle.txt");
   std::ifstream oracle(oraclePath);
   std::string line;
-  Require(static_cast<bool>(std::getline(oracle, line)) && line == "BLEND_NORMALS_ORACLE 1", "Normal oracle version");
+  const auto custom = path.stem().string().starts_with("custom");
+  Require(static_cast<bool>(std::getline(oracle, line)) &&
+              line == (custom ? "BLEND_NORMALS_ORACLE 2" : "BLEND_NORMALS_ORACLE 1"),
+      "Normal oracle version");
   Require(static_cast<bool>(std::getline(oracle, line)), "Oracle Blender version");
   double scale = 0;
   std::size_t count = 0;
@@ -70,6 +73,8 @@ void CheckFixture(const std::filesystem::path& path) {
               count == scene.objects.size(),
       "Normal oracle scale and mesh count");
   const blend::UnitConversion units(scale);
+  double maximumError = 0;
+  std::size_t compared = 0;
   for (std::size_t record = 0; record < count; ++record) {
     std::string name;
     std::size_t points = 0, faces = 0, corners = 0;
@@ -94,9 +99,28 @@ void CheckFixture(const std::filesystem::path& path) {
     }
     for (std::size_t corner = 0; corner < corners; ++corner) {
       const auto& normal = mesh.cornerNormals[corner];
-      Compare(normal, blend::ToUsdBasis(ReadVector(oracle)), name + " normal " + std::to_string(corner));
+      const auto expected = blend::ToUsdBasis(ReadVector(oracle));
+      Compare(normal, expected, name + " normal " + std::to_string(corner));
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        maximumError = std::max(maximumError, std::abs(normal[axis] - expected[axis]));
+      }
+      ++compared;
       Require(std::abs(std::hypot(normal[0], normal[1], normal[2]) - 1) <= 1e-12,
           name + " has unit-length corner normals");
+    }
+    if (custom) {
+      std::string marker;
+      std::size_t packed = 0;
+      Require(static_cast<bool>(oracle >> marker >> packed) && marker == "PACKED_CUSTOM_NORMALS" && packed == corners,
+          "Custom oracle has one packed pair per corner");
+      for (std::size_t corner = 0; corner < packed; ++corner) {
+        std::int32_t alpha = 0, beta = 0;
+        Require(static_cast<bool>(oracle >> alpha >> beta) &&
+                    alpha >= -32768 && alpha <= 32767 && beta >= -32768 && beta <= 32767,
+            "Custom oracle contains signed short pairs");
+      }
+      std::cout << header.SourceVersion() << " " << path.stem().string() << ": " << compared
+                << " corners, maximum normal component error " << maximumError << '\n';
     }
   }
   oracle >> std::ws;
@@ -121,11 +145,11 @@ int main(int argc, char** argv) {
   try {
     Require(argc == 3, "Two Blender-written normal fixture directories are required");
     for (const auto directory : {argv[1], argv[2]}) {
-      for (const auto name : {"smooth.blend", "flat.blend", "split.blend"}) {
+      for (const auto name : {"smooth.blend", "flat.blend", "split.blend",
+               "custom.blend", "custom_fans.blend", "custom_split_fans.blend", "custom_angles.blend", "multi.blend"}) {
         CheckFixture(std::filesystem::path(directory) / name);
       }
     }
-    CheckFixture(std::filesystem::path(argv[1]) / "multi.blend");
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

@@ -1,4 +1,5 @@
 #include <blendScene/Selection.h>
+#include "ScenePointers.h"
 
 #include <algorithm>
 #include <new>
@@ -22,7 +23,7 @@ class CollectionWalk {
 public:
   CollectionWalk(std::span<const std::byte> bytes,
       std::span<const BlendBlock> blocks, const DnaSchema& schema,
-      const Header& header, const PointerMap& pointers,
+      const Header& header, const detail::ScenePointers& pointers,
       const SceneTraversalLimits& limits, bool readValues)
       : bytes_(bytes), blocks_(blocks), schema_(schema), header_(header),
         pointers_(pointers), limits_(limits), readValues_(readValues) {
@@ -483,7 +484,7 @@ private:
   std::span<const BlendBlock> blocks_;
   const DnaSchema& schema_;
   const Header& header_;
-  const PointerMap& pointers_;
+  const detail::ScenePointers& pointers_;
   const SceneTraversalLimits& limits_;
   bool readValues_;
   std::uint32_t visited_ = 0;
@@ -513,7 +514,7 @@ Result<SelectedSceneObjects> SelectObjects(std::span<const std::byte> bytes,
     if (!scene.HasValue()) {
       return Result<SelectedSceneObjects>(scene.GetError());
     }
-    const auto pointers = BuildPointerMap(blocks);
+    const auto pointers = detail::BuildScenePointers(bytes, blocks, schema, header);
     if (!pointers.HasValue()) {
       return Result<SelectedSceneObjects>(pointers.GetError());
     }

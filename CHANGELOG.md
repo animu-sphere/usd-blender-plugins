@@ -8,6 +8,20 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Native packed custom split normals and explicit 5.x Mesh-owned Attribute
+    address resolution in `blendScene`. Different collided payloads resolve
+    only through serialized ownership and validated Mesh/Attribute references;
+    the reader's global map and all other duplicate rejection remain strict.
+    Custom normals reconstruct signed-short pairs in source fan spaces,
+    including automatic values, signed minima and integer fan averaging.
+    Independent RNA measurements and six additional Blender-written fixtures
+    pin reference-angle math, shared/open/closed fans and 199 triangle angle
+    cases per version. All 1,588 custom corners compare at the existing `2e-5`
+    component threshold (maximum measured error below `6.25e-6`), and both
+    independent multi-Mesh fixtures now match their saved oracles. Root and
+    standalone Scene suites, dependency gates and both Blender generator
+    regressions pass. Constant storage, other named normal formats and USD
+    geometry authoring remain separate work; the importer stays header-only.
 - Blender-written 4.5.13/5.2.2 packed custom-normal and independent two-Mesh
     boundary fixtures, with saved corner-normal and signed-short RNA oracles.
     `blendScene.meshBoundaries` pins exact packed storage and explicit

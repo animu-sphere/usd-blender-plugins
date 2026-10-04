@@ -4,6 +4,7 @@
 #include <bit>
 #include <cmath>
 #include <map>
+#include <numbers>
 #include <stdexcept>
 
 namespace blend::detail {
@@ -13,7 +14,8 @@ enum class Kind { Other,
   Integer,
   Boolean,
   Float2,
-  Float3 };
+  Float3,
+  Short2 };
 
 struct Attribute {
   std::string name;
@@ -28,7 +30,7 @@ class MeshDecoder {
 public:
   MeshDecoder(std::span<const std::byte> bytes,
       std::span<const BlendBlock> blocks, const DnaSchema& schema,
-      const Header& header, const PointerMap& pointers, std::uint32_t index,
+      const Header& header, const ScenePointers& pointers, std::uint32_t index,
       const UnitConversion& units, std::vector<Diagnostic>& diagnostics)
       : bytes_(bytes), blocks_(blocks), schema_(schema), header_(header),
         pointers_(pointers), index_(index), units_(units), diagnostics_(diagnostics) {
@@ -153,7 +155,7 @@ private:
   }
 
   std::uint32_t Resolve(std::uint64_t address, std::uint32_t referrer) const {
-    const auto index = Take(pointers_.Resolve(address));
+    const auto index = Take(pointers_.Resolve(address, index_));
     if (!index) {
       Fail("BLEND_MESH_REFERENCE_INVALID", "Mesh storage pointer is null, absent or interior", referrer);
     }
@@ -220,9 +222,9 @@ private:
         !names_.emplace(std::pair{attribute.domain, attribute.name}, attributes_.size()).second) {
       Fail("BLEND_MESH_STORAGE_INVALID", "Mesh attribute names must be nonempty and unique within a domain", attribute.index);
     }
-    if (attribute.name == "custom_normal" || attribute.name == ".custom_normal" ||
-        (attribute.domain == 3 && attribute.name == "normal")) {
-      Fail("BLEND_MESH_NORMALS_UNSUPPORTED", "Custom corner normal storage is not decoded", attribute.index);
+    if ((attribute.name == "custom_normal" && (attribute.domain != 3 || attribute.kind != Kind::Short2)) ||
+        attribute.name == ".custom_normal" || (attribute.domain == 3 && attribute.name == "normal")) {
+      Fail("BLEND_MESH_NORMALS_UNSUPPORTED", "Only packed short-pair custom corner normals are decoded", attribute.index);
     }
     attributes_.push_back(std::move(attribute));
   }
@@ -242,7 +244,8 @@ private:
         const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, index, element));
         const auto type = Scalar(source, "data_type", "short", 2, index);
         const auto domain = Scalar(source, "domain", "int8_t", 1, index);
-        const auto kind = type == 0 ? Kind::Boolean : type == 3 ? Kind::Integer
+        const auto kind = type == 0 ? Kind::Boolean : type == 2 ? Kind::Short2
+                                                  : type == 3   ? Kind::Integer
                                                   : type == 6   ? Kind::Float2
                                                   : type == 7   ? Kind::Float3
                                                                 : Kind::Other;
@@ -273,17 +276,22 @@ private:
         for (std::uint32_t element = 0; element < layers; ++element) {
           const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, index, element));
           const auto type = Scalar(source, "type", "int", 4, index);
-          if (type == 41) {
-            Fail("BLEND_MESH_NORMALS_UNSUPPORTED", "Packed custom corner normals are not decoded", index);
-          }
           if (type == 16) {
             Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "Legacy MLoopUV layers are not decoded", index);
           }
-          const auto kind = type == 11 ? Kind::Integer : type == 48 ? Kind::Float3
+          const auto kind = type == 11 ? Kind::Integer : type == 41 ? Kind::Short2
+                                                     : type == 48   ? Kind::Float3
                                                      : type == 49   ? Kind::Float2
                                                      : type == 50   ? Kind::Boolean
                                                                     : Kind::Other;
-          Add({String(Take(source.Member("name")), index), domain, kind, source, index, false});
+          auto name = String(Take(source.Member("name")), index);
+          if (type == 41) {
+            if (domain != 3 || (!name.empty() && name != "custom_normal")) {
+              Fail("BLEND_MESH_NORMALS_UNSUPPORTED", "Packed custom normals require the corner domain and observed layer name", index);
+            }
+            name = "custom_normal";
+          }
+          Add({std::move(name), domain, kind, source, index, false});
         }
       } else if (layerAddress != 0) {
         Fail("BLEND_MESH_STORAGE_INVALID", "Empty CustomData must have a null layer pointer", index_);
@@ -320,9 +328,9 @@ private:
       Kind kind, std::uint32_t referrer) const {
     const auto index = Resolve(address, referrer);
     const auto bytes = Payload(index);
-    const std::uint64_t stride = kind == Kind::Float3 ? 12 : kind == Kind::Float2 ? 8
-                                                         : kind == Kind::Integer  ? 4
-                                                                                  : 1;
+    const std::uint64_t stride = kind == Kind::Float3 ? 12 : kind == Kind::Float2                        ? 8
+                                                         : kind == Kind::Integer || kind == Kind::Short2 ? 4
+                                                                                                         : 1;
     if (bytes.size() % stride != 0 || bytes.size() / stride != count) {
       Fail("BLEND_MESH_STORAGE_INVALID", "Mesh array length differs from the domain element count", index);
     }
@@ -333,6 +341,7 @@ private:
       }
     } else {
       const auto type = kind == Kind::Float3 ? "vec3f" : kind == Kind::Float2 ? "vec2f"
+                                                     : kind == Kind::Short2   ? "vec2s"
                                                      : kind == Kind::Integer  ? "MIntProperty"
                                                                               : "MBoolProperty";
       Records(address, count, type, referrer);
@@ -384,6 +393,20 @@ private:
     }
     const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, values.index, element));
     return static_cast<std::int32_t>(Scalar(source, "i", "int", 4, values.index));
+  }
+
+  std::array<std::int32_t, 2> PackedNormal(const ValuesView& values, std::size_t element) const {
+    std::array<std::int32_t, 2> result{};
+    for (std::size_t axis = 0; axis < 2; ++axis) {
+      if (values.raw) {
+        result[axis] = std::bit_cast<std::int16_t>(
+            static_cast<std::uint16_t>(Bits(values.bytes.subspan(element * 4 + axis * 2, 2))));
+      } else {
+        const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, values.index, element));
+        result[axis] = static_cast<std::int32_t>(Scalar(source, axis == 0 ? "x" : "y", "short", 2, values.index));
+      }
+    }
+    return result;
   }
 
   bool Boolean(const ValuesView& values, std::uint32_t element) const {
@@ -469,7 +492,138 @@ private:
     return std::acos(std::clamp(a[0] * b[0] + a[1] * b[1] + a[2] * b[2], -1.0, 1.0));
   }
 
+  static double Dot(const Vector3& a, const Vector3& b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  }
+
+  static Vector3 Cross(const Vector3& a, const Vector3& b) {
+    return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+  }
+
+  static float SpaceDot(const Vector3& a, const Vector3& b) {
+    return static_cast<float>(a[0]) * static_cast<float>(b[0]) +
+           static_cast<float>(a[1]) * static_cast<float>(b[1]) +
+           static_cast<float>(a[2]) * static_cast<float>(b[2]);
+  }
+
+  Vector3 SpaceNormalize(const Vector3& value) const {
+    const auto length = std::sqrt(SpaceDot(value, value));
+    if (!std::isfinite(length) || length == 0) {
+      Fail("BLEND_MESH_NORMALS_INVALID", "Custom normal reference space is degenerate or nonfinite", index_);
+    }
+    return {static_cast<float>(value[0]) / length,
+        static_cast<float>(value[1]) / length, static_cast<float>(value[2]) / length};
+  }
+
+  static double SpaceAngle(float cosine) {
+    // Independently measured cubic/sqrt mapping; custom_angles fixtures pin
+    // Blender's normal-space approximation rather than the mathematical acos.
+    const auto x = std::abs(std::clamp(cosine, -1.0f, 1.0f));
+    const auto acute = (((-0.021642574916361335 * x + 0.07798218580631397) * x -
+                            0.21330149586760475) *
+                               x +
+                           1.5707963500484103) *
+                       std::sqrt(1.0 - x);
+    return cosine < 0 ? std::numbers::pi - acute : acute;
+  }
+
+  void CustomNormals(Mesh& mesh, const ValuesView& packed,
+      const std::vector<std::size_t>& next, const std::vector<std::size_t>& previous,
+      const std::vector<std::optional<std::size_t>>& acrossOut,
+      const std::vector<std::optional<std::size_t>>& acrossIn,
+      const std::vector<Vector3>& automatic) const {
+    const auto direction = [&](std::size_t corner, std::size_t other) {
+      Vector3 value{};
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        value[axis] = sourcePoints_[mesh.faceVertexIndices[other]][axis] -
+                      sourcePoints_[mesh.faceVertexIndices[corner]][axis];
+      }
+      return SpaceNormalize(value);
+    };
+    const auto project = [&](const Vector3& edge, const Vector3& normal) {
+      const auto dot = SpaceDot(edge, normal);
+      return SpaceNormalize({static_cast<float>(edge[0]) - dot * static_cast<float>(normal[0]),
+          static_cast<float>(edge[1]) - dot * static_cast<float>(normal[1]),
+          static_cast<float>(edge[2]) - dot * static_cast<float>(normal[2])});
+    };
+    constexpr auto turn = 2 * std::numbers::pi;
+    const auto angle = [](double value, double reference) {
+      return value >= 0 ? value / 32767 * reference : turn + value / 32767 * (turn - reference);
+    };
+    std::vector<bool> visited(next.size(), false);
+    mesh.cornerNormals.resize(next.size());
+    for (std::size_t seed = 0; seed < next.size(); ++seed) {
+      if (visited[seed]) {
+        continue;
+      }
+      auto start = seed;
+      while (acrossOut[start]) {
+        start = *acrossOut[start];
+        if (start == seed) {
+          break;
+        }
+      }
+      std::vector<std::size_t> fan;
+      auto corner = start;
+      do {
+        visited[corner] = true;
+        fan.push_back(corner);
+        if (!acrossIn[corner]) {
+          break;
+        }
+        corner = *acrossIn[corner];
+      } while (!visited[corner]);
+      const auto& normal = automatic[start];
+      const auto first = direction(start, next[start]);
+      const auto last = direction(fan.back(), previous[fan.back()]);
+      double alphaReference = SpaceAngle(SpaceDot(normal, first));
+      for (std::size_t index = 0; index < fan.size(); ++index) {
+        if (index + 1 == fan.size() && acrossIn[fan.back()]) {
+          break;
+        }
+        alphaReference += SpaceAngle(SpaceDot(normal, direction(fan[index], previous[fan[index]])));
+      }
+      alphaReference /= static_cast<double>(fan.size() + (acrossIn[fan.back()] ? 0 : 1));
+      const auto tangent = project(first, normal);
+      const auto bitangent = Cross(normal, tangent);
+      const auto other = project(last, normal);
+      const auto fullTurn = acrossIn[fan.back()].has_value() || first == last;
+      auto betaReference = fullTurn ? turn : SpaceAngle(SpaceDot(tangent, other));
+      if (!fullTurn && Dot(bitangent, other) < 0) {
+        betaReference = turn - betaReference;
+      }
+      std::array<std::int64_t, 2> sum{};
+      for (const auto member : fan) {
+        const auto pair = PackedNormal(packed, member);
+        sum[0] += pair[0];
+        sum[1] += pair[1];
+      }
+      const std::array<std::int64_t, 2> pair{
+          sum[0] / static_cast<std::int64_t>(fan.size()), sum[1] / static_cast<std::int64_t>(fan.size())};
+      for (const auto member : fan) {
+        if (pair[0] == 0) {
+          mesh.cornerNormals[member] = ToUsdBasis(normal);
+          continue;
+        }
+        const auto alpha = angle(pair[0], alphaReference);
+        const auto beta = angle(pair[1], betaReference);
+        Vector3 decoded{};
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+          decoded[axis] = normal[axis] * std::cos(alpha) +
+                          std::sin(alpha) * (tangent[axis] * std::cos(beta) + bitangent[axis] * std::sin(beta));
+        }
+        mesh.cornerNormals[member] = ToUsdBasis(Normalize(decoded));
+      }
+    }
+  }
+
   void ReadNormals(Mesh& mesh, const DnaValueView& source, std::uint32_t faces) const {
+    const auto custom = Find("custom_normal", 3, Kind::Short2, false);
+    const auto corners = mesh.faceVertexIndices.size();
+    std::optional<ValuesView> packed;
+    if (custom) {
+      packed = Values(*custom, static_cast<std::uint32_t>(corners));
+    }
     if (faces == 0) {
       return;
     }
@@ -492,7 +646,7 @@ private:
       }
     }
     const auto allFlat = std::all_of(flat.begin(), flat.end(), [](bool value) { return value; });
-    if (allFlat) {
+    if (allFlat && !custom) {
       mesh.cornerNormals.reserve(mesh.faceVertexIndices.size());
       std::size_t start = 0;
       for (const auto count : mesh.faceVertexCounts) {
@@ -502,10 +656,10 @@ private:
       }
       return;
     }
-    const auto split = std::any_of(flat.begin(), flat.end(), [](bool value) { return value; }) ||
+    const auto split = custom || std::any_of(flat.begin(), flat.end(), [](bool value) { return value; }) ||
                        std::any_of(sharpEdges.begin(), sharpEdges.end(), [](bool value) { return value; });
-    const auto corners = mesh.faceVertexIndices.size();
-    std::vector<std::size_t> groups(corners), next(corners);
+    std::vector<std::size_t> groups(corners), next(corners), previous(corners);
+    std::vector<std::optional<std::size_t>> acrossOut(corners), acrossIn(corners);
     std::vector<std::uint32_t> cornerFaces(corners);
     std::vector<Vector3> normals(faces);
     std::vector<double> angles(corners);
@@ -516,6 +670,7 @@ private:
       for (std::size_t offset = 0; offset < count; ++offset) {
         const auto corner = start + offset;
         next[corner] = start + (offset + 1) % count;
+        previous[corner] = start + (offset + count - 1) % count;
         cornerFaces[corner] = face;
         groups[corner] = split ? corner : static_cast<std::size_t>(mesh.faceVertexIndices[corner]);
         if (!flat[face]) {
@@ -570,6 +725,10 @@ private:
         }
         join(a, next[b]);
         join(next[a], b);
+        acrossOut[a] = next[b];
+        acrossIn[next[b]] = a;
+        acrossOut[b] = next[a];
+        acrossIn[next[a]] = b;
       }
       for (std::size_t corner = 0; corner < corners; ++corner) {
         groups[corner] = root(corner);
@@ -586,10 +745,19 @@ private:
         }
       }
     }
-    mesh.cornerNormals.reserve(corners);
+    std::vector<Vector3> automatic;
+    automatic.reserve(corners);
     for (std::size_t corner = 0; corner < corners; ++corner) {
       const auto face = cornerFaces[corner];
-      mesh.cornerNormals.push_back(ToUsdBasis(flat[face] ? normals[face] : Normalize(sums[groups[corner]])));
+      automatic.push_back(flat[face] ? normals[face] : Normalize(sums[groups[corner]]));
+    }
+    if (packed) {
+      CustomNormals(mesh, *packed, next, previous, acrossOut, acrossIn, automatic);
+    } else {
+      mesh.cornerNormals.reserve(corners);
+      for (const auto& normal : automatic) {
+        mesh.cornerNormals.push_back(ToUsdBasis(normal));
+      }
     }
   }
 
@@ -643,7 +811,7 @@ private:
   std::span<const BlendBlock> blocks_;
   const DnaSchema& schema_;
   const Header& header_;
-  const PointerMap& pointers_;
+  const ScenePointers& pointers_;
   std::uint32_t index_;
   const UnitConversion& units_;
   std::vector<Diagnostic>& diagnostics_;
@@ -656,7 +824,7 @@ private:
 
 Mesh DecodeMesh(std::span<const std::byte> bytes,
     std::span<const BlendBlock> blocks, const DnaSchema& schema,
-    const Header& header, const PointerMap& pointers, std::uint32_t index,
+    const Header& header, const ScenePointers& pointers, std::uint32_t index,
     const UnitConversion& units, std::vector<Diagnostic>& diagnostics) {
   return MeshDecoder(bytes, blocks, schema, header, pointers, index, units, diagnostics).Run();
 }

@@ -305,7 +305,7 @@ Empty, malformed, nonfinite, invalid-index and unsupported custom/constant
 storage cases require exact contextual diagnostics and no partial Scene.
 Modifier and shape-key presence reports source-only data without evaluation.
 The root reader build and standalone OpenStrata library build both run these
-tests and the existing four scene dependency-boundary gates. Custom-normal decoding, Blender-written Mesh transform/unit oracle fixtures
+tests and the existing four scene dependency-boundary gates. Blender-written Mesh transform/unit oracle fixtures
 and USD geometry remain unproven; no Blender executable is required by these CTests.
 
 `blendScene.normals` compares unchanged Blender-written 4.5.13 and 5.2.2 files
@@ -321,16 +321,18 @@ unit-scale independence, edge storage/range/endpoint errors and cancelling
 smooth normal sums. Both root and standalone Scene CTest suites include this
 oracle comparison, without requiring Blender at test time.
 
-The same normal test also compares two independently constructed Meshes in
-the 4.5.13 `multi.blend` fixture, using different points but the same normal
-directions. `blendScene.meshBoundaries` checks unchanged 4.5.13/5.2.2 packed
-custom-normal fixtures against saved short-pair RNA oracles, then requires
-fatal `BLEND_MESH_NORMALS_UNSUPPORTED` without a partial Scene. Its 5.2.2
-multi-Mesh case proves repeated Attribute/AttributeArray addresses have
-non-identical payloads and requires `BLEND_POINTER_DUPLICATE` through mapping,
-selection and decoding. Both errors retain exact source context under reversed
-enumeration. These are rejection tests, not new production decoding support;
-the reader and Mesh decoder are unchanged.
+The same normal test compares both independent two-Mesh fixtures and four
+packed custom-normal fixtures per version. Shared/open/closed and mixed
+packed-pair fans, automatic values, signed-short minima and 199 angle-sweep
+triangles cover 1,588 custom corners at the same `2e-5` threshold; maximum
+measured component error is below `6.25e-6`. `blendScene.meshBoundaries`
+retains exact saved-short/RNA comparisons and global `BuildPointerMap`
+rejection for non-identical 5.2.2 Attribute/AttributeArray collisions.
+Scene selection/decoding resolve only validated Mesh-owned occurrences.
+Wrong/same/non-Mesh owners, duplicate IDs, unreferenced targets, unrelated
+SDNA types and legacy-header mutations remain contextual fatal errors.
+The reader's global uniqueness contract and the header-only importer remain
+unchanged.
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines matrix storage and ownership; supported scope is in the
@@ -491,8 +493,9 @@ and UI state are not byte-reproducible; no `--check-bytes` claim is made.
 
 Run with each pinned Blender installation (4.5.13 or 5.2.2). The default
 output directory holds `smooth.blend`, `flat.blend`, `split.blend`,
-`custom.blend`, `multi.blend` and their adjacent `.oracle.txt` files.
-Provenance, cases, comparison thresholds and explicit rejection evidence are in the
+`custom.blend`, `custom_fans.blend`, `custom_split_fans.blend`,
+`custom_angles.blend`, `multi.blend` and adjacent `.oracle.txt` files.
+Provenance, cases, comparison thresholds and ownership/reconstruction evidence are in the
 [normal fixture record](../../tests/fixtures/native-normals/README.md).
 
 ```powershell
@@ -507,19 +510,21 @@ $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.e
 & $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_normals.py
 ```
 
-To generate only the new boundary files without touching the three original
-fixtures, use `--groups custom multi`:
+To check only the additional custom-space fixtures without rewriting any
+fixtures, use `--check --groups custom_fans custom_split_fans custom_angles`:
 
 ```powershell
 $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 4.5\blender.exe'
-& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --groups custom multi
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check --groups custom_fans custom_split_fans custom_angles
 $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
-& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --groups custom multi
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check --groups custom_fans custom_split_fans custom_angles
 ```
 
-The generator constructs source geometry without modifiers. Only `custom`
-sets custom normals, recording Blender's resulting corner normals and packed
-short pairs. `multi` creates separate Mesh datablocks, not copies or shared
+The generator constructs source geometry without modifiers. All `custom*`
+groups record Blender's resulting corner normals and packed short pairs.
+The fan fixtures exercise shared spaces and integer averaging; the angle
+fixture pins the observed reference-angle approximation independently of
+native decoder math. `multi` creates separate Mesh datablocks, not copies or shared
 Object data, with uniform scaling and translation of the second Mesh's points.
 `--check` regenerates into temporary files, compares the semantic oracles,
 then reopens and verifies each stored fixture without rewriting any fixture

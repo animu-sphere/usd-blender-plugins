@@ -9,7 +9,7 @@ import bpy
 
 VERSIONS = {(4, 5, 13), (5, 2, 2)}
 ROOT = Path(__file__).resolve().parent / "native-normals"
-GROUPS = ("smooth", "flat", "split", "custom", "multi")
+GROUPS = ("smooth", "flat", "split", "custom", "custom_fans", "custom_split_fans", "custom_angles", "multi")
 
 
 def add_mesh(name, points, faces, flat=(), sharp=()):
@@ -34,7 +34,7 @@ def make_scene(group):
     bpy.context.scene.name = "Normals"
     bpy.context.scene.unit_settings.scale_length = 0.01
     points, polygons, flat_faces, sharp_edges = [], [], [], []
-    geometry_group = "split" if group == "custom" else "smooth" if group == "multi" else group
+    geometry_group = "split" if group in ("custom", "custom_split_fans") else "smooth" if group in ("multi", "custom_fans") else group
 
     def add_case(name, vertices, faces, flat=(), sharp=()):
         category = "flat" if len(flat) == len(faces) else "split" if flat or sharp else "smooth"
@@ -72,15 +72,35 @@ def make_scene(group):
     add_case("MixedCube", cube, cube_faces, flat=(0, 2), sharp=((2, 6), (3, 7)))
     add_case("Concave", ((0, 0, 0), (3, 0, 0), (1, 1, 0), (3, 3, 0), (0, 3, 0)),
              ((0, 1, 2, 3, 4),))
+    if group == "custom_angles":
+        for index in range(-99, 100):
+            x = index / 100
+            start = len(points)
+            points.extend(((0, 0, 0), (1, 0, 0), (x, math.sqrt(1 - x * x), 0)))
+            polygons.append((start, start + 1, start + 2))
     add_mesh(group.capitalize(), points, polygons, flat_faces, sharp_edges)
-    if group == "custom":
-        mesh = bpy.data.objects["Custom"].data
-        directions = ((0, 0, 0), (1, 2, 3), (-2, 1, -3), (0, 0, -1))
+    if group.startswith("custom"):
+        mesh = bpy.data.objects[group.capitalize()].data
+        directions = ((0, 0, 0), (1, 2, 3), (-2, 1, -3), (0, 0, -1)) if group == "custom" else ((1, 2, 3),)
         normals = [
             tuple(value / math.hypot(*direction) for value in direction) if any(direction) else direction
             for direction in (directions[index % len(directions)] for index in range(len(mesh.loops)))
         ]
         mesh.normals_split_custom_set(normals)
+        if group == "custom_angles":
+            for element in mesh.attributes["custom_normal"].data:
+                element.value = (16384, 32767)
+            mesh.update()
+        elif group == "custom_split_fans":
+            values = mesh.attributes["custom_normal"].data
+            for corner, pair in {
+                2: (-32768, -32768),
+                46: (10000, 5000), 64: (18511, 6420),
+                47: (-10001, -7001), 57: (-18512, -6420),
+                61: (0, 0), 48: (10000, 20000), 56: (20000, 0),
+            }.items():
+                values[corner].value = pair
+            mesh.update()
     elif group == "multi":
         other_points = [(x * 2 + 7, y * 2 - 5, z * 2 + 2) for x, y, z in points]
         add_mesh("Other", other_points, polygons, flat_faces, sharp_edges)
@@ -95,10 +115,11 @@ def oracle_text(group):
     expected_names = ["Multi", "Other"] if group == "multi" else [group.capitalize()]
     if [obj.name for obj in objects] != expected_names:
         raise RuntimeError("Normal fixture objects differ from the selected group")
-    rows = [f"BLEND_NORMALS_ORACLE {2 if group == 'custom' else 1}", repr(bpy.app.version_string),
+    custom = group.startswith("custom")
+    rows = [f"BLEND_NORMALS_ORACLE {2 if custom else 1}", repr(bpy.app.version_string),
             f"{scene.unit_settings.scale_length:.17g} {len(objects)}"]
     for obj in objects:
-        if obj.type != "MESH" or obj.modifiers or obj.data.has_custom_normals != (group == "custom"):
+        if obj.type != "MESH" or obj.modifiers or obj.data.has_custom_normals != custom:
             raise RuntimeError("Normal fixture requires source meshes with the selected custom-normal state")
         mesh = obj.data
         rows.append(f'"{obj.name}" {len(mesh.vertices)} {len(mesh.polygons)} {len(mesh.loops)}')
@@ -106,7 +127,7 @@ def oracle_text(group):
         rows.append(" ".join(str(polygon.loop_total) for polygon in mesh.polygons))
         rows.append(" ".join(str(loop.vertex_index) for loop in mesh.loops))
         rows.extend(" ".join(f"{value:.17g}" for value in normal.vector) for normal in mesh.corner_normals)
-        if group == "custom":
+        if custom:
             attribute = mesh.attributes["custom_normal"]
             if attribute.data_type != "INT16_2D" or attribute.domain != "CORNER":
                 raise RuntimeError("Custom normal fixture requires packed corner short pairs")
