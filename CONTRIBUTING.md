@@ -45,6 +45,10 @@ Fixtures must come from this repository's generators or have explicit
 redistribution permission. Do not submit confidential assets. Record the
 provenance and permission for contributed corpus files; see the
 [documentation guidelines](docs/contributing/documentation.md).
+New compatibility work and fixtures follow the
+[version policy](docs/design/BLEND_CONTRACT.md#9-version-support).
+Keep older-version regression evidence, but defer full compatibility expansion
+to the later roadmap rather than making it a prerequisite for current work.
 
 ## Pull requests
 

@@ -568,13 +568,19 @@ for libraries or publish a Scene IR.
 
 | Range | Design target |
 | --- | --- |
-| Blender 4.5 LTS | target for the first stable release |
-| Blender 5.x | target for the first stable release |
-| Blender 3.x – 4.4 | read where the decoders already cover it; not claimed |
-| older than 3.0 | not targeted |
+| Blender 5.x | sole current support target and first stable release target; claims remain fixture-backed |
+| Blender 4.x and earlier | full compatibility deferred to Phase 8; existing decoders and regression evidence are retained without a support guarantee |
+| Blender 6.x and later | outside the current target |
 
-Blender 3.0 is the native decoder's minimum design target (BLEND-O2), not a
-minimum enforced by `ReadHeader`. Header recognition validates syntax and
+New compatibility work and scene fixtures focus on Blender 5.x. Older-version
+coverage is not a prerequisite for Phase 2 or the first stable release.
+Phase 8 will select an older-version range and the storage/normal modes to
+support, then require independent fixture evidence before expanding the
+guarantee. There is no current minimum older-version target.
+
+This is a support-policy change, not a runtime version rejection or removal of
+existing decoders, fixtures or regression tests. Header recognition remains
+independent of scene-version policy: it validates syntax and
 reports the stored version and layout, even for older versions; it does not
 promise container or scene compatibility. A successful probe must not be
 used as evidence that scene decoding supports that version. The file's
@@ -583,8 +589,10 @@ file can use format 1 (§5.2).
 
 Mesh storage moved during 3.x and 4.x from fixed structs to generic attributes
 and offset arrays. `blendScene` keeps one decoder per storage form, selected
-from the SDNA and the file version, all producing the same Scene IR. The
-supported range is restated, with a fixture behind each version, in
+from the SDNA and the file version, all producing the same Scene IR. Existing
+older storage paths remain regression-tested, but their presence does not
+expand the current support target. The supported range and retained
+older-version evidence are recorded in
 [reference/CAPABILITY_MATRIX.md](../reference/CAPABILITY_MATRIX.md) — never
 claimed here.
 
@@ -657,8 +665,13 @@ with a diagnostic. Evaluated data comes only from the Blender host backend
    SHA256 matched its recorded provenance. This establishes the byte layout,
    not implemented container or SDNA support.
 
-- **BLEND-O2 (2026-10-02):** retain 3.0 as the native decoder's minimum
-   design target and 4.5 LTS/5.x as the first stable release targets (§9).
+- **BLEND-O2 (2026-10-05, superseding the 2026-10-02 range decision):**
+   narrow the current and first stable release targets to Blender 5.x (§9).
+   Defer full older-version compatibility to Phase 8, with its supported range
+   and fixture requirements decided there. The previous 3.0 design floor and
+   4.5 LTS first-release target no longer apply. Retain existing older-version
+   decoders, fixtures and regression tests without a support guarantee or
+   new runtime rejection.
    Keep structural header recognition independent of scene-version policy.
    The `blendFile.header` regressions verify that valid legacy headers for
    2.99, 3.0 and 4.5 are recognized, and that format-1 headers for 4.5 are

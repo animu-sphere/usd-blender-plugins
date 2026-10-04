@@ -22,6 +22,7 @@ Vocabulary:
 | preserved | the source value is kept on the stage, not interpreted |
 | unsupported | read and reported with a diagnostic, not authored |
 | unverified | implemented, but no fixture proves it yet |
+| regression-only | existing fixture-backed behavior retained outside the maintained Blender-version support scope |
 | — | nothing implemented |
 
 No row says "supported" without a fixture.
@@ -109,11 +110,20 @@ codes remain recoverable stderr diagnostics. Its
 
 ## 2. Blender versions
 
-| Version | Status | Fixture directory |
+The [version policy](../design/BLEND_CONTRACT.md#9-version-support) limits
+the current support guarantee to Blender 5.x and defers full older-version
+compatibility to Phase 8. Existing older-version decoders, fixtures and tests
+are retained; this does not introduce runtime version rejection. Capability
+rows elsewhere on this page record implemented, tested behavior, including
+older layouts, rather than expanding the maintained Blender-version range.
+Even within 5.x, only the fixture-backed storage and features below are claimed,
+not every 5.x release or scene.
+
+| Version | Support status | Fixture evidence |
 | --- | --- | --- |
-| 3.3 | supported for tested uncompressed legacy Mesh storage and default/auto-smooth normals only | `native-mesh` and `native-normals`: 3.3.21; no other 3.x–4.4 version claim |
-| 4.5 LTS | supported for tested uncompressed Mesh/Empty storage only | `native-scene`, `native-transforms`, `native-units`: 4.5.13 |
 | 5.x | supported for tested uncompressed Mesh/Empty storage only | `single_cube.blend`; `native-scene`, `native-transforms`, `native-units`: 5.2.2 |
+| 4.5 LTS | regression-only; no current version support guarantee | `native-scene`, `native-transforms`, `native-units`: 4.5.13 |
+| 3.3 | regression-only; no current version support guarantee | `native-mesh` and `native-normals`: 3.3.21 legacy Mesh storage and default/auto-smooth normals; no other 3.x–4.4 version claim |
 
 ## 3. Stage
 

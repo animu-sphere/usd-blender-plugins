@@ -6,6 +6,12 @@ when it lands; a Phase leaves it when every task has. Scope is
 Phase lands in and its status are in the
 [status table](README.md#status-at-a-glance).
 
+Current compatibility work is limited to Blender 5.x under the
+[version policy](../design/BLEND_CONTRACT.md#9-version-support).
+Existing older-version decoders, fixtures and regression tests remain, but
+extending their coverage does not block the current milestones. Full
+older-version compatibility is deferred to Phase 8 below.
+
 ## Phase 2 — objects and meshes
 
 Goal: a `.blend` containing a cube opens directly in `usdview` as a
@@ -16,7 +22,7 @@ transforms and mesh data under the
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
 | 2.3 | [Native scene decoding and ID graph](../design/DESIGN_POLICY.md#527-native-scene-decoding-boundary) | complete the mesh/empty milestone scope beyond the current mesh-storage boundary, composing selection and [saved Object values](../design/DESIGN_POLICY.md#526-saved-object-value-boundary); recursive instance references retain bounded missing, linked, invalid and cycle diagnostics | 🚧 |
-| 2.5 | [Version-aware mesh decoding](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary) | complete mesh storage beyond the fixture-backed CustomData/AttributeArray/AttributeSingle, packed custom-normal, [Mesh-domain oracle](../../tests/fixtures/native-mesh/README.md) and 3.3 MLoopUV/fixed-array default/auto-smooth normal boundary; points, topology, normals and indexed UVs populate the IR with tested empty/invalid/unsupported diagnostics | 🚧 |
+| 2.5 | [Blender 5.x mesh decoding](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary) | complete the 5.x mesh scope beyond the fixture-backed CustomData/AttributeArray/AttributeSingle, packed custom-normal and [Mesh-domain oracle](../../tests/fixtures/native-mesh/README.md) boundary; points, topology, normals and indexed UVs populate the IR with tested empty/invalid/unsupported diagnostics; older-version storage and normal modes are not a completion requirement | 🚧 |
 
 The [Scene IR boundary](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 keeps basis conversion separate from binary decoding and USD authoring.
@@ -33,20 +39,16 @@ decoding and authoring; byte budgets use the stored size and graph budgets use
 the enumerated block count, not arbitrary production constants. `metadataOnly`
 retains Object transforms and typed Mesh children without geometry attributes;
 lazy decoding remains Phase 8 scope.
-Legacy MVert/MLoop/MPoly geometry has four-layout synthetic coverage,
-including signed/unsigned indices, absent modern members, CustomData aliases,
-normal flags and UV composition, without repairing modern storage.
-The unchanged
-[Blender 3.3.21 fixture](../../tests/fixtures/native-mesh/README.md#legacy-scene-decoding)
-now compares full owning IR and registered-plugin stages to its saved oracle,
-including default legacy point normals, transforms, shared geometry, empty
-domains and exact indexed MLoopUVs. Unverified versions and legacy normal
-modes retain contextual fatal diagnostics. Four saved
-[3.3.21 auto-smooth fixtures](../../tests/fixtures/native-normals/README.md#legacy-auto-smooth)
-now pin angle thresholds, sharp/flat boundaries and connected fan normals
-through owning IR, USD authoring and registered-plugin oracle comparisons.
-Packed custom normals in older storage and other 3.x–4.4 version evidence
-remain incomplete; the existing modern decoding boundary is unchanged.
 The accepted [full-stream limit policy](../design/BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
 does not broaden the importer's uncompressed-only boundary; compressed scene
 importing still requires separate implementation and evidence.
+
+## Phase 8 — performance and robustness
+
+After the Blender 5.x path, revisit full older-version compatibility alongside
+the phase's robustness work. Select a bounded version range before adding
+fixtures; existing regression evidence alone does not establish full support.
+
+| # | Task | Done when | Status |
+| --- | --- | --- | --- |
+| 8.1 | [Older-Blender compatibility](../design/BLEND_CONTRACT.md#9-version-support) | choose and document the older-version range and feature scope; add Blender-written oracle evidence for the chosen storage and normal modes, including older packed custom normals where in scope; verify native IR and registered-plugin behavior while preserving 5.x regressions; expand the capability matrix only for fixture-proven scope | ⬜ |

@@ -568,6 +568,12 @@ the plugin. CTest runs the root build's registered tests.
 
 ## Fixture reproducibility
 
+New compatibility fixtures follow the
+[Blender 5.x version policy](../design/BLEND_CONTRACT.md#9-version-support).
+The older-version commands below remain valid for reproducing and checking
+retained regression evidence; they do not imply a current support guarantee
+or require expanding that coverage before Phase 8.
+
 ```powershell
 ./tests/fixtures/generate.ps1
 ./tests/fixtures/generate.ps1 -Check
