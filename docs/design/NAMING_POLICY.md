@@ -50,9 +50,9 @@ Literal source underscores are retained, including repeated and trailing ones.
 Only runs and trailing underscores introduced by replacing other characters
 are collapsed or removed; for example, `A/__B` becomes `A___B`.
 
-Identifiers are ASCII so that every OpenUSD release, file system and USDZ
-consumer accepts them, as in the sibling repositories. Whether to use OpenUSD's
-UTF-8 identifiers instead is NAME-O1.
+Identifiers are ASCII for portability across OpenUSD releases and USDZ
+consumers, as in the sibling repositories. NAME-O1 is resolved in favor of this
+policy (§7.1); source names and display text remain UTF-8.
 
 Fixed child names — `mesh`, `curves`, `points`, `preview`, the scopes of
 [STAGE_CONTRACT.md §4](STAGE_CONTRACT.md#4-prim-hierarchy) — are not derived
@@ -107,7 +107,7 @@ repair never changes identifier allocation or raw source provenance.
 
 This boundary does not author `blend:sourceName` or `displayName`, assign
 Material/Collection/UV identifiers, or resolve asset paths. It implements the
-proposed ASCII policy without closing NAME-O1's final decision. Fixture-backed
+ASCII policy frozen by NAME-O1 (§7.1). Fixture-backed
 evidence belongs in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 
@@ -132,7 +132,8 @@ Object/Mesh prims and UV properties carry exact raw
 `customData["blend:sourceName"]`, with repaired UTF-8 `displayName` when it
 differs from the identifier. The native decoder continues to retain UV source
 names and active flags, without storing or applying USD primvar identifiers.
-This does not close NAME-O1 or introduce Material/Collection naming.
+This does not introduce Material/Collection naming; those later mappings use
+the same frozen identifier policy.
 
 ## 5. Examples
 
@@ -163,5 +164,17 @@ The full source name always survives in `blend:sourceName` and `displayName`.
 
 | Id | Question | Proposed answer | Blocks |
 | --- | --- | --- | --- |
-| NAME-O1 | ASCII identifiers, or OpenUSD's UTF-8 identifiers? | ASCII, as the siblings, until every consumer in the ecosystem is on a release that accepts UTF-8 identifiers. | Phase 2 |
 | NAME-O2 | Is the kind fallback enough for scenes with many non-Latin names? | Measure on real files; if suffixes dominate, add a deterministic transliteration or a short hash of the source name. | nothing (non-blocking) |
+
+### 7.1 Resolved decisions
+
+- **NAME-O1 (2026-10-04):** Freeze ASCII identifiers under §§3-4; do not use
+  UTF-8 prim/property identifiers. The Blender-written
+  [multi-scale fixtures](../../tests/fixtures/native-units/README.md) prove
+  native-to-USD punctuation and natural-suffix collisions, leading digits,
+  Japanese fallback names, Mesh child and render UV reservations, unsigned
+  source-byte ordering, exact source-name provenance and UTF-8 display text.
+  Repeated and reversed block reads author identical paths and layer text.
+  Synthetic tests separately retain malformed-UTF-8 repair and permutation
+  coverage. A future identifier-policy change affects paths and requires the
+  stage-contract versioning rules, not a consumer-dependent silent switch.

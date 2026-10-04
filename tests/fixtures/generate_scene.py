@@ -84,10 +84,10 @@ def make_scene():
     bpy.context.view_layer.update()
 
 
-def oracle_text():
+def oracle_text(scene_name="Integrated", scene_count=2):
     scene = bpy.context.scene
-    if scene.name != "Integrated" or len(bpy.data.scenes) != 2:
-        raise RuntimeError("Scene fixture must retain active Integrated and unselected Scenes")
+    if scene.name != scene_name or len(bpy.data.scenes) != scene_count:
+        raise RuntimeError(f"Scene fixture must retain active {scene_name} and {scene_count} Scenes")
     bpy.context.view_layer.update()
     objects = sorted(scene.objects, key=lambda obj: obj.name)
     meshes = sorted({obj.data for obj in objects if obj.type == "MESH"}, key=lambda mesh: mesh.name)

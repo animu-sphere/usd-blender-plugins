@@ -49,7 +49,8 @@ runs `test_stage.py`. The hand-maintained companion workflow
 the existing bundle cells with `ost ci matrix`, without copying their SDK
 digests, runners or host Python/package requirements. It builds the standalone
 bundle on both hosts, runs explicit `ost plugin doctor` diagnostics and all
-five stage-contract tests plus the standalone `usdBlend.authoring` CTest, and
+five stage-contract tests plus the standalone `usdBlend.authoring` and
+`usdBlend.units` CTests, and
 uploads their reports and logs. These additional
 build jobs also use billed hosted infrastructure; they do not publish anything
 or use secrets. The resolver bootstrap is pinned to the matrix's `ost` version
@@ -290,7 +291,8 @@ local matrices.
 Native/oracle matrix components use `2e-5 * (1 + abs(expected))` tolerance.
 Only oracle-local homogeneous-row rounding is accepted within `1e-6`; the
 decoder's own affine validation remains exact. Neither test authors USD or
-closes STAGE-O1's multi-scale evidence. Fixture provenance and regeneration
+provides the separate [multi-scale evidence](../../tests/fixtures/native-units/README.md).
+Fixture provenance and regeneration
 are in the [transform fixture README](../../tests/fixtures/native-transforms/README.md).
 
 `blendScene.naming` exercises the
@@ -310,7 +312,9 @@ reservation without changing shared geometry. `blendScene.transforms` also
 requires unchanged identifiers when the unmodified Blender-written fixtures'
 block records are reversed. These tests run in both root and standalone Scene
 builds alongside the existing dependency gates. They do not author USD names,
-close NAME-O1 or change the header-only importer.
+or change the header-only importer; separate
+[multi-scale fixtures](../../tests/fixtures/native-units/README.md) exercise
+the frozen policy through native decoding and USD name authoring.
 
 The same `blendScene.ir` executable includes `MeshTests.cpp`, exercising the
 [native Mesh storage boundary](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary).
@@ -467,18 +471,30 @@ native block reads author identical text. Float-range checks accept the exact
 maximum and reject the next larger double. Singular roots without children
 and zero-scale leaves succeed; a singular authored parent fails explicitly.
 
+`usdBlend.units` uses the same internal authoring executable with eight
+Blender-written multi-scale fixtures. It checks native and authored values
+against independent saved-value/world-vertex oracles and compares all four
+scales across both Blender versions. Physical one-meter geometry, active-Scene
+scale selection, reflected/sheared parenting, unchanged normals/UVs, fixed USD
+units and explicit ASCII naming expectations are pinned. Repeated and reversed
+block reads author identical text. Saved cached handedness bit 2 does not
+reapply signed transforms; other flag bits remain unsupported.
+The [fixture record](../../tests/fixtures/native-units/README.md#oracle-and-checks)
+owns exact tolerances and provenance. Neither CTest changes the importer.
+
 After the root plain-CMake build below and the standalone bundle build above,
-the following focused commands were exercised on Windows on 2026-10-04:
+the following validation commands were exercised on Windows on 2026-10-04:
 
 ```powershell
-ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir build\usd-vs18 -C Release --output-on-failure -R '^(usdBlend\.authoring|blendScene\.|blendFile\.(boundary|link))'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir build\usd-vs18 -C Release --output-on-failure --no-tests=error
 ost library test libs\blendScene --target cy2026 --profile usd
-ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd --output-on-failure -R '^usdBlend\.authoring$'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(authoring|units)$'
 ```
 
-The first command covers fourteen root CTests, including native/reader
-dependency gates. The others cover all nine standalone Scene tests and the
-standalone authoring test, with the same runtime activation as the plugin.
+The first command covers eighteen root CTests, including native/reader
+dependency gates and the inspection CLI. The others cover all ten standalone
+Scene tests and both standalone authoring/unit tests, with the same runtime
+activation as the plugin.
 Use the corresponding build directories on other hosts. The companion CI
 discovers its single standalone CTest directory rather than duplicating the
 runtime target triplet; root CI includes the new CTest automatically.
@@ -593,6 +609,33 @@ modified-oracle rejection, home-path exclusion, and saved transform,
 Mesh-sharing and UV mutations. Full-file bytes are not reproducible; there
 is no `--check-bytes` claim. The native `blendScene.sceneFixture` regression
 runs with the regular root and standalone Scene CTests above.
+
+### Multi-scale unit and naming oracles
+
+Run with each pinned Blender installation (4.5.13 or 5.2.2). Default outputs
+are the four `unit-*.blend` files and adjacent UTF-8 oracles in
+`tests/fixtures/native-units/blender-<version>/`. Cases, provenance, naming
+expectations and comparison thresholds are in the
+[unit fixture record](../../tests/fixtures/native-units/README.md).
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 4.5\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_units.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_units.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_units.py
+
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_units.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_units.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_units.py
+```
+
+`--check` regenerates only in temporary storage, then reopens each saved input
+without rewriting fixtures or oracles. Regression tests cover different-process
+and different-path reproduction, home-path exclusion, changed-oracle rejection
+and saved scale, transform, geometry, name and UV mutations. The full-file bytes
+are not reproducible. `usdBlend.units` runs in both root and standalone bundle
+CTest modes above, without Blender at test time.
 
 ### Saved normal oracles
 

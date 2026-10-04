@@ -203,16 +203,17 @@ overflow also fail, rather than publishing invalid geometry. The current
 [IR helpers](DESIGN_POLICY.md#521-scene-ir-foundation) enforce this boundary;
 they do not read a saved Scene or author USD.
 
-STAGE-O1 remains open for source-field and end-to-end evidence, not for a
-choice between preserving Blender numbers and meter normalization. Before
-freezing it, Blender-written `unit-1m.blend`, `unit-1cm.blend`,
-`unit-1mm.blend` and `unit-10m.blend` must cover scales `1`, `0.01`, `0.001`
+STAGE-O1 is frozen for the Mesh/Empty boundary by the
+[multi-scale fixtures](../../tests/fixtures/native-units/README.md).
+Blender-written `unit-1m.blend`, `unit-1cm.blend`,
+`unit-1mm.blend` and `unit-10m.blend` cover scales `1`, `0.01`, `0.001`
 and `10`, each with a cube, a translated object and a parent/child pair.
 Equivalent physical cubes (1, 100, 1000 and 0.1 Blender units wide) must
 produce matching meter-space points and world dimensions, with every authored
 stage still declaring `metersPerUnit = 1`. Camera/light evidence belongs to
 their later schema mappings; synthetic arithmetic alone does not prove saved
-Blender field semantics or authored-stage support.
+Blender field semantics or authored-stage support. This library-to-layer
+evidence does not establish importer/backend integration.
 
 ## 7. Objects and transforms
 
@@ -406,7 +407,6 @@ schedules them.
 
 | Id | Question | Proposed answer | Blocks |
 | --- | --- | --- | --- |
-| STAGE-O1 | Fixture-backed semantics of the active scene's `unit_settings.scale_length`. | Apply once in `blendScene`: distances and translations become meters, dimensionless values do not scale, and USD keeps `metersPerUnit = 1`. Freeze after the Blender-written equivalence tests in §6.1. | Phase 2 |
 | STAGE-O2 | How is a mesh shared by several objects authored? | Phase 2 duplicates it per object. Later: one prototype and references or instancing, once a fixture shows the cost. | nothing (non-blocking) |
 | STAGE-O3 | Do color attributes become `primvars:displayColor`? | The active render color attribute also becomes `displayColor`; every color attribute is `primvars:<name>`. | Phase 3 |
 | STAGE-O4 | Where does an object go whose parent is in another scope (a camera parented to a mesh)? | In its own scope, with the transform relative to `/Asset`, and the source parent recorded in customData. Animated parents then need baked samples. | Phase 4 |
@@ -416,5 +416,14 @@ schedules them.
 
 ### 18.1 Resolved decisions
 
+- **STAGE-O1 (2026-10-04):** Freeze physical-scale normalization in §6.1 for
+  Mesh/Empty source data. Eight Blender-written 4.5.13/5.2.2
+  [multi-scale fixtures](../../tests/fixtures/native-units/README.md) prove
+  active-Scene scale selection, equivalent physical cubes, translated and
+  reflected/sheared parent-child transforms through native decoding and USD
+  authoring. Presentation labels add no factors; normals, UVs and dimensionless
+  transform entries are not unit-scaled. Authoring keeps Y-up and
+  `metersPerUnit = 1`, with no second normalization. Later camera/light
+  mappings retain their own evidence requirements.
 - **STAGE-O5 (2026-10-01):** `/Asset` has kind `component`, matching the
   sibling asset contracts. `test_stage.py` verifies this value.

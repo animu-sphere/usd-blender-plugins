@@ -56,8 +56,6 @@ schedules them.
 | Id | Question | Owner | Blocks |
 | --- | --- | --- | --- |
 | BLEND-O5 | Decompression limits | [BLEND §12](../design/BLEND_CONTRACT.md#12-open-questions) | Phase 1 |
-| STAGE-O1 | Scene unit scale | [STAGE §18](../design/STAGE_CONTRACT.md#18-open-questions) | Phase 2 |
-| NAME-O1 | ASCII or UTF-8 identifiers | [NAMING §7](../design/NAMING_POLICY.md#7-open-questions) | Phase 2 |
 | STAGE-O3 | Color attributes and `displayColor` | [STAGE §18](../design/STAGE_CONTRACT.md#18-open-questions) | Phase 3 |
 | MAT-O1 | Alpha mode mapping | [MATERIAL §9](../design/MATERIAL_POLICY.md#9-open-questions) | Phase 3 |
 | MAT-O4 | Emission strength | [MATERIAL §9](../design/MATERIAL_POLICY.md#9-open-questions) | Phase 3 |
