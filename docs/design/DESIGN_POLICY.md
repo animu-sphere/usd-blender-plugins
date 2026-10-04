@@ -681,6 +681,7 @@ The initial domain/type mapping is:
 | `sharp_face` | face (2) | boolean (50) | boolean (0) |
 | `sharp_edge` | edge (1) | boolean (50) | boolean (0) |
 | UV maps | corner (3) | float2 (49) | float2 (6) |
+| legacy UV maps | corner (3) | MLoopUV (16) | — |
 | packed custom normals | corner (3) | signed-short pair (41) | signed-short pair (2) |
 
 Required positions and corner indices must be present for nonempty domains.
@@ -768,12 +769,23 @@ through Blender RNA, not an exact mathematical `acos`. The
 pin this observable behavior at the existing `2e-5` normal-component
 tolerance. Published normals are normalized and basis-rotated once, with no
 unit scaling. Invalid/degenerate reference spaces fail explicitly.
-Other named normal formats still fail with `BLEND_MESH_NORMALS_UNSUPPORTED`;
-legacy `MLoopUV` storage remains separate work.
+Other named normal formats still fail with `BLEND_MESH_NORMALS_UNSUPPORTED`.
 
-Every corner float2 map becomes an owning indexed `UvMap`: equal numeric pairs
-share a value at first occurrence, indices preserve corner order, and no UV
-axis is flipped. A nonnull `default_uv_map_attribute` names the render map;
+Corner-domain type-16 CustomData UV layers require a `DATA` array of exactly
+`totloop` `MLoopUV` records, with SDNA validating the complete record lengths.
+Each record's embedded `float[2] uv` supplies the coordinates; offsets and
+strides come from SDNA, not a host structure or packed float2 assumption.
+Other fields, including UV selection/pinning flags, are not interpreted.
+Nonfinite coordinates fail with `BLEND_MESH_VALUE_INVALID`; invalid record
+types or coordinate shapes fail explicitly, retaining reader diagnostics for
+malformed SDNA. Layer flags, names, references and empty-domain null pointers
+follow the same CustomData validation as float2 UV layers. A type-16 layer
+outside the corner domain fails with `BLEND_MESH_STORAGE_UNSUPPORTED`.
+Legacy fixed position/topology arrays remain outside this storage boundary.
+
+Every corner float2 or `MLoopUV` map becomes an owning indexed `UvMap`: equal
+numeric pairs share a value at first occurrence, indices preserve corner order,
+and no UV axis is flipped. A nonnull `default_uv_map_attribute` names the render map;
 otherwise CustomData UV layers must agree on a valid `active_rnd` index.
 Modern storage with no saved render-map name marks no map active rather than
 choosing one. Other generic attributes are outside this initial IR scope.

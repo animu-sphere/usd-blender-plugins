@@ -8,6 +8,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Native legacy type-16 `MLoopUV` UV decoding in `blendScene`, using complete
+    SDNA record validation and embedded float-pair coordinates rather than
+    a packed float2 or host-structure assumption. The existing owning indexed
+    UV and render-map semantics apply without axis flips or unit scaling;
+    record selection/pinning flags are ignored. Four synthetic layouts cover
+    two maps, mixed float2/MLoopUV layers, member offsets, shared geometry,
+    ownership, repeated/reordered reads, empty domains and exact fatal
+    malformed-storage/value diagnostics. No Blender-written MLoopUV fixture,
+    legacy fixed position/topology fallback or USD importer change is claimed.
 - Deterministic Mesh/Empty Object identifiers in `blendScene`, connected to
     native `DecodeScene` before publication. ASCII sanitization preserves
     literal underscores, compares raw source bytes independently of locale
