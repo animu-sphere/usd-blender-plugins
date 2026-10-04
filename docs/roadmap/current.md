@@ -37,6 +37,12 @@ Phase 2 decoding and graph-validation work continues.
 
 The [Scene IR boundary](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 keeps basis conversion separate from binary decoding and USD authoring.
+Task 2.3's native boundary now has an
+[integrated Blender-written Scene oracle](../../tests/fixtures/native-scene/README.md)
+combining Mesh/Empty hierarchy, shared Meshes, a parent-only Mesh outside
+membership, visibility, identifiers, transforms and geometry. This establishes
+the fixed-scale library composition, not milestone importer/backend wiring
+or Task 2.2's multi-scale native-to-USD evidence.
 Task 2.7 now has a separately tested Scene IR-to-layer boundary, including
 Blender-written transform oracles and independent two-Mesh fixtures, but remains
 incomplete until the importer connects it to native decoding. The input path

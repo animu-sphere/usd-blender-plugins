@@ -336,8 +336,20 @@ These legacy UV cases have no Blender-written fixture; the corpus UV evidence
 still covers float2 layers and AttributeArrays only.
 Modifier and shape-key presence reports source-only data without evaluation.
 The root reader build and standalone OpenStrata library build both run these
-tests and the existing four scene dependency-boundary gates. Blender-written Mesh transform/unit oracle fixtures
-and USD geometry remain unproven; no Blender executable is required by these CTests.
+tests and the existing four scene dependency-boundary gates. No Blender
+executable is required by these CTests.
+
+`blendScene.sceneFixture` reads unchanged Blender-written 4.5.13/5.2.2
+[integrated Scene fixtures](../../tests/fixtures/native-scene/README.md).
+It combines selected membership, Mesh/Empty hierarchy, three users of one
+Mesh, an unselected Mesh parent, render visibility and fixed-child naming
+with world/local matrices, points, topology, mixed normals and two indexed UV
+maps. The owning IR is compared after reader inputs are released. Repeated
+loads and reversed block records must preserve all metadata, discovery order,
+indices, matrices and Mesh/UV arrays exactly. Root and standalone Scene
+builds include this CTest without introducing Blender or OpenUSD dependencies.
+The fixture uses one source scale; multi-scale unit and USD/importer
+integration remain separate evidence requirements.
 
 `blendScene.normals` compares unchanged Blender-written 4.5.13 and 5.2.2 files
 against saved point, topology and corner-normal oracles. Each version has
@@ -553,6 +565,34 @@ The regression suite checks cross-process/path oracle reproduction,
 non-destructive checks, absence of the user's home path, modified-oracle
 rejection and validation of changed saved transforms. Full-file saved addresses
 and UI state are not byte-reproducible; no `--check-bytes` claim is made.
+
+### Integrated Scene oracles
+
+Run with each pinned Blender installation (4.5.13 or 5.2.2). The default
+output is `tests/fixtures/native-scene/blender-<version>/scene.blend` and
+adjacent `scene.oracle.txt`. Cases, provenance and comparison thresholds
+are in the [Scene fixture record](../../tests/fixtures/native-scene/README.md).
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 4.5\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_scene.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_scene.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_scene.py
+
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_scene.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_scene.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_scene.py
+```
+
+`--check` regenerates only into a temporary directory, compares semantic
+oracles, then validates the saved file without rewriting either committed
+file. `--output <path.blend>` redirects either mode. Regression checks cover
+cross-process/path oracle reproduction, non-destructive checks and failures,
+modified-oracle rejection, home-path exclusion, and saved transform,
+Mesh-sharing and UV mutations. Full-file bytes are not reproducible; there
+is no `--check-bytes` claim. The native `blendScene.sceneFixture` regression
+runs with the regular root and standalone Scene CTests above.
 
 ### Saved normal oracles
 

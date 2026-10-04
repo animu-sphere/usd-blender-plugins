@@ -8,6 +8,18 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Blender-written 4.5.13/5.2.2 integrated native Scene fixtures and
+    `blendScene.sceneFixture`, combining selected Mesh/Empty membership,
+    four-level parenting, shared Mesh indices, an unselected Mesh parent,
+    own render bits and fixed-child naming with world/local transforms,
+    points, polygon topology, mixed normals and two indexed UV maps.
+    Saved Blender oracles compare owning IR after reader inputs are released;
+    repeated and reversed-block loads retain every IR value. Generator checks
+    cover semantic reproduction, non-destructive checks and saved transform,
+    Mesh-sharing and UV mutations. Root reader/Scene and standalone Scene
+    suites retain their dependency gates. Production decoding and the
+    header-only importer are unchanged; this fixed-scale native evidence
+    does not resolve STAGE-O1 or introduce production budgets.
 - Internal Scene IR-to-USD authoring in `usdBlendFileFormat`, with Object
     Xforms, preserved parenting/render visibility, transposed parent-relative
     matrix ops, duplicated polygon Meshes, extent, face-varying normals and
