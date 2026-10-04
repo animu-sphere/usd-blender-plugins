@@ -250,11 +250,14 @@ The opt-in `SelectSceneObjectValues` checks the
 [saved Object value boundary](../design/DESIGN_POLICY.md#526-saved-object-value-boundary)
 without changing generic selection. Four synthetic layouts check type-to-data
 code/SDNA mappings, scalar shapes, parent-only values, owning results and
-immediate instance targets under exact visit limits. Both normal-save corpus
-files exercise Camera/Cube/Light values, the stored `restrictflag` short/int
-difference and `dup_group` pointer/flag mutations. Only the Object render bit is
-interpreted; instance targets do not expand membership or recurse. Transform
-construction, geometry and USD authoring remain separate boundaries.
+instance targets under bounded recursive graph validation. Both normal-save
+corpus files exercise Camera/Cube/Light values, the stored `restrictflag`
+short/int difference and `dup_group` pointer/flag mutations. Synthetic layouts
+cover nested missing/linked/invalid instance targets, recursive cycles and
+256-child instance subgraphs at exact and one-smaller visit/depth limits.
+Only the Object render bit is interpreted; recursively reached Objects are
+validated but do not expand selected-scene membership.
+Transform construction, geometry and USD authoring remain separate boundaries.
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines matrix storage and ownership; supported scope is in the

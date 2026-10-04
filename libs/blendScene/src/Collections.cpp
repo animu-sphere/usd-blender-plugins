@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace blend {
 namespace {
@@ -40,12 +41,9 @@ public:
       if (stack.size() >= limits_.maxDepth) {
         Fail("BLEND_SCENE_DEPTH_LIMIT", "Collection depth exceeds the caller's limit", referrer);
       }
-      Visit(referrer);
       active_.emplace(index, true);
-      const auto collection = Bind(index, "Collection", {'G', 'R', 0, 0}, true);
-      Name(collection, "GR", index);
-      WalkList(collection, "gobject", "CollectionObject", "ob", "Object", index);
-      auto children = WalkList(collection, "children", "CollectionChild", "collection", "Collection", index);
+      const auto& edges = LoadCollection(index, referrer, true);
+      auto children = edges.children;
       stack.push_back({index, std::move(children)});
     };
     enter(root, sceneIndex);
@@ -68,52 +66,149 @@ public:
       enter(child, referrer);
     }
     ValidateObjects();
+    if (readValues_) {
+      ValidateInstanceGraph(root, sceneIndex);
+    }
     return std::move(objects_);
   }
 
 private:
+  struct CollectionEdges {
+    std::vector<std::uint32_t> objects;
+    std::vector<std::uint32_t> children;
+  };
+
+  struct GraphEdge {
+    std::uint32_t target;
+    std::uint32_t referrer;
+  };
+
+  const CollectionEdges& LoadCollection(std::uint32_t index,
+      std::uint32_t referrer, bool publishObjects) {
+    const auto found = collectionEdges_.find(index);
+    if (found != collectionEdges_.end()) {
+      return found->second;
+    }
+    if (collectionIndices_.insert(index).second) {
+      Visit(referrer);
+    }
+    const auto collection = Bind(index, "Collection", {'G', 'R', 0, 0}, true);
+    Name(collection, "GR", index);
+    CollectionEdges edges;
+    edges.objects = WalkList(collection, "gobject", "CollectionObject", "ob",
+        "Object", index, publishObjects);
+    edges.children = WalkList(collection, "children", "CollectionChild",
+        "collection", "Collection", index, false);
+    return collectionEdges_.emplace(index, std::move(edges)).first->second;
+  }
+
   void ValidateObjects() {
-    std::unordered_map<std::uint32_t, std::optional<std::uint32_t>> parents;
-    std::unordered_map<std::uint32_t, std::optional<std::uint32_t>> data;
-    std::unordered_map<std::uint32_t, SavedObjectValues> values;
-    std::unordered_set<std::uint32_t> completed;
     for (auto& selected : objects_) {
-      std::vector<std::uint32_t> chain;
-      std::unordered_set<std::uint32_t> active;
-      auto current = selected.blockIndex;
-      auto referrer = current;
-      while (!completed.contains(current)) {
-        if (!active.insert(current).second) {
-          Fail("BLEND_SCENE_CYCLE", "Object parenting contains a cycle", referrer);
-        }
-        if (chain.size() >= limits_.maxDepth) {
-          Fail("BLEND_SCENE_DEPTH_LIMIT", "Object parent depth exceeds the caller's limit", referrer);
-        }
-        if (objectIndices_.insert(current).second && !dataIndices_.contains(current)) {
-          Visit(referrer);
-        }
-        const auto object = Bind(current, "Object", {'O', 'B', 0, 0});
-        Name(object, "OB", current);
-        data.emplace(current, ValidateData(object, current));
-        if (readValues_) {
-          values.emplace(current, ReadValues(object, current, data.at(current)));
-        }
-        chain.push_back(current);
-        const auto address = Pointer(object, "parent", "Object", current);
-        const auto parent = address == 0 ? std::optional<std::uint32_t>{} : Resolve(address, current);
-        parents.emplace(current, parent);
-        if (!parent) {
-          break;
-        }
-        referrer = current;
-        current = *parent;
-      }
-      completed.insert(chain.begin(), chain.end());
-      selected.parentBlockIndex = parents.at(selected.blockIndex);
-      selected.dataBlockIndex = data.at(selected.blockIndex);
+      ValidateObjectChain(selected.blockIndex);
+      selected.parentBlockIndex = parents_.at(selected.blockIndex);
+      selected.dataBlockIndex = data_.at(selected.blockIndex);
       if (readValues_) {
-        selected.values = values.at(selected.blockIndex);
+        selected.values = values_.at(selected.blockIndex);
       }
+    }
+  }
+
+  void ValidateObjectChain(std::uint32_t start) {
+    if (completedObjects_.contains(start)) {
+      return;
+    }
+    std::vector<std::uint32_t> chain;
+    std::unordered_set<std::uint32_t> active;
+    auto current = start;
+    auto referrer = current;
+    while (!completedObjects_.contains(current)) {
+      if (!active.insert(current).second) {
+        Fail("BLEND_SCENE_CYCLE", "Object parenting contains a cycle", referrer);
+      }
+      if (chain.size() >= limits_.maxDepth) {
+        Fail("BLEND_SCENE_DEPTH_LIMIT", "Object parent depth exceeds the caller's limit", referrer);
+      }
+      if (objectIndices_.insert(current).second && !dataIndices_.contains(current)) {
+        Visit(referrer);
+      }
+      const auto object = Bind(current, "Object", {'O', 'B', 0, 0});
+      Name(object, "OB", current);
+      data_.emplace(current, ValidateData(object, current));
+      if (readValues_) {
+        values_.emplace(current, ReadValues(object, current, data_.at(current)));
+      }
+      chain.push_back(current);
+      const auto address = Pointer(object, "parent", "Object", current);
+      const auto parent = address == 0 ? std::optional<std::uint32_t>{} : Resolve(address, current);
+      parents_.emplace(current, parent);
+      if (!parent) {
+        break;
+      }
+      referrer = current;
+      current = *parent;
+    }
+    completedObjects_.insert(chain.begin(), chain.end());
+  }
+
+  void ValidateInstanceGraph(std::uint32_t root, std::uint32_t rootReferrer) {
+    std::unordered_map<std::uint32_t, bool> active;
+    std::unordered_set<std::uint32_t> completed;
+    struct Frame {
+      std::uint32_t index;
+      std::vector<GraphEdge> edges;
+      std::size_t next = 0;
+    };
+    std::vector<Frame> stack;
+    auto edgesFor = [&](std::uint32_t index, std::uint32_t referrer) {
+      const auto& collection = LoadCollection(index, referrer, false);
+      std::vector<GraphEdge> edges;
+      edges.reserve(collection.children.size() + collection.objects.size());
+      for (const auto child : collection.children) {
+        edges.push_back({child, index});
+      }
+      for (const auto object : collection.objects) {
+        ValidateObjectChain(object);
+        const auto instance = values_.at(object).instanceCollectionBlockIndex;
+        if (instance) {
+          edges.push_back({*instance, object});
+        }
+      }
+      return edges;
+    };
+    auto traverse = [&](std::uint32_t start, std::uint32_t referrer) {
+      if (completed.contains(start)) {
+        return;
+      }
+      active.emplace(start, true);
+      stack.push_back({start, edgesFor(start, referrer)});
+      while (!stack.empty()) {
+        auto& frame = stack.back();
+        if (frame.next == frame.edges.size()) {
+          active.at(frame.index) = false;
+          completed.insert(frame.index);
+          stack.pop_back();
+          continue;
+        }
+        const auto edge = frame.edges[frame.next++];
+        if (active.contains(edge.target) && active.at(edge.target)) {
+          Fail("BLEND_SCENE_CYCLE", "Recursive Collection instancing contains a cycle",
+              edge.referrer);
+        }
+        if (completed.contains(edge.target)) {
+          continue;
+        }
+        if (stack.size() >= limits_.maxDepth) {
+          Fail("BLEND_SCENE_DEPTH_LIMIT", "Instance Collection depth exceeds the caller's limit",
+              edge.referrer);
+        }
+        active.emplace(edge.target, true);
+        stack.push_back({edge.target, edgesFor(edge.target, edge.referrer)});
+      }
+    };
+
+    traverse(root, rootReferrer);
+    for (std::size_t next = 0; next < instanceRoots_.size(); ++next) {
+      traverse(instanceRoots_[next].first, instanceRoots_[next].second);
     }
   }
 
@@ -219,12 +314,13 @@ private:
     std::optional<std::uint32_t> collection;
     if (address != 0) {
       collection = Resolve(address, index);
-      if (instanceIndices_.insert(*collection).second && !active_.contains(*collection) &&
+      if (collectionIndices_.insert(*collection).second &&
           !dataIndices_.contains(*collection) && !objectIndices_.contains(*collection)) {
         Visit(index);
       }
       const auto target = Bind(*collection, "Collection", {'G', 'R', 0, 0}, true);
       Name(target, "GR", *collection);
+      instanceRoots_.emplace_back(*collection, index);
     } else if ((flags & (1 << 8)) != 0) {
       Fail("BLEND_SCENE_REFERENCE_INVALID", "Collection instancing requires a saved Collection", index);
     }
@@ -335,7 +431,7 @@ private:
   std::vector<std::uint32_t> WalkList(const DnaValueView& collection,
       std::string_view member, std::string_view nodeType,
       std::string_view targetMember, std::string_view targetType,
-      std::uint32_t owner) {
+      std::uint32_t owner, bool publishObjects) {
     const auto list = Embedded(collection, member, "ListBase", owner);
     auto current = Pointer(list, "first", "void", owner);
     const auto last = Pointer(list, "last", "void", owner);
@@ -368,11 +464,14 @@ private:
         if (objectIndices_.insert(target).second) {
           Visit(index);
           const auto object = Bind(target, "Object", {'O', 'B', 0, 0});
-          objects_.push_back({target, Name(object, "OB", target), {}, {}, {}});
+          if (publishObjects) {
+            objects_.push_back({target, Name(object, "OB", target), {}, {}, {}});
+          } else {
+            Name(object, "OB", target);
+          }
         }
-      } else {
-        targets.push_back(target);
       }
+      targets.push_back(target);
       previous = current;
       current = next;
       referrer = index;
@@ -389,10 +488,16 @@ private:
   bool readValues_;
   std::uint32_t visited_ = 0;
   std::unordered_map<std::uint32_t, bool> active_;
+  std::unordered_set<std::uint32_t> collectionIndices_;
+  std::unordered_map<std::uint32_t, CollectionEdges> collectionEdges_;
   std::unordered_set<std::uint32_t> listNodes_;
   std::unordered_set<std::uint32_t> objectIndices_;
   std::unordered_set<std::uint32_t> dataIndices_;
-  std::unordered_set<std::uint32_t> instanceIndices_;
+  std::unordered_map<std::uint32_t, std::optional<std::uint32_t>> parents_;
+  std::unordered_map<std::uint32_t, std::optional<std::uint32_t>> data_;
+  std::unordered_map<std::uint32_t, SavedObjectValues> values_;
+  std::unordered_set<std::uint32_t> completedObjects_;
+  std::vector<std::pair<std::uint32_t, std::uint32_t>> instanceRoots_;
   std::vector<SelectedObject> objects_;
 };
 
