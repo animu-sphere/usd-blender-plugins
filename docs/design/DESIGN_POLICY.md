@@ -808,6 +808,13 @@ including across disconnected or nonmanifold incident faces. Otherwise,
 smooth corners use angle-weighted normals within connected split fans; flat
 corners retain their face normal. This domain selection matches Blender's
 source normal behavior rather than always imposing manifold fan separation.
+For 4.5/5.x, corner weights use the single-precision dot product and measured
+cubic/sqrt angle mapping shared with custom normal reference spaces below,
+not mathematical `acos`. The
+[5.2 polygon-fan oracles](../../tests/fixtures/native-normals/README.md#blender-52-polygon-fans-and-corner-angles)
+distinguish these weights on concave/nonplanar polygons and angle-sweep fans.
+The fixture-backed 3.3 path retains its mathematical corner-angle weights;
+modern angle approximation does not change that older normal mode.
 
 Split fans require nonnegative scalar `totedge` and validated `.corner_edge`
 storage. Corner edge indices must be in range; uses of a shared edge must

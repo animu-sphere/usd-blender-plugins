@@ -10,6 +10,7 @@ import bpy
 VERSIONS = {(3, 3, 21), (4, 5, 13), (5, 2, 2)}
 ROOT = Path(__file__).resolve().parent / "native-normals"
 GROUPS = ("smooth", "flat", "split", "custom", "custom_fans", "custom_split_fans", "custom_angles", "multi", "constant")
+POLYGON_GROUPS = ("polygon_smooth", "polygon_split")
 LEGACY_ANGLES = {"auto_smooth": math.pi, "auto_angle": math.pi / 3,
                  "auto_zero": 0.0, "auto_boundary": math.pi / 2}
 
@@ -25,6 +26,36 @@ def add_mesh(name, points, faces, flat=(), sharp=()):
     bpy.context.scene.collection.objects.link(obj)
 
 
+def make_polygon_mesh(group):
+    points, faces = [], []
+
+    def add(vertices, polygons):
+        offset = len(points)
+        points.extend(vertices)
+        faces.extend(tuple(vertex + offset for vertex in face) for face in polygons)
+
+    add(((0, 0, 0), (2, 0, 0), (2, 1, 0), (1, 1, 0), (1, 2, 0), (0, 2, 0), (1, 2, 1)),
+        ((0, 1, 2, 3, 4, 5), (4, 3, 6)))
+    add(((0, 0, 0), (3, 0, 1), (3, 2, -0.5), (0, 2, 0), (0, -1, 2)),
+        ((0, 1, 2, 3), (1, 0, 4)))
+    add(((0, 0, 0), (3, 0, 0.5), (1, 1, -0.5), (3, 3, 1), (0, 3, 0), (0, -2, 1)),
+        ((0, 1, 2, 3, 4), (1, 0, 5)))
+    add(((0, 0, 0), (2, 0, 0), (0, 3, 0), (1, -2, 4), (-2, 1, 2)),
+        ((0, 1, 2), (0, 3, 4)))
+    add(((0, 0, 0), (2, 0, 0), (2, 3, 0), (0, 3, 3)),
+        ((0, 1, 2), (0, 2, 3)))
+    for degrees in range(5, 180, 5):
+        angle = math.radians(degrees)
+        add(((0, 0, 0), (2, 0, 0), (0, 3, 0),
+             (math.cos(angle), -0.6 * math.sin(angle), 0.8 * math.sin(angle))),
+            ((0, 1, 2), (1, 0, 3)))
+    flat = ()
+    if group == "polygon_split":
+        flat = (len(faces),)
+        add(((0, 0, 0), (1, 0, 0), (0, 1, 0)), ((0, 1, 2),))
+    add_mesh(group.capitalize(), points, faces, flat)
+
+
 def make_scene(group):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     for screen in bpy.data.screens:
@@ -35,6 +66,10 @@ def make_scene(group):
     bpy.context.preferences.filepaths.save_version = 0
     bpy.context.scene.name = "Normals"
     bpy.context.scene.unit_settings.scale_length = 0.01
+    if group in POLYGON_GROUPS:
+        make_polygon_mesh(group)
+        bpy.context.view_layer.update()
+        return
     points, polygons, flat_faces, sharp_edges = [], [], [], []
     geometry_group = "flat" if group == "constant" else "split" if group in ("custom", "custom_split_fans") else "smooth" if group in ("multi", "custom_fans") else group
 
@@ -190,6 +225,8 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / f"blender-{version}")
     parser.add_argument("--check", action="store_true")
     groups = tuple(LEGACY_ANGLES) if bpy.app.version == (3, 3, 21) else GROUPS
+    if bpy.app.version >= (5, 0, 0):
+        groups += POLYGON_GROUPS
     parser.add_argument("--groups", nargs="+", choices=groups, default=groups)
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     options = parser.parse_args(arguments)

@@ -89,6 +89,46 @@ addresses and UI state may vary. See the
 generation/check commands and
 [test_generate_normals.py](../test_generate_normals.py) for regression checks.
 
+## Blender 5.2 polygon fans and corner angles
+
+Generated, saved and reopened on Windows on 2026-10-05 with Blender 5.2.2
+LTS, build `d13f752e3b9c`, using the same generator:
+
+| File | Bytes | SHA-256 |
+| --- | --- | --- |
+| `blender-5.2.2/polygon_smooth.blend` | 499068 | `e537016fc5c8c657ab6ed58a32607e4de7e0bcd552610f4ab878c4315b251b20` |
+| `blender-5.2.2/polygon_split.blend` | 499164 | `5bd25c2fcaf27e40c38dd73cd935f08790de47f47ff47e87979b9f72068a712e` |
+
+Both are uncompressed source Meshes in the `Normals` Scene, at unit scale
+`0.01`, without evaluation dependencies. Each combines a concave six-corner
+polygon sharing an edge with a triangle, nonplanar quad/triangle and
+five-corner polygon/triangle pairs, disconnected vertex fans, unequal-area
+triangles and 35 shared-edge wedges at five-degree increments from 5 through
+175 degrees. `polygon_smooth` has 167 points, 80 faces and 246 corners.
+`polygon_split` adds one disconnected flat triangle, selecting split-fan
+normals for its 170 points, 81 faces and 249 corners. The disconnected smooth
+faces distinguish point averaging from connected-fan averaging.
+
+`blendScene.polygonNormals` reuses the normal-oracle executable in root and
+standalone builds. The version-1 oracles compare points, topology and all
+495 corner normals at the existing absolute `2e-5` threshold, with unit-length
+native normals and exact reversed-block equality. Modern corner weights use
+the same independently measured single-precision dot/cubic/sqrt angle mapping
+as custom normal reference spaces, not mathematical `acos`. The concave
+shared corner previously exceeded the threshold by producing `-0.4472136`
+instead of Blender's saved `-0.4472339`. The corrected maximum normal-component
+error across these fixtures is below `1.6e-6`.
+
+The new groups are available only to the pinned 5.2 generator; existing
+4.5 and 3.3 generation defaults and fixture bytes are unchanged. Generator
+regressions cover independent-process/path reproduction, non-destructive
+checks, changed saved polygon geometry and a changed flat-face selector.
+The registered-plugin tests compare the same oracles, metadata-only hierarchy,
+repeat reads and reference composition. `usdBlend.authoring` checks native
+composition and exact authored arrays in both build modes.
+Generation/check commands are in the
+[build guide](../../../docs/guides/building.md#saved-normal-oracles).
+
 ## Legacy auto-smooth
 
 Four additional files were generated, saved and reopened on Windows on
@@ -213,7 +253,8 @@ to construct expected output.
 
 The four custom fixtures contain 794 corners per version, 1,588 in total.
 All compare under the original absolute `2e-5` component threshold, with
-maximum measured component error below `6.25e-6`; published normals remain
+maximum measured component error below `3e-7` after sharing the modern
+corner-angle mapping; published normals remain
 unit length within `1e-12`. Both storage families and all synthetic
 pointer-width/byte-order layouts also exercise signed pairs, automatic
 normals, malformed lengths and unit-scale independence in `blendScene.ir`.
@@ -284,8 +325,8 @@ in `blendScene.ir`. Empty domains publish no values but still require the
 one-value payload. Invalid flags, sizes, lengths/counts, references and values
 retain exact fatal context and no partial Scene.
 
-This is source normal/Mesh decoding evidence for the tested storage families,
-not a general multi-Mesh compatibility claim, Blender evaluation backend,
-Mesh transform oracle, USD-authored stage or STAGE-O1's four-scale cube evidence.
+This is bounded source normal/Mesh evidence plus the explicit registered-plugin
+checks above, not a general multi-Mesh compatibility claim, Blender evaluation
+backend, Mesh transform oracle or STAGE-O1's four-scale cube evidence.
 Current capabilities belong to the
 [capability matrix](../../../docs/reference/CAPABILITY_MATRIX.md#5-scene-ir).

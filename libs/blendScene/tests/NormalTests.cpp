@@ -143,7 +143,7 @@ void CheckFixture(const std::filesystem::path& path) {
   }
   oracle >> std::ws;
   Require(oracle.eof(), "Normal oracle has no trailing records");
-  if (legacy) {
+  if (legacy || path.stem().string().starts_with("polygon_")) {
     std::cout << header.SourceVersion() << " " << path.stem().string() << ": " << compared
               << " corners, maximum normal component error " << maximumError << '\n';
   }
@@ -165,6 +165,12 @@ void CheckFixture(const std::filesystem::path& path) {
 
 int main(int argc, char** argv) {
   try {
+    if (argc == 3 && std::string(argv[1]) == "--polygons") {
+      for (const auto name : {"polygon_smooth", "polygon_split"}) {
+        CheckFixture(std::filesystem::path(argv[2]) / (std::string(name) + ".blend"));
+      }
+      return 0;
+    }
     if (argc == 3 && std::string(argv[1]) == "--legacy") {
       for (const auto name : {"auto_smooth", "auto_angle", "auto_zero", "auto_boundary"}) {
         CheckFixture(std::filesystem::path(argv[2]) / (std::string(name) + ".blend"));

@@ -6,6 +6,19 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Modern source normal corner weights now share the independently measured
+    Blender angle approximation with custom normal reference spaces instead
+    of mathematical `acos`. A concave shared corner previously exceeded the
+    existing `2e-5` normal-component threshold. Two Blender-written 5.2.2
+    polygon-fan fixtures cover 495 corners, nonplanar polygons, unequal-area
+    triangles, disconnected fans and 35 angle-sweep wedges in point/split
+    domains; maximum error is below `1.6e-6`. Native and registered-plugin
+    oracles, metadata/repeat/reference reads and both build modes cover the
+    correction. Existing custom-normal error improves below `3e-7`; Blender
+    3.3 retains its separately tested mathematical weights.
+
 ### Added
 
 - Fixture-backed Blender 3.3 auto-smooth normals using four independently

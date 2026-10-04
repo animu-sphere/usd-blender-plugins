@@ -77,6 +77,9 @@ test helpers are shared with `blendFile`, keeping the existing reader defaults.
 The shared Scene-oracle executable also supplies `blendScene.meshFixture`
 for Blender-written Mesh-domain and indexed-UV evidence, without adding a
 library dependency or requiring Blender at test time.
+The normal-oracle executable also supplies `blendScene.polygonNormals` for
+Blender 5.2 concave/nonplanar polygon fans and source corner-angle weights.
+Its saved fixtures run in both build modes without Blender or OpenUSD.
 The Mesh-boundary executable also supplies `blendScene.legacyMeshStorage`:
 unchanged Blender 3.3.21 raw storage/oracle checks and contextual failures for
 signed-index, unverified-version and unsupported-normal-mode mutations.

@@ -656,7 +656,8 @@ private:
     }
     a = Normalize(a);
     b = Normalize(b);
-    return std::acos(std::clamp(a[0] * b[0] + a[1] * b[1] + a[2] * b[2], -1.0, 1.0));
+    return header_.version == 303 ? std::acos(std::clamp(Dot(a, b), -1.0, 1.0))
+                                  : SpaceAngle(SpaceDot(a, b));
   }
 
   static double Dot(const Vector3& a, const Vector3& b) {
@@ -683,8 +684,8 @@ private:
   }
 
   static double SpaceAngle(float cosine) {
-    // Independently measured cubic/sqrt mapping; custom_angles fixtures pin
-    // Blender's normal-space approximation rather than the mathematical acos.
+    // Independently measured cubic/sqrt mapping; custom_angles and polygon
+    // fixtures pin Blender's source normal angles rather than mathematical acos.
     const auto x = std::abs(std::clamp(cosine, -1.0f, 1.0f));
     const auto acute = (((-0.021642574916361335 * x + 0.07798218580631397) * x -
                             0.21330149586760475) *
