@@ -63,12 +63,13 @@ Result<ScenePointers> BuildScenePointers(std::span<const std::byte> bytes,
         }
         if (block.sdnaIndex < schema.structs.size()) {
           const auto& name = schema.types[schema.structs[block.sdnaIndex].typeIndex].name;
-          if (name != "Attribute" && name != "AttributeArray") {
+          if (name != "Attribute" && name != "AttributeArray" && name != "AttributeSingle") {
             reject();
           }
         }
         const auto view = Take(ViewDnaBlock(bytes, blocks, schema, header, index));
-        if ((view.Type().name != "Attribute" && view.Type().name != "AttributeArray") ||
+        if ((view.Type().name != "Attribute" && view.Type().name != "AttributeArray" &&
+                view.Type().name != "AttributeSingle") ||
             (type && *type != view.Type().name) ||
             !result.owned_.emplace(std::pair{address, *owners[index]}, index).second) {
           reject();
@@ -118,7 +119,8 @@ Result<ScenePointers> BuildScenePointers(std::span<const std::byte> bytes,
             const auto storageType = Take(attribute.Member("storage_type"));
             if (storageType.Type().name != "int8_t" || storageType.Type().length != 1 ||
                 storageType.PointerLevel() != 0 || !storageType.ArrayDimensions().empty() ||
-                Take(storageType.SignedInteger()) != 0) {
+                Take(storageType.SignedInteger()) !=
+                    (Take(ViewDnaBlock(bytes, blocks, schema, header, index)).Type().name == "AttributeSingle" ? 1 : 0)) {
               reject();
             }
             referenced = true;

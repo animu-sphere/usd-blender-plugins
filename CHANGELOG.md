@@ -8,6 +8,19 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Native constant Mesh attributes in `blendScene`: logical single-value
+    AttributeArrays and Blender 5.x AttributeSingles expand positions,
+    integers, face/edge booleans, indexed UVs and packed custom normals through
+    the existing typed readers, without another basis or unit conversion.
+    Dense validation remains strict; invalid flags, logical sizes, one-value
+    payload lengths/counts and references fail with exact source context.
+    Both forms have raw/structured regressions across four synthetic layouts.
+    Two new Blender-written 4.5.13/5.2.2 two-Mesh fixtures pin flat-normal
+    oracles and the modern one-byte AttributeSingle shape. In-memory Single
+    collisions exercise the existing Mesh ownership boundary, with matching
+    storage discriminators; the global reader map remains strict.
+    Single-flag AttributeArrays have synthetic evidence only. The importer
+    remains header-only; no USD geometry or legacy UV storage is introduced.
 - Native packed custom split normals and explicit 5.x Mesh-owned Attribute
     address resolution in `blendScene`. Different collided payloads resolve
     only through serialized ownership and validated Mesh/Attribute references;

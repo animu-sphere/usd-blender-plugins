@@ -9,7 +9,7 @@ import bpy
 
 VERSIONS = {(4, 5, 13), (5, 2, 2)}
 ROOT = Path(__file__).resolve().parent / "native-normals"
-GROUPS = ("smooth", "flat", "split", "custom", "custom_fans", "custom_split_fans", "custom_angles", "multi")
+GROUPS = ("smooth", "flat", "split", "custom", "custom_fans", "custom_split_fans", "custom_angles", "multi", "constant")
 
 
 def add_mesh(name, points, faces, flat=(), sharp=()):
@@ -34,7 +34,7 @@ def make_scene(group):
     bpy.context.scene.name = "Normals"
     bpy.context.scene.unit_settings.scale_length = 0.01
     points, polygons, flat_faces, sharp_edges = [], [], [], []
-    geometry_group = "split" if group in ("custom", "custom_split_fans") else "smooth" if group in ("multi", "custom_fans") else group
+    geometry_group = "flat" if group == "constant" else "split" if group in ("custom", "custom_split_fans") else "smooth" if group in ("multi", "custom_fans") else group
 
     def add_case(name, vertices, faces, flat=(), sharp=()):
         category = "flat" if len(flat) == len(faces) else "split" if flat or sharp else "smooth"
@@ -101,9 +101,17 @@ def make_scene(group):
             }.items():
                 values[corner].value = pair
             mesh.update()
-    elif group == "multi":
+    elif group in ("multi", "constant"):
         other_points = [(x * 2 + 7, y * 2 - 5, z * 2 + 2) for x, y, z in points]
         add_mesh("Other", other_points, polygons, flat_faces, sharp_edges)
+        if group == "constant":
+            for obj in bpy.context.scene.objects:
+                attribute = obj.data.attributes.get("sharp_face")
+                if attribute is not None:
+                    obj.data.attributes.remove(attribute)
+                obj.select_set(True)
+            bpy.context.view_layer.objects.active = bpy.data.objects["Constant"]
+            bpy.ops.object.shade_flat()
     bpy.context.view_layer.update()
 
 
@@ -112,7 +120,7 @@ def oracle_text(group):
     if scene.name != "Normals" or len(bpy.data.scenes) != 1:
         raise RuntimeError("Normal fixture must contain one active Scene named Normals")
     objects = sorted(scene.objects, key=lambda obj: obj.name)
-    expected_names = ["Multi", "Other"] if group == "multi" else [group.capitalize()]
+    expected_names = [group.capitalize(), "Other"] if group in ("multi", "constant") else [group.capitalize()]
     if [obj.name for obj in objects] != expected_names:
         raise RuntimeError("Normal fixture objects differ from the selected group")
     custom = group.startswith("custom")

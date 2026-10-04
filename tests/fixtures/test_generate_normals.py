@@ -8,7 +8,7 @@ import bpy
 
 
 GENERATOR = Path(__file__).with_name("generate_normals.py")
-GROUPS = ("smooth", "flat", "split", "custom", "custom_fans", "custom_split_fans", "custom_angles", "multi")
+GROUPS = ("smooth", "flat", "split", "custom", "custom_fans", "custom_split_fans", "custom_angles", "multi", "constant")
 
 
 class NormalFixtureTests(unittest.TestCase):
@@ -139,6 +139,20 @@ class NormalFixtureTests(unittest.TestCase):
             fixture = output / "multi.blend"
             bpy.ops.wm.open_mainfile(filepath=str(fixture), load_ui=False, use_scripts=False)
             bpy.data.objects["Other"].data.vertices[0].co.z += 0.5
+            bpy.ops.wm.save_as_mainfile(filepath=str(fixture), compress=False, check_existing=False)
+            expected = fixture.read_bytes()
+            self.assertIn("Normal oracle values differ",
+                          self.run_generator(output, check=True, success=False))
+            self.assertEqual(expected, fixture.read_bytes())
+
+    def test_check_inspects_saved_constant_normals(self):
+        with TemporaryDirectory(prefix="blend-normal-constant-") as directory:
+            output = Path(directory) / "changed"
+            self.run_generator(output)
+            fixture = output / "constant.blend"
+            bpy.ops.wm.open_mainfile(filepath=str(fixture), load_ui=False, use_scripts=False)
+            for polygon in bpy.data.objects["Constant"].data.polygons:
+                polygon.use_smooth = True
             bpy.ops.wm.save_as_mainfile(filepath=str(fixture), compress=False, check_existing=False)
             expected = fixture.read_bytes()
             self.assertIn("Normal oracle values differ",

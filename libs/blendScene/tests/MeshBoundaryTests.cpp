@@ -243,6 +243,8 @@ void CheckCustom(const std::filesystem::path& path) {
 
 void CheckRepeatedAddresses(const std::filesystem::path& path) {
   Fixture fixture(path);
+  const auto constant = path.stem() == "constant";
+  const auto valueType = constant ? "AttributeSingle" : "AttributeArray";
   std::map<std::uint64_t, std::vector<std::uint32_t>> addresses;
   std::vector<std::uint32_t> meshes;
   for (std::size_t index = 0; index < fixture.blocks.size(); ++index) {
@@ -260,6 +262,57 @@ void CheckRepeatedAddresses(const std::filesystem::path& path) {
   }
   Require(meshes.size() == 2, "Repeated-address fixture contains two independently constructed Mesh datablocks");
   bool differingAttributes = false, differingArrays = false;
+  std::size_t constantFaces = 0;
+  std::vector<std::array<std::uint32_t, 3>> singles;
+  if (constant) {
+    for (const auto& block : fixture.blocks) {
+      if (block.code != std::array<char, 4>{'D', 'A', 'T', 'A'} || fixture.Type(block) != "Attribute") {
+        continue;
+      }
+      const auto index = static_cast<std::uint32_t>(&block - fixture.blocks.data());
+      for (std::uint64_t element = 0; element < block.count; ++element) {
+        const auto attribute = fixture.View(index, element);
+        const auto nameAddress = Take(Take(attribute.Member("name")).Pointer());
+        const auto name = std::find_if(fixture.blocks.begin(), fixture.blocks.end(),
+            [&](const auto& entry) { return entry.oldAddress == nameAddress; });
+        Require(name != fixture.blocks.end(), "Constant attribute has a saved name");
+        const auto text = fixture.Payload(*name);
+        if (text.size() != 11 || !std::equal(text.begin(), text.end(),
+                reinterpret_cast<const std::byte*>("sharp_face"))) {
+          continue;
+        }
+        Require(Take(Take(attribute.Member("storage_type")).SignedInteger()) == 1 &&
+                    Take(Take(attribute.Member("data_type")).SignedInteger()) == 0 &&
+                    Take(Take(attribute.Member("domain")).SignedInteger()) == 2,
+            "Blender writes constant sharp_face as a face-domain boolean AttributeSingle");
+        const auto address = Take(Take(attribute.Member("data")).Pointer());
+        const auto single = std::find_if(fixture.blocks.begin(), fixture.blocks.end(),
+            [&](const auto& entry) {
+              return entry.oldAddress == address && entry.offset > block.offset;
+            });
+        Require(single != fixture.blocks.end() && fixture.Type(*single) == "AttributeSingle" && single->count == 1,
+            "Constant face attribute references one serialized AttributeSingle");
+        const auto valueAddress = Take(Take(fixture.View(static_cast<std::uint32_t>(single - fixture.blocks.begin())).Member("data")).Pointer());
+        const auto value = std::find_if(fixture.blocks.begin(), fixture.blocks.end(),
+            [&](const auto& entry) { return entry.oldAddress == valueAddress; });
+        Require(value != fixture.blocks.end() && fixture.Type(*value) == "raw_data" &&
+                    value->count == 1 && value->length == 1 && fixture.Payload(*value)[0] == std::byte{1},
+            "Constant sharp_face serializes one true byte for two faces");
+        singles.push_back({index, static_cast<std::uint32_t>(element),
+            static_cast<std::uint32_t>(single - fixture.blocks.begin())});
+        ++constantFaces;
+      }
+    }
+    Require(constantFaces == 2, "Both independently constructed Meshes retain constant sharp_face storage");
+    const auto first = singles[0][2];
+    const auto second = singles[1][2];
+    const auto previous = fixture.blocks[second].oldAddress;
+    fixture.blocks[second].oldAddress = fixture.blocks[first].oldAddress;
+    StorePointer(fixture, Take(fixture.View(singles[1][0], singles[1][1]).Member("data")),
+        fixture.blocks[first].oldAddress);
+    addresses.erase(previous);
+    addresses[fixture.blocks[first].oldAddress].push_back(second);
+  }
   for (const auto& [address, indices] : addresses) {
     if (indices.size() < 2) {
       continue;
@@ -272,12 +325,12 @@ void CheckRepeatedAddresses(const std::filesystem::path& path) {
           "Repeated saved address has matching block and SDNA shape");
       if (!std::ranges::equal(fixture.Payload(first), fixture.Payload(other))) {
         differingAttributes = differingAttributes || fixture.Type(first) == "Attribute";
-        differingArrays = differingArrays || fixture.Type(first) == "AttributeArray";
+        differingArrays = differingArrays || fixture.Type(first) == valueType;
       }
     }
   }
   Require(differingAttributes && differingArrays,
-      "Blender-written Attribute and AttributeArray address collisions are not byte-identical aliases");
+      "Blender-written Attribute and value-storage address collisions are not byte-identical aliases");
   for (const auto code : {std::array<char, 4>{'D', 'A', 'T', 'A'}, {'O', 'B', 0, 0}}) {
     auto changed = fixture;
     changed.blocks[meshes.back()].code = code;
@@ -293,7 +346,7 @@ void CheckRepeatedAddresses(const std::filesystem::path& path) {
   StorePointer(changed, Take(Take(changed.View(meshes.front()).Member("attribute_storage")).Member("dna_attributes")), 0);
   RejectCollision(changed);
   for (const auto& [address, indices] : addresses) {
-    if (indices.size() < 2 || fixture.Type(fixture.blocks[indices.front()]) != "AttributeArray") {
+    if (indices.size() < 2 || fixture.Type(fixture.blocks[indices.front()]) != valueType) {
       continue;
     }
     changed = fixture;
@@ -307,6 +360,18 @@ void CheckRepeatedAddresses(const std::filesystem::path& path) {
       }
     }
     RejectCollision(changed);
+    if (constant) {
+      changed = fixture;
+      for (std::uint64_t element = 0; element < changed.blocks[records].count; ++element) {
+        const auto record = changed.View(records, element);
+        if (Take(Take(record.Member("data")).Pointer()) == address) {
+          const auto storage = Take(record.Member("storage_type"));
+          const auto offset = static_cast<std::size_t>(storage.Bytes().data() - changed.bytes.data());
+          changed.bytes[offset] = std::byte{0};
+        }
+      }
+      RejectCollision(changed);
+    }
     changed = fixture;
     const auto raw = changed.schema.FindStruct("raw_data");
     changed.blocks[indices.front()].sdnaIndex = static_cast<std::uint32_t>(raw - changed.schema.structs.data());
@@ -340,6 +405,7 @@ int main(int argc, char** argv) {
       CheckCustom(std::filesystem::path(directory) / "custom.blend");
     }
     CheckRepeatedAddresses(std::filesystem::path(argv[2]) / "multi.blend");
+    CheckRepeatedAddresses(std::filesystem::path(argv[2]) / "constant.blend");
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

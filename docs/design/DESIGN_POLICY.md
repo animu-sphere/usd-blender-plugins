@@ -690,9 +690,15 @@ meters and the USD basis exactly once, independent of Object world matrices.
 
 Storage pointers resolve exact keys to `DATA`, never interior addresses or
 external files. Structure arrays require the declared SDNA type, count and
-length. Modern consumed attributes require dense `AttributeArray` storage
-(`storage_type == 0`, `is_single == 0`) and a matching domain `size`. Consumed
-CustomData layers require zero flags. Raw arrays require `raw_data`, count one
+length. Modern consumed attributes accept `AttributeArray` storage
+(`storage_type == 0`) with a matching logical domain `size` and an
+`is_single` flag of exactly zero or one, or `AttributeSingle` storage
+(`storage_type == 1`) with no saved size. Dense arrays store one value per
+domain element; either constant form stores exactly one value, addressed as
+element zero for every logical element. Constants on empty domains still
+require their one stored value, but publish no elements. Dense empty arrays
+retain their null-data allowance. Consumed CustomData layers require zero
+flags. Raw arrays require `raw_data`, count one
 and the exact serialized byte length; scalar bytes are decoded in the source
 byte order. Structured vector/integer arrays use SDNA member views. Array
 lengths are validated before output reservation. Names are bounded terminated
@@ -700,14 +706,15 @@ character storage, nonempty and unique within a domain; raw source bytes are
 retained without assigning identifiers.
 
 For Blender 5 containers only, scene selection and decoding distinguish
-collided `Attribute` and `AttributeArray` addresses by the owning Mesh.
+collided `Attribute`, `AttributeArray` and `AttributeSingle` addresses by the owning Mesh.
 Ownership is the contiguous `DATA` run following an ID in serialized payload
 offset order, not caller enumeration order; metadata or another ID ends it.
 Every collided target must have the same allowed SDNA type across owners,
 one occurrence per Mesh, and a validated reference: the Mesh's
 `attribute_storage.dna_attributes` names its exact Attribute record array
-with the declared count, and an Attribute's dense `data` pointer names each
-collided single-record AttributeArray. Non-Mesh owners, unreferenced targets,
+with the declared count, and an Attribute's `data` pointer names each
+collided single-record AttributeArray or AttributeSingle with the matching
+storage discriminator (zero or one respectively). Non-Mesh owners, unreferenced targets,
 same-owner duplicates, other types and duplicate IDs remain fatal.
 Invalid SDNA/storage retains reader diagnostics. There is no first/last-wins,
 byte-identical alias or cross-owner fallback. `BuildPointerMap` itself is
@@ -722,7 +729,7 @@ smooth corners use angle-weighted normals within connected split fans; flat
 corners retain their face normal. This domain selection matches Blender's
 source normal behavior rather than always imposing manifold fan separation.
 
-Split fans require nonnegative scalar `totedge` and dense `.corner_edge`
+Split fans require nonnegative scalar `totedge` and validated `.corner_edge`
 storage. Corner edge indices must be in range; uses of a shared edge must
 agree on its vertex endpoints. Corners connect only across a non-sharp edge
 used by exactly two distinct smooth polygons in opposite directions.
@@ -736,7 +743,7 @@ fallback.
 Packed custom normals are signed 16-bit pairs, not float3 vectors. The legacy
 corner type-41 layer is unnamed or named `custom_normal`; modern storage
 requires corner-domain `custom_normal`, data type 2. Arrays retain the same
-dense/raw/structured validation, including `vec2s` scalar-short members and
+array/single/raw/structured validation, including `vec2s` scalar-short members and
 source byte order. Custom data always constructs split fans, including when
 all faces are smooth or flat. Flat faces have isolated spaces. Within a fan,
 the saved pairs are averaged as signed integers with division toward zero;
@@ -760,7 +767,7 @@ pin this observable behavior at the existing `2e-5` normal-component
 tolerance. Published normals are normalized and basis-rotated once, with no
 unit scaling. Invalid/degenerate reference spaces fail explicitly.
 Other named normal formats still fail with `BLEND_MESH_NORMALS_UNSUPPORTED`;
-constant attribute storage and legacy `MLoopUV` storage remain separate work.
+legacy `MLoopUV` storage remains separate work.
 
 Every corner float2 map becomes an owning indexed `UvMap`: equal numeric pairs
 share a value at first occurrence, indices preserve corner order, and no UV
