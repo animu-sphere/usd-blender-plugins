@@ -339,17 +339,20 @@ ignored record flags, indexed signed-zero/out-of-range coordinates, render
 selectors, unit independence, empty domains and owning/repeated/reordered
 reads. Invalid SDNA/value shapes, counts, lengths, pointers, layer domains,
 names and flags require contextual fatal failures without a partial Scene.
-These legacy UV cases have no Blender-written fixture; the corpus UV evidence
-still covers float2 layers and AttributeArrays only.
+The unchanged 3.3.21 Mesh-domain fixture additionally compares Blender-written
+MLoopUV maps against its saved oracle; the two modern corpus files retain
+their float2/AttributeArray coverage.
 Legacy fixed `MVert`/`MLoop`/`MPoly` arrays run across the same four layouts,
 with SDNA-defined offsets and strides, flat/smooth/mixed polygon flags,
 `MEdge` sharp flags, split fans, packed automatic normals, float2/MLoopUV maps,
 loose points, sharing, ownership, repeated/reversed reads and four unit scales.
 Malformed references, record lengths/counts/types, member shapes, nonfinite
-positions, unsigned indices and noncontiguous/invalid polygon ranges retain
+positions, signed/unsigned indices and noncontiguous/invalid polygon ranges retain
 exact fatal context. Saved legacy pointers do not repair partial or invalid
-modern core attributes/offsets. These cases have no Blender-written geometry
-fixture and do not broaden version support beyond the existing 4.5/5.x gate.
+modern core attributes/offsets. Separate 3.3 cases cover absent modern members,
+strict modern-member requirements, CustomData geometry aliases and the older
+default point-normal policy. The unchanged 3.3.21 Mesh-domain fixture now
+provides Blender-written legacy geometry/normal/transform/UV evidence.
 Modifier and shape-key presence reports source-only data without evaluation.
 The root reader build and standalone OpenStrata library build both run these
 tests and the existing four scene dependency-boundary gates. No Blender
@@ -684,8 +687,8 @@ is made.
 
 ### Legacy Mesh storage evidence
 
-Blender 3.3.21 is used only to generate and verify raw legacy storage, not to
-extend supported Scene decoding. Download the official Windows portable
+Blender 3.3.21 generates and verifies the tested legacy Mesh storage and
+default-normal oracle. Download the official Windows portable
 archive and verify it against
 [Blender's SHA-256 list](https://download.blender.org/release/Blender3.3/blender-3.3.21.sha256).
 Keep the executable outside the repository; no Blender binary is bundled.
@@ -704,12 +707,21 @@ ost library build libs\blendScene --target cy2026 --profile usd
 ost library test libs\blendScene --target cy2026 --profile usd --filter 'blendScene\.(legacyMeshStorage|meshBoundaries|ir|meshFixture|sceneFixture|boundary|link)'
 ```
 
-The native `blendScene.legacyMeshStorage` CTest runs without Blender or OpenUSD in both
-build modes. It checks unmodified raw saved values and the existing fatal
-unsupported-version diagnostic, including repeated/reversed block reads.
-It does not compare a decoded legacy IR or authored stage; scope and
-provenance are in the
-[fixture record](../../tests/fixtures/native-mesh/README.md#legacy-storage-only-evidence).
+The native `blendScene.legacyMeshStorage` CTest runs without Blender or OpenUSD
+in both build modes. It checks unmodified raw saved values plus contextual
+signed-index, unverified-version and unsupported-normal-mode mutations,
+including repeated/reversed block reads. `blendScene.meshFixture` compares
+the decoded legacy Scene IR to the complete saved oracle; `usdBlend.authoring`
+and registered-plugin stage tests cover USD composition. Scope, default-normal
+semantics, tolerances and provenance are in the
+[fixture record](../../tests/fixtures/native-mesh/README.md#legacy-scene-decoding).
+
+The following additional checks were exercised on Windows on 2026-10-05:
+
+```powershell
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir build\usd-vs18 -C Release --output-on-failure -R '^usdBlend\.(authoring|units)$'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd --no-inject --plugin-path "$PWD\plugins\usdBlendFileFormat" -- python plugins\usdBlendFileFormat\tests\test_stage.py
+```
 
 ### Registered cube fixture
 

@@ -20,8 +20,7 @@ void Require(bool condition, const std::string& message) {
 
 template <class Value>
 Value Take(const blend::Result<Value>& result) {
-  Require(result.HasValue(), result.HasValue() ? "" : result.GetError().code + ": " + result.GetError().message +
-      (result.GetError().blockIndex ? " at block " + std::to_string(*result.GetError().blockIndex) : ""));
+  Require(result.HasValue(), result.HasValue() ? "" : result.GetError().code + ": " + result.GetError().message + (result.GetError().blockIndex ? " at block " + std::to_string(*result.GetError().blockIndex) : ""));
   return result.GetValue();
 }
 
@@ -306,10 +305,11 @@ void CheckFixture(const std::filesystem::path& path, bool meshDomains) {
 
 int main(int argc, char** argv) {
   try {
-    const bool meshDomains = argc == 4 && std::string(argv[1]) == "--mesh-domains";
-    Require(argc == 3 || meshDomains, "Two Blender-written Scene fixtures and an optional --mesh-domains are required");
-    CheckFixture(argv[meshDomains ? 2 : 1], meshDomains);
-    CheckFixture(argv[meshDomains ? 3 : 2], meshDomains);
+    const bool meshDomains = argc >= 3 && std::string(argv[1]) == "--mesh-domains";
+    Require(argc == 3 || meshDomains, "Blender-written Scene fixtures and an optional --mesh-domains are required");
+    for (int index = meshDomains ? 2 : 1; index < argc; ++index) {
+      CheckFixture(argv[index], meshDomains);
+    }
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

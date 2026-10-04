@@ -14,7 +14,8 @@ from pxr import Sdf, Tf, Usd, UsdGeom
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 NATIVE = Path(__file__).resolve().parents[3] / "tests" / "fixtures"
 SCENES = [NATIVE / "native-scene" / version / "scene.blend" for version in ("blender-4.5.13", "blender-5.2.2")]
-MESHES = [NATIVE / "native-mesh" / version / "mesh.blend" for version in ("blender-4.5.13", "blender-5.2.2")]
+MESHES = [NATIVE / "native-mesh" / version / "mesh.blend"
+          for version in ("blender-3.3.21", "blender-4.5.13", "blender-5.2.2")]
 
 
 def converted_vector(value, scale=1.0):
@@ -197,7 +198,7 @@ class StageContractTests(unittest.TestCase):
         for fixture in [*SCENES, *MESHES]:
             with self.subTest(fixture=str(fixture)):
                 stage = Usd.Stage.Open(str(fixture))
-                self._assert_contract(stage, "4.5" if "4.5" in str(fixture) else "5.2",
+                self._assert_contract(stage, fixture.parent.name.removeprefix("blender-").rsplit(".", 1)[0],
                                       "Integrated" if fixture in SCENES else "MeshDomains")
                 records = iter(shlex.split(line) for line in fixture.with_suffix(".oracle.txt").read_text().splitlines())
                 self.assertEqual(next(records), ["BLEND_SCENE_ORACLE", "1"])

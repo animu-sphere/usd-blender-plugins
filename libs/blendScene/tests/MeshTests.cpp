@@ -67,6 +67,7 @@ public:
     Structure("raw_data", {});
     Type("int", 4);
     Type("uint", 4);
+    Type("ushort", 2);
     Type("short", 2);
     Type("int8_t", 1);
     Type("int64_t", 8);
@@ -98,7 +99,7 @@ public:
                                                   {"CustomData", "edata"}, {"CustomData", "pdata"}, {"CustomData", "ldata"},
                                                   {"char", "default_uv_map_attribute", true}, {"Key", "key", true},
                                                   {"MVert", "mvert", true}, {"MLoop", "mloop", true},
-                                                  {"MPoly", "mpoly", true}, {"MEdge", "medge", true}});
+                                                  {"MPoly", "mpoly", true}, {"MEdge", "medge", true}, {"ushort", "flag"}});
     mesh = static_cast<std::uint32_t>(blocks.size() - 2);
     blocks[mesh].sdnaIndex = meshStruct;
     blocks[mesh].offset = bytes.size();
@@ -391,6 +392,25 @@ public:
     }
   }
 
+  void LegacyVersion() {
+    header.version = 303;
+    auto& meshType = schema.structs[blocks[mesh].sdnaIndex];
+    for (auto& member : meshType.members) {
+      if (member.baseName == "attribute_storage" || member.baseName == "poly_offset_indices" ||
+          member.baseName == "default_uv_map_attribute") {
+        member.baseName = "unused_" + member.baseName;
+      }
+    }
+    const auto intType = static_cast<std::uint16_t>(std::find_if(schema.types.begin(), schema.types.end(),
+                                                        [](const auto& type) { return type.name == "int"; }) -
+                                                    schema.types.begin());
+    for (auto& member : schema.structs[blocks[legacyLoops].sdnaIndex].members) {
+      if (member.baseName == "v" || member.baseName == "e") {
+        member.typeIndex = intType;
+      }
+    }
+  }
+
   std::vector<std::byte> bytes;
   std::vector<blend::BlendBlock> blocks;
   blend::DnaSchema schema;
@@ -436,6 +456,118 @@ private:
     return static_cast<std::uint32_t>(schema.structs.size() - 1);
   }
 };
+
+void CheckLegacyVersion(const Fixture& fixture) {
+  const auto expected = Take(fixture.Decode()).meshes[0];
+  auto legacy = fixture;
+  legacy.LegacyUv(1);
+  legacy.LegacyUv(2);
+  legacy.LegacyGeometry();
+  legacy.LegacyVersion();
+  Require(SameMesh(expected, Take(legacy.Decode()).meshes[0]),
+      "Blender 3.3 signed loops and absent modern members preserve fixed-array geometry and MLoopUV maps");
+  auto defaultFlags = legacy;
+  defaultFlags.Set(defaultFlags.mesh, "Mesh", "flag", 0xd100);
+  Require(SameMesh(expected, Take(defaultFlags.Decode()).meshes[0]), "Observed saved Mesh flags retain the default normal mode");
+  for (const auto member : {"attribute_storage", "poly_offset_indices", "default_uv_map_attribute"}) {
+    auto changed = fixture;
+    auto& fields = changed.schema.structs[changed.blocks[changed.mesh].sdnaIndex].members;
+    std::find_if(fields.begin(), fields.end(),
+        [&](const auto& field) { return field.baseName == member; })
+        ->baseName = "unused";
+    changed.Failure("BLEND_DNA_MEMBER", changed.mesh);
+  }
+  for (const auto [member, limit] : {std::pair{"v", 4u}, {"e", 5u}}) {
+    for (const auto invalid : {limit, 0xffffffffu, 0x80000000u}) {
+      auto changed = legacy;
+      changed.Set(changed.legacyLoops, "MLoop", member, invalid);
+      changed.Failure("BLEND_MESH_TOPOLOGY_INVALID", changed.legacyLoops);
+    }
+  }
+  for (const auto version : {302u, 304u, 404u, 600u}) {
+    auto changed = legacy;
+    changed.header.version = version;
+    changed.Failure("BLEND_MESH_STORAGE_UNSUPPORTED", changed.mesh);
+  }
+  for (const auto member : {"v", "e"}) {
+    auto changed = legacy;
+    auto& field = *std::find_if(changed.schema.structs[changed.blocks[changed.legacyLoops].sdnaIndex].members.begin(),
+        changed.schema.structs[changed.blocks[changed.legacyLoops].sdnaIndex].members.end(),
+        [&](const auto& value) { return value.baseName == member; });
+    field.typeIndex = static_cast<std::uint16_t>(std::find_if(changed.schema.types.begin(), changed.schema.types.end(),
+                                                     [](const auto& type) { return type.name == "float"; }) -
+                                                 changed.schema.types.begin());
+    changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.legacyLoops);
+  }
+  auto smooth = legacy;
+  smooth.Float(smooth.legacyPoints, 3 * smooth.Size("MVert") + smooth.Member("MVert", "co").offset + 8, 3);
+  for (std::size_t face = 0; face < 2; ++face) {
+    smooth.Bits(smooth.legacyPolygons, face * smooth.Size("MPoly") + smooth.Member("MPoly", "flag").offset, 1, 1);
+  }
+  const auto smoothNormals = Take(smooth.Decode()).meshes[0].cornerNormals;
+  smooth.Bits(smooth.legacyPolygons, smooth.Size("MPoly") + smooth.Member("MPoly", "flag").offset, 0, 1);
+  const auto mixed = Take(smooth.Decode()).meshes[0];
+  Require(std::equal(mixed.cornerNormals.begin(), mixed.cornerNormals.begin() + 3, smoothNormals.begin()) &&
+              mixed.cornerNormals[3] == mixed.cornerNormals[4] && mixed.cornerNormals[4] == mixed.cornerNormals[5] &&
+              mixed.cornerNormals[0] != mixed.cornerNormals[3],
+      "Blender 3.3 smooth corners include flat-face contributions while flat corners retain face normals");
+  smooth.Bits(smooth.legacyEdges, 2 * smooth.Size("MEdge") + smooth.Member("MEdge", "flag").offset, 512, 2);
+  Require(SameMesh(mixed, Take(smooth.Decode()).meshes[0]), "Blender 3.3 default normals do not split at sharp edges");
+  auto changed = legacy;
+  changed.Set(changed.mesh, "Mesh", "flag", 32);
+  changed.Failure("BLEND_MESH_NORMALS_UNSUPPORTED", changed.mesh);
+  changed = legacy;
+  const auto packedValues = changed.Data("vec2s", 6, 0);
+  const auto oldLayers = changed.attributeRecords;
+  changed.attributeRecords = changed.Data("CustomDataLayer", 3, 0);
+  std::copy_n(changed.bytes.begin() + static_cast<std::size_t>(changed.blocks[oldLayers].offset),
+      2 * changed.Size("CustomDataLayer"),
+      changed.bytes.begin() + static_cast<std::size_t>(changed.blocks[changed.attributeRecords].offset));
+  changed.Layer(changed.attributeRecords, 2, "", 41, packedValues);
+  changed.Domain("ldata", changed.attributeRecords, 3);
+  changed.Failure("BLEND_MESH_NORMALS_UNSUPPORTED", changed.mesh);
+  for (const auto [domain, type, block] : {
+           std::tuple{"vdata", 0, legacy.legacyPoints},
+           {"edata", 3, legacy.legacyEdges}, {"pdata", 25, legacy.legacyPolygons}}) {
+    changed = legacy;
+    const auto layers = changed.Data("CustomDataLayer", 1, 0);
+    changed.Layer(layers, 0, "", type, block);
+    changed.Domain(domain, layers, 1);
+    Require(SameMesh(expected, Take(changed.Decode()).meshes[0]), "Legacy geometry layers alias fixed arrays without requiring attribute names");
+    auto invalid = changed;
+    invalid.Set(layers, "CustomDataLayer", "flag", 1);
+    invalid.Failure("BLEND_MESH_STORAGE_UNSUPPORTED", layers);
+    invalid = changed;
+    invalid.Set(layers, "CustomDataLayer", "data", 999);
+    invalid.Failure("BLEND_MESH_STORAGE_INVALID", layers);
+    invalid = changed;
+    invalid.Set(layers, "CustomDataLayer", "type", type == 0 ? 3 : 0);
+    invalid.Failure("BLEND_MESH_STORAGE_INVALID", layers);
+    invalid = changed;
+    const auto duplicate = invalid.Data("CustomDataLayer", 2, 0);
+    invalid.Layer(duplicate, 0, "", type, block);
+    invalid.Layer(duplicate, 1, "", type, block);
+    invalid.Domain(domain, duplicate, 2);
+    invalid.Failure("BLEND_MESH_STORAGE_INVALID", duplicate);
+  }
+  changed = legacy;
+  changed.Set(changed.mesh, "Mesh", "totvert", 0);
+  changed.Set(changed.mesh, "Mesh", "totpoly", 0);
+  changed.Set(changed.mesh, "Mesh", "totloop", 0);
+  for (const auto member : {"mvert", "mloop", "mpoly"}) {
+    changed.Set(changed.mesh, "Mesh", member, 0);
+  }
+  changed.Domain("ldata", 0, 0);
+  const auto empty = changed.Decode();
+  Require(empty.HasValue() && empty.GetValue().meshes[0].points.empty() && empty.Diagnostics().size() == 1 &&
+              empty.Diagnostics()[0].code == "BLEND_MESH_EMPTY" && empty.Diagnostics()[0].blockIndex == changed.mesh,
+      "All-null legacy empty domains remain valid with one contextual warning");
+  for (const auto member : {"mvert", "mloop", "mpoly"}) {
+    auto invalid = changed;
+    invalid.Set(invalid.mesh, "Mesh", member, 999);
+    invalid.Failure("BLEND_MESH_STORAGE_INVALID", invalid.mesh);
+  }
+}
 
 void CheckLegacyGeometry(const Fixture& fixture) {
   const auto expected = Take(fixture.Decode()).meshes[0];
@@ -962,6 +1094,7 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
     } else {
       CheckLegacyUvs(fixture);
       CheckLegacyGeometry(fixture);
+      CheckLegacyVersion(fixture);
     }
     auto shadowed = fixture;
     shadowed.LegacyGeometry(false);
