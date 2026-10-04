@@ -14,7 +14,6 @@ looked at.
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
 | 1.1 | Resolve BLEND-O5 | the owning document records the answer | 🚧 |
-| 1.2 | Compression: gzip and Zstandard, with size and ratio limits | compressed and uncompressed fixtures read identically; a bomb fixture fails with `BLEND_COMPRESSION_*` | 🚧 |
 
 ## Phase 2 — objects and meshes
 
