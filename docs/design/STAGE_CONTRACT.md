@@ -193,7 +193,7 @@ hard-coded factors on top of `scale_length`.
 The original `sourceUnitScale` is provenance only. Future `/Asset` customData
 uses `blend:sourceUnitScale` (`double`) and `blend:sourceUnitSystem` (`string`)
 once scene decoding and the source-system mapping are fixture-backed. These
-are not yet required or authored by the header-only importer, and do not
+are not yet required or authored by the importer, and do not
 change the interpretation of IR or USD geometry.
 
 The scale must be finite and strictly positive. Zero, negative, NaN or infinite
@@ -212,8 +212,9 @@ Equivalent physical cubes (1, 100, 1000 and 0.1 Blender units wide) must
 produce matching meter-space points and world dimensions, with every authored
 stage still declaring `metersPerUnit = 1`. Camera/light evidence belongs to
 their later schema mappings; synthetic arithmetic alone does not prove saved
-Blender field semantics or authored-stage support. This library-to-layer
-evidence does not establish importer/backend integration.
+Blender field semantics or authored-stage support. The importer now composes
+this same Mesh/Empty boundary; its registered-plugin evidence is recorded in
+the [capability matrix](../reference/CAPABILITY_MATRIX.md#3-stage).
 
 ## 7. Objects and transforms
 

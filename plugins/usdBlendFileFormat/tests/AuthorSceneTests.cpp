@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "AuthorScene.h"
+#include "ReadScene.h"
 #include <blendScene/Decode.h>
 #include <blendScene/Naming.h>
 #include <pxr/base/gf/matrix4d.h>
@@ -399,16 +400,50 @@ blend::Scene Decode(const std::filesystem::path& path, bool reverseBlocks = fals
   return Take(decoded);
 }
 
+void CheckReadBoundary(const std::filesystem::path& path, const SdfLayerRefPtr& expected) {
+  blend::FileByteSource source(path);
+  const auto scene = Take(blend::ReadScene(source));
+  Require(Text(expected) == Text(Take(blend::AuthorScene(scene))),
+      "Importer byte-to-Scene composition matches independently composed native authoring");
+  const auto full = UsdStage::Open(expected);
+  const auto metadata = UsdStage::Open(Take(blend::AuthorScene(scene, true)));
+  std::size_t count = 0;
+  for (const auto& prim : full->Traverse()) {
+    const auto other = metadata->GetPrimAtPath(prim.GetPath());
+    Require(other && other.GetTypeName() == prim.GetTypeName(), "Metadata retains every prim and its type");
+    if (prim.IsA<UsdGeomMesh>()) {
+      Require(other.GetAuthoredAttributes().empty(), "Metadata Meshes have no geometry attributes");
+    } else {
+      for (const auto& attr : prim.GetAuthoredAttributes()) {
+        VtValue value, otherValue;
+        Require(attr.Get(&value) && other.GetAttribute(attr.GetName()).Get(&otherValue) && value == otherValue,
+            "Metadata retains Object transforms and visibility");
+      }
+    }
+    ++count;
+  }
+  std::size_t metadataCount = 0;
+  for (const auto& prim : metadata->Traverse()) {
+    (void)prim;
+    ++metadataCount;
+  }
+  Require(count == metadataCount, "Metadata has exactly the full hierarchy");
+}
+
 void CheckFixture(const std::filesystem::path& path) {
   const auto scene = Decode(path);
   const auto layer = Take(blend::AuthorScene(scene));
   const auto stage = UsdStage::Open(layer);
   CheckScene(scene, stage);
+  CheckReadBoundary(path, layer);
   Require(Text(layer) == Text(Take(blend::AuthorScene(Decode(path)))), "Repeated native reads author identical stages");
   Require(Text(layer) == Text(Take(blend::AuthorScene(Decode(path, true)))),
       "Reversed native block enumeration authors an identical stage");
   if (path.stem() != "transforms") {
-    Require(scene.objects.size() == 2 && scene.meshes.size() == 2, "Independent two-Mesh native fixture");
+    const auto objectCount = path.stem() == "scene" ? 7 : path.stem() == "single_cube" ? 1
+                                                                                       : 2;
+    const auto meshCount = path.stem() == "single_cube" ? 1 : 2;
+    Require(scene.objects.size() == objectCount && scene.meshes.size() == meshCount, "Native fixture Object/Mesh counts");
     return;
   }
   auto oraclePath = path;
@@ -502,6 +537,7 @@ UsdStageRefPtr CheckUnitFixture(const std::filesystem::path& path, double expect
   const auto authored = blend::AuthorScene(scene);
   const auto layer = Take(authored);
   Require(authored.Diagnostics().empty(), "Unit fixture needs no authoring repair");
+  CheckReadBoundary(path, layer);
   const auto stage = UsdStage::Open(layer);
   CheckScene(scene, stage);
   Require(scene.metadata.sourceScene == "Units" && scene.objects.size() == 16 && scene.meshes.size() == 1,
@@ -715,7 +751,7 @@ int main(int argc, char** argv) {
       std::cout << "Blender-written multi-scale native-to-USD unit and ASCII naming policies passed\n";
       return 0;
     }
-    Require(argc == 5, "Expected two transform and two independent Mesh fixtures");
+    Require(argc == 8, "Expected transform, independent Mesh, integrated Scene and cube fixtures");
     CheckSynthetic();
     CheckFailures();
     for (int index = 1; index < argc; ++index) {

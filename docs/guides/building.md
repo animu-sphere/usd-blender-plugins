@@ -49,7 +49,7 @@ runs `test_stage.py`. The hand-maintained companion workflow
 the existing bundle cells with `ost ci matrix`, without copying their SDK
 digests, runners or host Python/package requirements. It builds the standalone
 bundle on both hosts, runs explicit `ost plugin doctor` diagnostics and all
-five stage-contract tests plus the standalone `usdBlend.authoring` and
+eight stage-contract tests plus the standalone `usdBlend.authoring` and
 `usdBlend.units` CTests, and
 uploads their reports and logs. These additional
 build jobs also use billed hosted infrastructure; they do not publish anything
@@ -148,8 +148,8 @@ checked with SDNA indices at the first out-of-range value and the signed and
 unsigned 32-bit maxima, requiring `BLEND_DNA_INDEX` with that block's context.
 See the
 [raw ID boundary](../design/BLEND_CONTRACT.md#82-raw-datablock-boundary).
-These raw-ID checks do not traverse pointer graphs; the importer remains
-header-only.
+These raw-ID checks do not traverse pointer graphs; the importer composes
+native graph decoding separately.
 
 Borrowed SDNA value tests select unaligned block elements, embedded members,
 multidimensional array elements and pointer arrays in all four synthetic
@@ -312,7 +312,7 @@ reservation without changing shared geometry. `blendScene.transforms` also
 requires unchanged identifiers when the unmodified Blender-written fixtures'
 block records are reversed. These tests run in both root and standalone Scene
 builds alongside the existing dependency gates. They do not author USD names,
-or change the header-only importer; separate
+or test registered-plugin reads; separate
 [multi-scale fixtures](../../tests/fixtures/native-units/README.md) exercise
 the frozen policy through native decoding and USD name authoring.
 
@@ -383,8 +383,8 @@ normal oracles. The 5.2.2 fixture stores `sharp_face` as `AttributeSingle`,
 one true byte for two faces. In-memory Single-address collisions exercise
 the same scoped ownership checks, including wrong storage discriminators.
 Single-flag AttributeArrays have synthetic evidence only.
-The reader's global uniqueness contract and the header-only importer remain
-unchanged.
+The reader's global uniqueness contract remains unchanged. The importer
+uses these native Mesh ownership checks rather than a global-only pointer map.
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines matrix storage and ownership; supported scope is in the
@@ -446,22 +446,32 @@ ost plugin test plugins/usdBlendFileFormat --target cy2026 --profile usd
 ost plugin run plugins/usdBlendFileFormat --target cy2026 --profile usd -- python plugins/usdBlendFileFormat/tests/test_stage.py
 ```
 
+The cube's LF golden and clean packaged discovery/read were also checked on
+Windows on 2026-10-04:
+
+```powershell
+ost plugin package plugins\usdBlendFileFormat --target cy2026 --profile usd
+ost plugin test plugins\usdBlendFileFormat --target cy2026 --profile usd --from-package
+```
+
 The manifest declares the `blendFile` and `blendScene` edges; `ost` builds and
 installs both libraries into its workspace prefix before configuring the standalone bundle.
-The five stage tests assert hierarchy, metadata, diagnostic codes, repeat-read
-determinism and contract-version preservation through a reference. Both the
-synthetic header and Blender-written empty scene exercise the stage contract.
+The eight stage tests assert the registered cube, integrated Scene oracles,
+multi-scale imports, metadata-only hierarchy, contextual fatal/recoverable
+diagnostics, repeat-read determinism and referenced geometry.
+Compressed input is rejected without introducing BLEND-O5 defaults.
 
-Six fixtures are synthetic legacy headers; `empty.blend` is a complete,
-uncompressed file written by Blender 5.2.2 LTS. L3/L4 use the real fixture;
-L5 compares both flattened
-minimal stages against their goldens. The generated source comment has its
+Six fixtures are synthetic legacy headers; `empty.blend` is a complete
+Scene-only library written by Blender 5.2.2 LTS. Header-only and Scene-only
+inputs are now negative fixtures, not scaffold-stage successes. L3/L4 use
+the normal-save `single_cube.blend`; L5 compares its flattened Mesh stage
+against the golden. The generated source comment has its
 path removed by `ost` normalization. USDA files must use LF endings.
 
 ### Scene IR USD authoring
 
 `usdBlend.authoring` exercises the bundle's internal authoring translation unit
-without changing the header-only importer. Synthetic IR pins parent-relative
+and byte-to-Scene input composition. Synthetic IR pins parent-relative
 matrix transposition, visibility, duplicated Meshes, points/topology/normals,
 extent, indexed UV schema and `st` reservation, provenance, errors and
 determinism. Blender-written 4.5.13/5.2.2 transform fixtures compare all 27
@@ -480,7 +490,9 @@ units and explicit ASCII naming expectations are pinned. Repeated and reversed
 block reads author identical text. Saved cached handedness bit 2 does not
 reapply signed transforms; other flag bits remain unsupported.
 The [fixture record](../../tests/fixtures/native-units/README.md#oracle-and-checks)
-owns exact tolerances and provenance. Neither CTest changes the importer.
+owns exact tolerances and provenance. Both CTests also compare the importer's
+`ReadScene` composition to independently composed native authoring and check
+metadata-only output without geometry attributes.
 
 After the root plain-CMake build below and the standalone bundle build above,
 the following validation commands were exercised on Windows on 2026-10-04:
@@ -510,6 +522,13 @@ Build and load against the same release.
 cmake -S . -B build/usd-vs18 -G "Visual Studio 18 2026" -A x64 "-DCMAKE_PREFIX_PATH=$HOME/.ost/runtimes/openstrata-cy2026-windows-x86_64-py313-usd"
 cmake --build build/usd-vs18 --config Release
 ctest --test-dir build/usd-vs18 -C Release --output-on-failure
+```
+
+To test the registered plain-CMake plugin rather than OpenStrata's staged
+standalone binary, the following invocation was verified on Windows:
+
+```powershell
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd --no-inject --plugin-path "$PWD\plugins\usdBlendFileFormat" -- python plugins\usdBlendFileFormat\tests\test_stage.py
 ```
 
 This builds the reader first, resolves OpenUSD once through
@@ -608,7 +627,26 @@ cross-process/path oracle reproduction, non-destructive checks and failures,
 modified-oracle rejection, home-path exclusion, and saved transform,
 Mesh-sharing and UV mutations. Full-file bytes are not reproducible; there
 is no `--check-bytes` claim. The native `blendScene.sceneFixture` regression
-runs with the regular root and standalone Scene CTests above.
+runs with the regular root and standalone Scene CTests above. Registered-plugin
+stage tests now compare these same saved oracles against the authored stage.
+
+### Registered cube fixture
+
+Generate or non-destructively check the normal-save Blender 5.2.2 cube:
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_cube.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_cube.py -- --check
+```
+
+The generator requires one active Scene, one visible identity-transform Cube,
+six quads, eight two-meter corner points and one render UV map. `--check`
+regenerates only in temporary storage, then reopens the committed input and
+compares its points, topology, corner normals and UVs without rewriting it.
+Full-file saved addresses/UI state are not byte-reproducible. The
+[fixture record](../../plugins/usdBlendFileFormat/tests/fixtures/README.md#normal-save-cube)
+owns provenance. The bundle's smoke/roundtrip/golden pyramid uses this input.
 
 ### Multi-scale unit and naming oracles
 

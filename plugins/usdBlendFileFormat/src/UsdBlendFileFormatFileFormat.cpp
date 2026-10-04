@@ -2,6 +2,7 @@
 #include "UsdBlendFileFormatFileFormat.h"
 #include "ArAssetByteSource.h"
 #include "AuthorScene.h"
+#include "ReadScene.h"
 
 #include "pxr/base/tf/registryManager.h"
 #include "pxr/base/tf/type.h"
@@ -12,6 +13,40 @@
 #include <exception>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+namespace {
+
+void Report(const blend::Diagnostic& diagnostic) {
+  std::string message = diagnostic.message;
+  if (diagnostic.byteOffset) {
+    message += " [byte " + std::to_string(*diagnostic.byteOffset) + "]";
+  }
+  if (diagnostic.blockIndex) {
+    message += " [block " + std::to_string(*diagnostic.blockIndex) + "]";
+  }
+  if (!diagnostic.datablock.empty()) {
+    message += " [datablock " + diagnostic.datablock + "]";
+  }
+  if (diagnostic.severity == blend::Severity::Fatal) {
+    TF_RUNTIME_ERROR("%s: %s", diagnostic.code.c_str(), message.c_str());
+  } else {
+    TF_WARN("%s: %s", diagnostic.code.c_str(), message.c_str());
+  }
+}
+
+template <class Value>
+bool Check(const blend::Result<Value>& result) {
+  if (!result.HasValue()) {
+    Report(result.GetError());
+    return false;
+  }
+  for (const auto& diagnostic : result.Diagnostics()) {
+    Report(diagnostic);
+  }
+  return true;
+}
+
+} // namespace
 
 TF_DEFINE_PUBLIC_TOKENS(UsdBlendFileFormatFileFormatTokens, USDBLENDFILEFORMAT_FILE_FORMAT_TOKENS);
 
@@ -48,8 +83,6 @@ bool UsdBlendFileFormatFileFormat::Read(
     SdfLayer* layer,
     const std::string& resolvedPath,
     bool metadataOnly) const {
-  (void)metadataOnly;
-
   try {
     auto asset = ArGetResolver().OpenAsset(ArResolvedPath(resolvedPath));
     if (!asset) {
@@ -57,19 +90,15 @@ bool UsdBlendFileFormatFileFormat::Read(
       return false;
     }
     ArAssetByteSource source(std::move(asset));
-    const auto header = blend::ReadHeader(source);
-    if (!header.HasValue()) {
-      const auto& error = header.GetError();
-      TF_RUNTIME_ERROR("%s: %s", error.code.c_str(), error.message.c_str());
+    const auto scene = blend::ReadScene(source);
+    if (!Check(scene)) {
       return false;
     }
-    const auto authored = blend::CreateAssetStage(header.GetValue().SourceVersion());
-    if (!authored.HasValue()) {
-      const auto& error = authored.GetError();
-      TF_RUNTIME_ERROR("%s: %s", error.code.c_str(), error.message.c_str());
+    const auto authored = blend::AuthorScene(scene.GetValue(), metadataOnly);
+    if (!Check(authored)) {
       return false;
     }
-    layer->TransferContent(authored.GetValue()->GetRootLayer());
+    layer->TransferContent(authored.GetValue());
     return true;
   } catch (const std::exception& error) {
     TF_RUNTIME_ERROR("BLEND_USD_READ_FAILED: %s", error.what());

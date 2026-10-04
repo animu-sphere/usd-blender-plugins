@@ -171,10 +171,13 @@ PreparedMesh PrepareMesh(const Mesh& mesh, std::vector<Diagnostic>& diagnostics)
 }
 
 void AuthorMesh(const UsdStageRefPtr& stage, const SdfPath& path,
-    const Mesh& source, const PreparedMesh& prepared) {
+    const Mesh& source, const PreparedMesh& prepared, bool metadataOnly) {
   auto mesh = UsdGeomMesh::Define(stage, path);
   Check(static_cast<bool>(mesh));
   Provenance(mesh.GetPrim(), source.sourceName, "mesh");
+  if (metadataOnly) {
+    return;
+  }
   Check(mesh.CreatePointsAttr().Set(prepared.points));
   Check(mesh.CreateFaceVertexCountsAttr().Set(VtIntArray(source.faceVertexCounts.begin(), source.faceVertexCounts.end())));
   Check(mesh.CreateFaceVertexIndicesAttr().Set(VtIntArray(source.faceVertexIndices.begin(), source.faceVertexIndices.end())));
@@ -255,7 +258,7 @@ Result<pxr::UsdStageRefPtr> CreateAssetStage(
   });
 }
 
-Result<pxr::SdfLayerRefPtr> AuthorScene(const Scene& scene) {
+Result<pxr::SdfLayerRefPtr> AuthorScene(const Scene& scene, bool metadataOnly) {
   return TryAuthor<pxr::SdfLayerRefPtr>([&] {
     std::vector<Diagnostic> diagnostics;
     const auto identifiers = Take(ObjectIdentifiers(scene), diagnostics);
@@ -310,7 +313,7 @@ Result<pxr::SdfLayerRefPtr> AuthorScene(const Scene& scene) {
           object.hiddenForRender ? pxr::UsdGeomTokens->invisible : pxr::UsdGeomTokens->inherited));
       if (object.mesh) {
         AuthorMesh(stage, paths[index].AppendChild(pxr::TfToken("mesh")),
-            scene.meshes[*object.mesh], *meshes[*object.mesh]);
+            scene.meshes[*object.mesh], *meshes[*object.mesh], metadataOnly);
       }
     }
     return Result<pxr::SdfLayerRefPtr>(stage->GetRootLayer(), std::move(diagnostics));

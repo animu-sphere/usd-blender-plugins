@@ -78,7 +78,7 @@ Fixture paths are relative to
 | `BLEND_COMPRESSION_OUTPUT_LIMIT` | Fatal | no | decoded bytes exceed the caller's output budget or the addressable vector size | uncompressed, gzip and Zstandard output boundaries in `blendFile.header`; address-space exhaustion unverified |
 | `BLEND_COMPRESSION_RATIO_LIMIT` | Fatal | no | decoded bytes exceed source size times the caller's expansion ratio | gzip DEFLATE/Zstandard RLE bomb vectors and exact ratio boundaries in `blendFile.header` |
 | `BLEND_BLOCK_LIMITS` | Fatal | no | the caller's block limit is zero or exceeds the maximum unsigned 32-bit index | invalid budgets in `blendFile.header` |
-| `BLEND_BLOCK_COMPRESSED` | Fatal | no | block enumeration receives gzip or Zstandard bytes instead of an uncompressed source | encoded synthetic containers in `blendFile.header` |
+| `BLEND_BLOCK_COMPRESSED` | Fatal | no | block enumeration or the importer receives gzip or Zstandard bytes without an agreed production decompression policy | encoded synthetic containers in `blendFile.header`; compressed importer cases in `test_stage.py` |
 | `BLEND_BLOCK_COUNT_LIMIT` | Fatal | no | the next block would exceed the caller's budget, or the record vector exceeds its addressable size | exact count boundary in `blendFile.header`; address-space exhaustion unverified |
 | `BLEND_BLOCK_TRUNCATED` | Fatal | no | insufficient bytes remain for the selected block-header layout | all short block-header prefixes in `blendFile.header` |
 | `BLEND_BLOCK_READ_FAILED` | Fatal | no | a bounded block-header read fails | source failures at successive block headers in `blendFile.header` |
@@ -103,7 +103,7 @@ Fixture paths are relative to
 | `BLEND_DNA_VALUE` | Fatal | no | a value-view pointer or numeric read has an incompatible scalar type, width or shape | wrong numeric types, pointers and unselected arrays in `blendFile.header` |
 | `BLEND_DNA_TRAILING` | Fatal | no | bytes remain after the STRC records | trailing payload byte in `blendFile.header` |
 | `BLEND_DNA_ALLOCATION` | Fatal | no | the owning schema or raw datablock records cannot be allocated | implemented; allocation failure unverified |
-| `BLEND_DNA_BLOCK` | Fatal | no | the tool finds no DNA1 block or more than one | modified empty-scene containers in `blendInspect.cli` |
+| `BLEND_DNA_BLOCK` | Fatal | no | the importer or inspection tool finds missing or multiple DNA1 blocks | `test_stage.py`; modified empty-scene containers in `blendInspect.cli` |
 | `BLEND_POINTER_DUPLICATE` | Fatal | no | the global reader map finds duplicate nonzero target addresses, or scene semantics cannot prove the narrow 5.x Mesh-owned Attribute/AttributeArray/AttributeSingle exception | synthetic duplicate DATA blocks in `blendFile.header`; strict mapping and wrong/non-Mesh owners, unreferenced targets, other SDNA types, duplicate IDs and legacy-header mutations of 5.2.2 `multi.blend` in `blendScene.meshBoundaries`; in-memory AttributeSingle collisions and wrong storage discriminators from `constant.blend`; metadata collisions are excluded |
 | `BLEND_POINTER_UNRESOLVED` | Warning | yes | an exact nonzero old address has no reference-target block; resolution returns null | absent and interior keys in `blendFile.header` |
 | `BLEND_POINTER_LIMIT` | Fatal | no | the input block count exceeds unsigned 32-bit indices | implemented; excessive allocation/count unverified |
@@ -217,8 +217,7 @@ stable code followed by a colon at the start of `what()`. It does not return a
 unit conversion failures into fatal, non-recoverable diagnostics with Object or Mesh
 context and no fallback Scene; an overflowing native parent translation is
 tested across four synthetic layouts. Scene unit validation retains selection
-context. These failures are library-tested, not reachable through the
-header-only importer.
+context. The uncompressed importer now forwards these native failures.
 
 `ParentRelativeTransform` uses the same exception/code-prefix convention:
 invalid finite/affine inputs and singular parents throw `std::invalid_argument`;
@@ -226,8 +225,8 @@ construction overflow throws `std::overflow_error`. It knows no source
 offset, Object name or graph, and neither returns a `Diagnostic` record nor
 changes the decoder's existing world-only output. A caller authoring an Object
 must translate these failures with that Object's context and publish no partial
-stage. There is no silent identity or hierarchy fallback. These helper failures
-are library-tested, not reachable through the header-only importer.
+stage. There is no silent identity or hierarchy fallback. The importer
+forwards authoring failures with the affected Object name.
 
 `DecodeScene` first preserves the complete Object-value selection and recursive
 graph validation boundary. Its transform failures identify the affected Object's
@@ -248,3 +247,9 @@ and datablock context. DNA1-relative offsets are translated to decoded file
 offsets for its display; block and ID offsets already use decoded bytes.
 Full-stream diagnostics retain their library byte coordinate. Recoverable
 unsupported-block diagnostics do not change a successful CLI exit status.
+
+The importer similarly preserves byte, block and datablock context through
+`TF_RUNTIME_ERROR` and `TF_WARN`. It translates DNA1-relative error offsets
+into input-file coordinates and transfers no target-layer content on failure.
+`CanRead` remains a header-identification probe and can accept an input that a
+full or metadata-only scene read rejects.

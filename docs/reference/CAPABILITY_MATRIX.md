@@ -30,7 +30,7 @@ No row says "supported" without a fixture.
 
 | Capability | Status | Fixture | Intended in |
 | --- | --- | --- | --- |
-| `.blend` registration (`usd-fileformat:blend`) | supported | `header_only.blend`; `empty.blend` | Phase 0 |
+| `.blend` registration (`usd-fileformat:blend`) | supported | `single_cube.blend`; registered-plugin `test_stage.py` | Phase 0 |
 | legacy header | supported | `header_only.blend`; `corpus/blender-4.5.13/Untitled.blend`; malformed header fixtures; `blendFile.header` | Phase 0 |
 | Blender 5 header | supported | `empty.blend`; `blendFile.header`; `corpus/blender-5.2.2/Untitled.blend` | Phase 0 |
 | legacy block layout (enumeration only) | supported | `corpus/blender-4.5.13/Untitled.blend`; synthetic 4.5 containers for both pointer widths and byte orders in `blendFile.header` | Phase 1 |
@@ -52,7 +52,8 @@ No row says "supported" without a fixture.
 | `blend_inspect`: summary, `--blocks`, `--dna`, raw `--objects` | supported | `empty.blend` and both real corpus files in `blendInspect.cli`; argument/limit errors, missing/duplicate/malformed DNA1 and UTF-8 path regressions | Phase 1 |
 
 Full-stream byte reading validates compression and the decoded header, not
-blocks, `ENDB` or SDNA. It does not change the importer's header-only path.
+blocks, `ENDB` or SDNA. The importer composes those separate boundaries for
+uncompressed inputs only.
 Caller-supplied limits and their semantics are defined in the
 [blend contract](../design/BLEND_CONTRACT.md#41-full-stream-byte-reading);
 production defaults remain the open BLEND-O5 decision in that document.
@@ -63,7 +64,7 @@ under an explicit block-count limit. Its
 framing without reading payloads or validating SDNA. The real 4.5.13 corpus
 proves the 64-bit little-endian legacy layout; other legacy layouts still
 have only synthetic evidence. Block enumeration establishes no scene
-compatibility and does not change the importer's header-only path.
+compatibility by itself.
 
 `ReadDna` separately decodes one bounded DNA1 payload into an owning schema,
 with member offsets and lookup by base name. Its
@@ -71,7 +72,7 @@ with member offsets and lookup by base name. Its
 validate other blocks against the schema, reconstruct pointers or read scene
 values. Real-file SDNA evidence is limited to 64-bit little-endian files;
 the other layouts have synthetic evidence only. Blender-version and scene
-compatibility remain unclaimed, and the importer remains header-only.
+compatibility beyond the fixture-backed Mesh/Empty scope remains unclaimed.
 
 `BuildPointerMap` and `ListDatablocks` separately provide
 [exact-key resolution](../design/BLEND_CONTRACT.md#81-pointer-map-boundary) and
@@ -81,7 +82,7 @@ two-byte prefixes, which can differ from block codes (`SN`/`SR` screens).
 These APIs do not read pointer-valued members, linked libraries, lists or scene
 graphs; non-ID payloads are not checked against SDNA by them. Real-file evidence remains
 64-bit little-endian, and other layouts have synthetic evidence. The importer
-continues to read headers only.
+composes native decoding separately from these syntax-only APIs.
 
 `ViewDnaBlock` separately validates one caller-selected block against SDNA,
 then exposes borrowed member/array views, saved pointers and typed scalar
@@ -106,18 +107,19 @@ codes remain recoverable stderr diagnostics. Its
 
 | Version | Status | Fixture directory |
 | --- | --- | --- |
-| 4.5 LTS | — | |
-| 5.x | — | |
+| 4.5 LTS | supported for tested uncompressed Mesh/Empty storage only | `native-scene`, `native-transforms`, `native-units`: 4.5.13 |
+| 5.x | supported for tested uncompressed Mesh/Empty storage only | `single_cube.blend`; `native-scene`, `native-transforms`, `native-units`: 5.2.2 |
 
 ## 3. Stage
 
 | Capability | Status | Fixture | Intended in |
 | --- | --- | --- | --- |
-| `/Asset`, `defaultPrim`, `geo`, `mtl` | supported | `header_only.blend`, `empty.blend`, `test_stage.py`, goldens | Phase 0 |
-| Y-up, meters | supported | `header_only.blend`, `empty.blend`, `test_stage.py`, goldens | Phase 0 |
-| objects, parenting, transforms | — | | Phase 2 |
-| meshes: topology, normals, UVs | — | | Phase 2 |
-| deterministic identifiers | — | | Phase 2 |
+| `/Asset`, `defaultPrim`, `geo`, `mtl` | supported | `single_cube.blend`, integrated Scene fixtures, `test_stage.py`, cube golden | Phase 0 |
+| Y-up, meters | supported | cube, integrated Scene and eight multi-scale fixtures in `test_stage.py` | Phase 0 |
+| Mesh/Empty objects, parenting, transforms and own render visibility | supported | both integrated Scene oracles in `test_stage.py`; shared Meshes, parent-only Object, nonuniform/negative scales and sheared parent inverses | Phase 2 |
+| meshes: polygon topology, normals, indexed UVs and extent | supported | `single_cube.blend` and golden; both integrated Scene oracles in `test_stage.py`; native-to-authoring checks in both CMake modes | Phase 2 |
+| deterministic identifiers and repeated reads | supported | reserved `mesh_1` child, repeated anonymous layers and referenced geometry in `test_stage.py`; ASCII multi-scale fixtures in `usdBlend.units` | Phase 2 |
+| `metadataOnly` hierarchy without geometry attributes | supported | cube and integrated Scenes retain prim types, provenance, transforms and visibility in `test_stage.py`; both authoring CTests check the byte-to-Scene composition | Phase 2 |
 | materials: Principled BSDF subset | — | | Phase 3 |
 | material subsets and binding | — | | Phase 3 |
 | external image textures | — | | Phase 3 |
@@ -132,11 +134,23 @@ codes remain recoverable stderr diagnostics. Its
 | modifiers, Geometry Nodes | — | | Phase 7 (host backend only) |
 | `metadataOnly` fast path | — | | Phase 8 |
 
+The registered importer now reads complete uncompressed containers through
+native decoding and authoring. Structural byte/block/graph bounds are derived
+from the stored size and block count under the
+[importer contract](../design/DESIGN_POLICY.md#532-uncompressed-importer-boundary).
+Compression is rejected with `BLEND_BLOCK_COMPRESSED`; BLEND-O5 remains open.
+Header-only fixtures fail with `BLEND_BLOCK_MISSING_ENDB`, and the Scene-only
+library fails with `BLEND_SCENE_ACTIVE_MISSING`, without scaffold/first-Scene
+fallbacks. Tests also cover missing/duplicate/malformed DNA1, truncated/trailing
+containers, gzip/Zstandard rejection, contextual errors and recoverable block
+warnings. Camera/Light corpus Scenes still fail explicitly.
+`metadataOnly` changes authored output, not decoding cost.
+
 ### 3.1 Scene IR USD authoring
 
-These capabilities are the bundle's separately tested `AuthorScene` boundary,
-not the importer's `.blend` read path. The Stage rows above remain header-only;
-no native backend or production input budgets are implied.
+These capabilities are the bundle's separately tested `AuthorScene` boundary.
+The Stage rows above record its registered-plugin connection; the boundary
+itself does not choose compression or fixed production resource budgets.
 
 | Capability | Status | Fixture | Intended in |
 | --- | --- | --- | --- |
@@ -151,13 +165,13 @@ no native backend or production input budgets are implied.
 
 | Backend | Status | Intended in |
 | --- | --- | --- |
-| native | — | Phase 1 onward |
+| native, uncompressed Mesh/Empty input composition | supported; `IBlendBackend` abstraction not introduced | Phase 1 onward |
 | Blender host | — | Phase 7 |
 
 ## 5. Scene IR
 
 These are native library capabilities, not `.blend` scene compatibility.
-The importer remains header-only; the separate
+The uncompressed importer now composes these native capabilities; the separate
 [Scene IR USD authoring boundary](#31-scene-ir-usd-authoring) now consumes
 normalized IR without changing the native libraries' dependency gates.
 
@@ -219,7 +233,8 @@ fallback, and rejects linked active scenes without external-file access. It
 does not populate objects/meshes, traverse collections or establish native-to-USD
 unit equivalence. Its `blockIndex` refers to the caller's same ordered records.
 Real-file selection evidence remains 64-bit little-endian; other layouts have
-synthetic evidence only. The importer and inspection tool remain unchanged.
+synthetic evidence only. The importer composes this selection; the inspection
+tool remains syntax-only.
 
 The separate [Collection membership boundary](../design/DESIGN_POLICY.md#523-saved-collection-membership-boundary)
 selects saved Object membership from that Scene's master Collection, with exact
@@ -304,5 +319,6 @@ flat normals; the 5.2.2 file proves constant boolean `AttributeSingle`
 storage. Single-flag AttributeArrays have synthetic evidence only.
 Other named normal representations remain explicitly unsupported.
 The native matrix tolerance is `2e-5 * (1 + abs(expected))` per component;
-the decoder keeps strict finite/affine validation. No backend,
-USD authoring, native-to-USD unit equivalence or importer connection is claimed.
+the decoder keeps strict finite/affine validation. The Stage and authoring
+tables above record the composed uncompressed importer and multi-scale
+native-to-USD evidence separately.

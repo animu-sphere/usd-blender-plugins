@@ -10,6 +10,6 @@ namespace blend {
 
 Result<pxr::UsdStageRefPtr> CreateAssetStage(
     std::string_view sourceVersion, std::optional<std::string_view> sourceScene = {});
-Result<pxr::SdfLayerRefPtr> AuthorScene(const Scene& scene);
+Result<pxr::SdfLayerRefPtr> AuthorScene(const Scene& scene, bool metadataOnly = false);
 
 } // namespace blend
