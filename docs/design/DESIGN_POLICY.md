@@ -379,8 +379,11 @@ Exactly one `GLOB` containing one `FileGlobal` is required. Its scalar
 block with `Scene` SDNA type. Missing, null, absent/interior, wrong-type and
 multi-element references fail without choosing the first or only Scene.
 In particular, a Scene-only library with null `curscene` has no implicit
-fallback. Pointer-map duplicate validation still applies to all reference
-targets, not just the selected Scene.
+fallback. Duplicate validation still applies to all reference targets, not
+just the selected Scene. The only scoped exception is the verified 5.x
+Mesh-owned Attribute storage contract in
+[§5.2.8](#528-native-mesh-storage-boundary); the reader's global pointer map
+remains strict.
 
 The selected Scene must contain scalar embedded `ID` and `UnitSettings`
 members. A nonzero scalar `Library *ID.lib` is reported as a fatal
@@ -676,6 +679,7 @@ The initial domain/type mapping is:
 | `sharp_face` | face (2) | boolean (50) | boolean (0) |
 | `sharp_edge` | edge (1) | boolean (50) | boolean (0) |
 | UV maps | corner (3) | float2 (49) | float2 (6) |
+| packed custom normals | corner (3) | signed-short pair (41) | signed-short pair (2) |
 
 Required positions and corner indices must be present for nonempty domains.
 Counts are nonnegative scalar `int`; `poly_offset_indices` holds `totpoly + 1`
@@ -695,6 +699,20 @@ lengths are validated before output reservation. Names are bounded terminated
 character storage, nonempty and unique within a domain; raw source bytes are
 retained without assigning identifiers.
 
+For Blender 5 containers only, scene selection and decoding distinguish
+collided `Attribute` and `AttributeArray` addresses by the owning Mesh.
+Ownership is the contiguous `DATA` run following an ID in serialized payload
+offset order, not caller enumeration order; metadata or another ID ends it.
+Every collided target must have the same allowed SDNA type across owners,
+one occurrence per Mesh, and a validated reference: the Mesh's
+`attribute_storage.dna_attributes` names its exact Attribute record array
+with the declared count, and an Attribute's dense `data` pointer names each
+collided single-record AttributeArray. Non-Mesh owners, unreferenced targets,
+same-owner duplicates, other types and duplicate IDs remain fatal.
+Invalid SDNA/storage retains reader diagnostics. There is no first/last-wins,
+byte-identical alias or cross-owner fallback. `BuildPointerMap` itself is
+unchanged; these are scene-semantic ownership checks.
+
 Polygon normals are constructed from source positions and normalized.
 Missing `sharp_face` or `sharp_edge` attributes mean false, not an unsupported
 normal mode. All-flat polygons copy their face normal to each corner. An
@@ -713,10 +731,36 @@ therefore separate fans. Loose edges and `.edge_verts` are not decoded by this
 normal boundary. Normals are rotated into the USD basis without unit scaling.
 Degenerate polygons, zero-length corner directions and zero/nonfinite weighted
 normal sums fail with `BLEND_MESH_NORMALS_INVALID`, without an arbitrary normal
-fallback. Packed or named custom normals still fail with
-`BLEND_MESH_NORMALS_UNSUPPORTED`. Custom split normals, constant attribute
-storage and legacy `MLoopUV` storage remain separate work, not success-shaped
-approximations.
+fallback.
+
+Packed custom normals are signed 16-bit pairs, not float3 vectors. The legacy
+corner type-41 layer is unnamed or named `custom_normal`; modern storage
+requires corner-domain `custom_normal`, data type 2. Arrays retain the same
+dense/raw/structured validation, including `vec2s` scalar-short members and
+source byte order. Custom data always constructs split fans, including when
+all faces are smooth or flat. Flat faces have isolated spaces. Within a fan,
+the saved pairs are averaged as signed integers with division toward zero;
+an averaged zero first component requests that fan's automatic normal.
+
+Reference spaces use the angle-weighted source normal, the projected outgoing
+boundary ray and its cross-product tangent, and the incoming boundary ray.
+Closed fans start from the first saved corner; open fans walk to an outgoing
+boundary. The polar reference is the mean normal/radial-edge angle, counting
+each closed-fan ray once. The azimuth reference is the oriented angle between
+the projected boundary rays; closed fans and coincident boundary rays use a
+full turn. Positive short values scale the reference angle by `value / 32767`;
+negative values scale its remaining full-turn interval and wrap from `2*pi`.
+The entire signed-short range, including -32768, is consumed.
+
+Normal-space reference math uses single-precision vector operations and a
+symmetrical cubic-times-square-root angle mapping independently measured
+through Blender RNA, not an exact mathematical `acos`. The
+[angle-sweep and shared-fan fixtures](../../tests/fixtures/native-normals/README.md#normal-space-reconstruction)
+pin this observable behavior at the existing `2e-5` normal-component
+tolerance. Published normals are normalized and basis-rotated once, with no
+unit scaling. Invalid/degenerate reference spaces fail explicitly.
+Other named normal formats still fail with `BLEND_MESH_NORMALS_UNSUPPORTED`;
+constant attribute storage and legacy `MLoopUV` storage remain separate work.
 
 Every corner float2 map becomes an owning indexed `UvMap`: equal numeric pairs
 share a value at first occurrence, indices preserve corner order, and no UV

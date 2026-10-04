@@ -69,7 +69,9 @@ void Failure(const blend::Result<Value>& result, const std::string& code,
   const auto& error = result.GetError();
   Require(error.code == code && error.severity == blend::Severity::Fatal && !error.recoverable &&
               error.blockIndex == index && error.byteOffset == fixture.blocks[index].offset,
-      code + " retains exact fatal source context");
+      code + " retains exact fatal source context; got " + error.code + " at " +
+          (error.blockIndex ? std::to_string(*error.blockIndex) : "none") +
+          ", expected " + std::to_string(index));
 }
 
 void SkipVectors(std::istream& input, std::size_t count, bool normals) {
@@ -83,6 +85,26 @@ void SkipVectors(std::istream& input, std::size_t count, bool normals) {
           "Saved custom normal oracle has unit-length vectors");
     }
   }
+}
+
+void StorePointer(Fixture& fixture, const blend::DnaValueView& view, std::uint64_t address) {
+  const auto offset = static_cast<std::size_t>(view.Bytes().data() - fixture.bytes.data());
+  for (std::size_t byte = 0; byte < fixture.header.pointerSize; ++byte) {
+    const auto shift = fixture.header.byteOrder == blend::ByteOrder::Little ? byte : fixture.header.pointerSize - 1 - byte;
+    fixture.bytes[offset + byte] = static_cast<std::byte>((address >> (8 * shift)) & 255);
+  }
+}
+
+void RejectCollision(const Fixture& fixture) {
+  const auto pointers = blend::BuildPointerMap(fixture.blocks);
+  Require(!pointers.HasValue() && pointers.GetError().blockIndex.has_value(), "Mutation retains duplicate addresses");
+  const auto index = *pointers.GetError().blockIndex;
+  Failure(blend::SelectScene(fixture.bytes, fixture.blocks, fixture.schema, fixture.header),
+      "BLEND_POINTER_DUPLICATE", fixture, index);
+  Failure(blend::SelectSceneObjectValues(fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64}),
+      "BLEND_POINTER_DUPLICATE", fixture, index);
+  Failure(blend::DecodeScene(fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64}),
+      "BLEND_POINTER_DUPLICATE", fixture, index);
 }
 
 void CheckCustom(const std::filesystem::path& path) {
@@ -211,33 +233,32 @@ void CheckCustom(const std::filesystem::path& path) {
   }
   oracle >> std::ws;
   Require(oracle.eof() && positive && negative && automatic, "Packed normals cover signed data and automatic-zero entries");
-  Failure(blend::DecodeScene(fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64}),
-      "BLEND_MESH_NORMALS_UNSUPPORTED", fixture, records);
+  Require(blend::DecodeScene(fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64}).HasValue(),
+      "Saved packed normal storage decodes into an owning Scene");
   auto reversed = fixture;
   std::reverse(reversed.blocks.begin(), reversed.blocks.end());
   const auto repeated = blend::DecodeScene(reversed.bytes, reversed.blocks, reversed.schema, reversed.header, {10000, 64});
-  Failure(repeated, "BLEND_MESH_NORMALS_UNSUPPORTED", reversed,
-      static_cast<std::uint32_t>(reversed.blocks.size() - 1 - records));
+  Require(repeated.HasValue(), "Reversed packed normal storage decodes");
 }
 
 void CheckRepeatedAddresses(const std::filesystem::path& path) {
   Fixture fixture(path);
   std::map<std::uint64_t, std::vector<std::uint32_t>> addresses;
-  std::size_t meshes = 0;
+  std::vector<std::uint32_t> meshes;
   for (std::size_t index = 0; index < fixture.blocks.size(); ++index) {
     const auto& block = fixture.blocks[index];
     if (block.code == std::array<char, 4>{'D', 'A', 'T', 'A'} && block.oldAddress != 0) {
       addresses[block.oldAddress].push_back(static_cast<std::uint32_t>(index));
     }
     if (block.code == std::array<char, 4>{'M', 'E', 0, 0}) {
-      ++meshes;
+      meshes.push_back(static_cast<std::uint32_t>(index));
       const auto mesh = fixture.View(static_cast<std::uint32_t>(index));
       const auto storage = Take(mesh.Member("attribute_storage"));
       Require(Take(Take(storage.Member("dna_attributes_num")).SignedInteger()) > 0,
           "Repeated-address Mesh uses modern Attribute storage");
     }
   }
-  Require(meshes == 2, "Repeated-address fixture contains two independently constructed Mesh datablocks");
+  Require(meshes.size() == 2, "Repeated-address fixture contains two independently constructed Mesh datablocks");
   bool differingAttributes = false, differingArrays = false;
   for (const auto& [address, indices] : addresses) {
     if (indices.size() < 2) {
@@ -257,6 +278,41 @@ void CheckRepeatedAddresses(const std::filesystem::path& path) {
   }
   Require(differingAttributes && differingArrays,
       "Blender-written Attribute and AttributeArray address collisions are not byte-identical aliases");
+  for (const auto code : {std::array<char, 4>{'D', 'A', 'T', 'A'}, {'O', 'B', 0, 0}}) {
+    auto changed = fixture;
+    changed.blocks[meshes.back()].code = code;
+    RejectCollision(changed);
+  }
+  auto changed = fixture;
+  changed.blocks[meshes.back()].oldAddress = changed.blocks[meshes.front()].oldAddress;
+  RejectCollision(changed);
+  changed = fixture;
+  changed.header.version = 405;
+  RejectCollision(changed);
+  changed = fixture;
+  StorePointer(changed, Take(Take(changed.View(meshes.front()).Member("attribute_storage")).Member("dna_attributes")), 0);
+  RejectCollision(changed);
+  for (const auto& [address, indices] : addresses) {
+    if (indices.size() < 2 || fixture.Type(fixture.blocks[indices.front()]) != "AttributeArray") {
+      continue;
+    }
+    changed = fixture;
+    const auto storage = Take(changed.View(meshes.front()).Member("attribute_storage"));
+    const auto recordsAddress = Take(Take(storage.Member("dna_attributes")).Pointer());
+    const auto records = addresses.at(recordsAddress).front();
+    for (std::uint64_t element = 0; element < changed.blocks[records].count; ++element) {
+      const auto data = Take(changed.View(records, element).Member("data"));
+      if (Take(data.Pointer()) == address) {
+        StorePointer(changed, data, 0);
+      }
+    }
+    RejectCollision(changed);
+    changed = fixture;
+    const auto raw = changed.schema.FindStruct("raw_data");
+    changed.blocks[indices.front()].sdnaIndex = static_cast<std::uint32_t>(raw - changed.schema.structs.data());
+    RejectCollision(changed);
+    break;
+  }
   for (const bool reverse : {false, true}) {
     if (reverse) {
       std::reverse(fixture.blocks.begin(), fixture.blocks.end());
@@ -267,10 +323,11 @@ void CheckRepeatedAddresses(const std::filesystem::path& path) {
     Require(index < fixture.blocks.size() && addresses.at(fixture.blocks[index].oldAddress).size() > 1,
         "Duplicate-pointer diagnostic identifies a collided saved address");
     Failure(pointers, "BLEND_POINTER_DUPLICATE", fixture, index);
-    Failure(blend::SelectScene(fixture.bytes, fixture.blocks, fixture.schema, fixture.header),
-        "BLEND_POINTER_DUPLICATE", fixture, index);
-    Failure(blend::DecodeScene(fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64}),
-        "BLEND_POINTER_DUPLICATE", fixture, index);
+    Require(blend::SelectScene(fixture.bytes, fixture.blocks, fixture.schema, fixture.header).HasValue(),
+        "Scene selection accepts fixture-proven Mesh-owned Attribute collisions");
+    const auto scene = Take(blend::DecodeScene(fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64}));
+    Require(scene.meshes.size() == 2 && scene.meshes[0].points != scene.meshes[1].points,
+        "Mesh-owned collisions resolve differing arrays without conflating source geometry");
   }
 }
 

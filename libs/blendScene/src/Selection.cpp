@@ -1,4 +1,5 @@
 #include <blendScene/Selection.h>
+#include "ScenePointers.h"
 
 #include <algorithm>
 #include <cmath>
@@ -21,13 +22,13 @@ bool ScalarPointer(const DnaValueView& view, std::string_view type) {
          view.ArrayDimensions().empty();
 }
 
-}
+} // namespace
 
 Result<SelectedScene> SelectScene(std::span<const std::byte> bytes,
     std::span<const BlendBlock> blocks, const DnaSchema& schema,
     const Header& header) {
   try {
-    const auto pointers = BuildPointerMap(blocks);
+    const auto pointers = detail::BuildScenePointers(bytes, blocks, schema, header);
     if (!pointers.HasValue()) {
       return Result<SelectedScene>(pointers.GetError());
     }
@@ -172,4 +173,4 @@ Result<SelectedScene> SelectScene(std::span<const std::byte> bytes,
   }
 }
 
-}
+} // namespace blend

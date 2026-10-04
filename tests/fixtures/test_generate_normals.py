@@ -8,7 +8,7 @@ import bpy
 
 
 GENERATOR = Path(__file__).with_name("generate_normals.py")
-GROUPS = ("smooth", "flat", "split", "custom", "multi")
+GROUPS = ("smooth", "flat", "split", "custom", "custom_fans", "custom_split_fans", "custom_angles", "multi")
 
 
 class NormalFixtureTests(unittest.TestCase):

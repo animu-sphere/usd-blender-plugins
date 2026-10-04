@@ -169,9 +169,9 @@ authored-stage support. The importer remains header-only.
 | native smooth point normals and sharp-edge/flat-face split corner fans | supported | [Blender-written 4.5.13/5.2.2 normal oracles](../../tests/fixtures/native-normals/README.md) cover 15 geometry cases grouped into three single-Mesh files per version, including unequal corner angles, closed/open fans, mixed flat/smooth faces, sharp edges, concave polygons and disconnected/nonmanifold/same-direction topology in both normal domains; all 137 corners per version compare within `2e-5` in `blendScene.normals`; four synthetic layouts cover both storage forms, angle weights, missing sharp-face defaults, scale independence and invalid edge/cancellation diagnostics in `blendScene.ir` | Phase 2 |
 | native named indexed UV maps and saved render map | supported | real `UVMap` in both corpus files; two synthetic maps with exact deduplicated values/indices and non-first render map in both storage forms across four layouts in `blendScene.ir` | Phase 2 |
 | native empty/invalid/unsupported Mesh storage diagnostics | supported | empty shared Mesh, negative/excessive counts, missing/interior/non-DATA pointers, wrong array lengths/counts/SDNA, malformed names, invalid offsets/vertex/edge indices and inconsistent shared-edge endpoints, nonfinite values, degenerate/cancelling/custom normals, missing split-edge storage, flagged/constant/unsupported storage and invalid UV selectors in `blendScene.ir` | Phase 2 |
-| native custom split normals | unsupported | packed/named synthetic failures in `blendScene.ir`; unchanged Blender-written 4.5.13/5.2.2 `custom.blend` fixtures expose corner `INT16_2D` / signed-short pairs, exactly compared with saved RNA oracles and rejected with contextual `BLEND_MESH_NORMALS_UNSUPPORTED` in `blendScene.meshBoundaries` | Phase 2 |
+| native packed custom split normals | supported | four Blender-written custom fixtures per version cover 794 corners, signed-short minima, automatic values, shared/open/closed/mixed fans, integer pair averaging and 199 angle-sweep triangles; all normals compare within `2e-5`, with maximum measured component error `6.25e-6`, in `blendScene.normals`; exact original saved-short/RNA comparison in `blendScene.meshBoundaries`; structured/raw pairs across four synthetic layouts with unit-independence and malformed-length checks in `blendScene.ir` | Phase 2 |
 | native independently constructed multiple Meshes with unique saved addresses | supported | unchanged 4.5.13 `multi.blend` compares both Meshes' different points, topology and normals with a saved oracle, including reversed reads, in `blendScene.normals` | Phase 2 |
-| native 5.x repeated Attribute/AttributeArray saved addresses | unsupported | unchanged 5.2.2 `multi.blend` has same-shape, non-identical payloads at repeated addresses; `blendScene.meshBoundaries` pins fatal `BLEND_POINTER_DUPLICATE` from pointer mapping, scene selection and decoding in both enumeration orders | Phase 2 |
+| native 5.x Mesh-owned repeated Attribute/AttributeArray saved addresses | supported | unchanged 5.2.2 `multi.blend` decodes both independent Meshes against point/topology/normal oracles under reversed enumeration in `blendScene.normals`; `blendScene.meshBoundaries` preserves strict global-map rejection and tests scoped decoding plus wrong/non-Mesh owners, unreferenced targets, other SDNA types, duplicate IDs and legacy-header rejection | Phase 2 |
 | constant attribute storage and legacy fixed Mesh/MLoopUV storage | unsupported | explicit missing-core, constant/flagged and legacy-UV failures in `blendScene.ir` | Phase 2 |
 | parent-relative affine matrix construction from normalized IR worlds | supported | `ParentRelativeTransform`; synthetic roots, shear, pivot swaps, nonuniform/negative/zero scales, four unit scales, extreme finite scales and invalid/singular/overflow rejection in `blendScene.ir`; Blender-written 4.5.13/5.2.2 local matrices and reconstructed worlds, including reversed-read equality, in `blendScene.transforms` | Phase 2 |
 
@@ -252,15 +252,16 @@ Those files remain unsupported as complete Scenes because Camera/Light decoding
 is not introduced. Separate Blender-written Empty fixtures compare native
 world matrices, constructed parent-relative locals and reconstructed world
 composition with saved transform oracles.
-Separate normal oracles compare unchanged single-Mesh Blender-written files
-and one independently constructed 4.5.13 two-Mesh fixture. The corresponding
-5.2.2 fixture repeats `Attribute` and `AttributeArray` saved addresses with
-different payloads, failing the existing `BLEND_POINTER_DUPLICATE` contract.
-Packed custom-normal fixtures from both versions fail explicitly rather than
-publishing automatic normals as custom-normal success. Their
-[storage and rejection evidence](../../tests/fixtures/native-normals/README.md#boundary-limitations)
-does not establish general multi-Mesh compatibility or packed-normal decoding;
-the production pointer map and Mesh decoder remain unchanged.
+Separate normal oracles compare single-Mesh Blender-written files, four packed
+custom-normal files per version, and both independently constructed two-Mesh
+fixtures. The 5.2.2 fixture repeats `Attribute` and `AttributeArray` addresses
+with different payloads. Scene semantics resolve these only under the
+Mesh ownership/reference contract; the reader's global `BuildPointerMap`
+still fails with `BLEND_POINTER_DUPLICATE`. Their
+[storage and reconstruction evidence](../../tests/fixtures/native-normals/README.md#boundary-limitations)
+establishes the tested dense storage families, not every possible Mesh or
+Blender version. Constant storage and other named normal representations
+remain explicitly unsupported.
 The native matrix tolerance is `2e-5 * (1 + abs(expected))` per component;
 the decoder keeps strict finite/affine validation. No backend,
 USD authoring, native-to-USD unit equivalence or importer connection is claimed.

@@ -424,6 +424,12 @@ block index; a consumer may add context. Allocation failures and an excessive
 block count produce fatal `BLEND_POINTER_ALLOCATION` and `BLEND_POINTER_LIMIT`
 diagnostics. This API neither reads pointer-valued members nor traverses graphs.
 
+Blender-written 5.2.2 multiple-Mesh files can reuse saved addresses for
+different `Attribute` and `AttributeArray` payloads. The reader's global map
+still rejects them. Scene selection and decoding use a separate,
+SDNA-aware [Mesh ownership contract](DESIGN_POLICY.md#528-native-mesh-storage-boundary);
+it is not a relaxation of this API's uniqueness requirement.
+
 ### 8.2 Raw datablock boundary
 
 `ListDatablocks(span<const byte> bytes, span<const BlendBlock> blocks,

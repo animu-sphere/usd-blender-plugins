@@ -4,6 +4,7 @@
 #include <bit>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <stdexcept>
 
 namespace {
@@ -71,6 +72,7 @@ public:
     Type("Key", 0);
     Structure("vec3f", {{"float", "x"}, {"float", "y"}, {"float", "z"}});
     Structure("vec2f", {{"float", "x"}, {"float", "y"}});
+    Structure("vec2s", {{"short", "x"}, {"short", "y"}});
     Structure("MIntProperty", {{"int", "i"}});
     Structure("CustomDataLayer", {{"int", "type"}, {"int", "flag"}, {"int", "active_rnd"},
                                      {"char", "name", false, 32}, {"void", "data", true}});
@@ -189,6 +191,33 @@ public:
 
   blend::Result<blend::Scene> Decode() const {
     return blend::DecodeScene(bytes, blocks, schema, header, {64, 8});
+  }
+
+  std::uint32_t AddPackedNormals(std::array<std::int16_t, 2> pair) {
+    const auto values = Data(modern ? "raw_data" : "vec2s", modern ? 1 : 6, 24);
+    for (std::size_t corner = 0; corner < 6; ++corner) {
+      for (std::size_t axis = 0; axis < 2; ++axis) {
+        Bits(values, corner * 4 + axis * 2, static_cast<std::uint16_t>(pair[axis]), 2);
+      }
+    }
+    const auto old = attributeRecords;
+    const auto count = modern ? 7u : 4u;
+    const auto type = modern ? "Attribute" : "CustomDataLayer";
+    attributeRecords = Data(type, count + 1, 0);
+    std::copy_n(bytes.begin() + static_cast<std::size_t>(blocks[old].offset),
+        static_cast<std::size_t>(blocks[old].length),
+        bytes.begin() + static_cast<std::size_t>(blocks[attributeRecords].offset));
+    if (modern) {
+      const auto storage = Member("Mesh", "attribute_storage").offset;
+      Bits(mesh, storage + Member("AttributeStorage", "dna_attributes").offset,
+          blocks[attributeRecords].oldAddress, header.pointerSize);
+      Bits(mesh, storage + Member("AttributeStorage", "dna_attributes_num").offset, count + 1, 4);
+      Attribute(count, "custom_normal", 2, 3, values, 6);
+    } else {
+      Domain("ldata", attributeRecords, count + 1);
+      Layer(attributeRecords, count, "", 41, values);
+    }
+    return values;
   }
 
   void Failure(std::string_view code, std::uint32_t index) const {
@@ -320,6 +349,39 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
                 mesh.faceVertexIndices == std::vector<std::int32_t>{0, 1, 2, 0, 2, 3} &&
                 mesh.cornerNormals == std::vector<blend::Vector3>(6, {0, 1, 0}),
         "Both source forms decode exact points, right-handed topology and face-varying flat normals");
+    auto custom = fixture;
+    const auto packed = custom.AddPackedNormals({0, 0});
+    Require(Take(custom.Decode()).meshes[0].cornerNormals == mesh.cornerNormals,
+        "Automatic packed normals preserve flat face normals across all layouts");
+    for (const auto pair : {std::array<std::int16_t, 2>{32767, 0}, {-21845, 32767}, {-32768, -32768}}) {
+      auto changed = custom;
+      for (std::size_t corner = 0; corner < 6; ++corner) {
+        for (std::size_t axis = 0; axis < 2; ++axis) {
+          changed.Bits(packed, corner * 4 + axis * 2, static_cast<std::uint16_t>(pair[axis]), 2);
+        }
+      }
+      const auto normals = Take(changed.Decode()).meshes[0].cornerNormals;
+      const auto alpha = pair[0] >= 0 ? pair[0] / 32767.0 * std::numbers::pi / 2
+                                      : 2 * std::numbers::pi + pair[0] / 32767.0 * (1.5 * std::numbers::pi);
+      const auto reference = std::atan2(3.0, 2.0);
+      const auto beta = pair[1] >= 0 ? pair[1] / 32767.0 * reference
+                                     : 2 * std::numbers::pi + pair[1] / 32767.0 * (2 * std::numbers::pi - reference);
+      const auto expected = blend::ToUsdBasis(
+          blend::Vector3{std::sin(alpha) * std::cos(beta), std::sin(alpha) * std::sin(beta), std::cos(alpha)});
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        Require(std::abs(normals[0][axis] - expected[axis]) < 2e-5,
+            "Signed raw/structured short pairs reconstruct source-space angles");
+      }
+      for (const auto scale : {0.01f, 10.0f}) {
+        auto scaled = changed;
+        scaled.Float(1, scaled.Member("Scene", "unit").offset, scale);
+        Require(Take(scaled.Decode()).meshes[0].cornerNormals == normals,
+            "Custom packed normals are independent of scene unit scale");
+      }
+    }
+    auto malformedCustom = custom;
+    --malformedCustom.blocks[packed].length;
+    malformedCustom.Failure("BLEND_MESH_STORAGE_INVALID", packed);
     Require(mesh.uvMaps.size() == 2 && mesh.uvMaps[0].sourceName == "First" &&
                 mesh.uvMaps[0].values == std::vector<blend::Vector2>{{0, 0}, {1, 0}, {1, 1}, {0, 1}} &&
                 mesh.uvMaps[0].indices == std::vector<std::int32_t>{0, 1, 2, 0, 2, 3} &&

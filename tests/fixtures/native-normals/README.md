@@ -17,18 +17,25 @@ Generated and verified on Windows on 2026-10-04:
 | `blender-4.5.13/split.blend` | 4.5.13 LTS, `daeeeca98fb0` | 378207 | `ac165a4eb5411756ef67556e32da7302084c0904b309926f67694d38088df07f` |
 | `blender-4.5.13/custom.blend` | 4.5.13 LTS, `daeeeca98fb0` | 378615 | `8d96bf3b1e82951281c4e56151c1649aeeed9fed939cb79b05377497d951d921` |
 | `blender-4.5.13/multi.blend` | 4.5.13 LTS, `daeeeca98fb0` | 383928 | `ca3096905ed0ec63800402014a7b78ff3e28c0021eda401f342b7bd169f9bfc3` |
+| `blender-4.5.13/custom_fans.blend` | 4.5.13 LTS, `daeeeca98fb0` | 378610 | `2b14945a40afa7d1ee834737ce2d876831554b4eaaea50a0dcfd75ec5adc60b3` |
+| `blender-4.5.13/custom_split_fans.blend` | 4.5.13 LTS, `daeeeca98fb0` | 378615 | `157d0659cd188a2eda11dc3b38ac253d0396e9e5c252bab1ca0919206f40b77b` |
+| `blender-4.5.13/custom_angles.blend` | 4.5.13 LTS, `daeeeca98fb0` | 398867 | `1b8860ecd88e9abc48c8e39e54256f3ec72ad59fb52381f5bd1256c16a4370fd` |
 | `blender-5.2.2/smooth.blend` | 5.2.2 LTS, `d13f752e3b9c` | 494111 | `880cb968ae2dbee365ce2edbef1bf5b366c27d9b3dada25a3df99173ac0af924` |
 | `blender-5.2.2/flat.blend` | 5.2.2 LTS, `d13f752e3b9c` | 492743 | `897b0b944b37406706e0b8b7856acf533022b64c73fe971df4b466a06a4dffcb` |
 | `blender-5.2.2/split.blend` | 5.2.2 LTS, `d13f752e3b9c` | 494112 | `1480358ac6af9234904d0638713983a2525e1c7ae5b9c0c87c504273d7ec75a9` |
 | `blender-5.2.2/custom.blend` | 5.2.2 LTS, `d13f752e3b9c` | 494542 | `fbef104be7d750e083cc0ae9cb1e1545faee5ff2582807c707067679b5b7d96b` |
 | `blender-5.2.2/multi.blend` | 5.2.2 LTS, `d13f752e3b9c` | 500629 | `696b6753df99dea7b3ce0c52e5f07cec656a9d72ba7956e324766fabf5d7ce86` |
+| `blender-5.2.2/custom_fans.blend` | 5.2.2 LTS, `d13f752e3b9c` | 494537 | `bc8b41316a99491a7b6b61542cba91e2f89543a1401491ec9fb8f322015e5310` |
+| `blender-5.2.2/custom_split_fans.blend` | 5.2.2 LTS, `d13f752e3b9c` | 494542 | `45db8bb91affb443ab764ab131a5a80e6bcfec3a1fa0d18a6ffa284fa1fdaecf` |
+| `blender-5.2.2/custom_angles.blend` | 5.2.2 LTS, `d13f752e3b9c` | 514244 | `d11ad0c92525916fd8e6cd63ec6dd804a56c58210d1d2e8766263a6916783986` |
 
 All are uncompressed, normal-save files with one active Scene named `Normals`
 and source unit scale `0.01`. The three original normal fixtures each have one
 Mesh Object named `Smooth`, `Flat` or `Split`, without custom normals.
 `custom.blend` has one Object named `Custom`; `multi.blend` has two independent
 Mesh Objects named `Multi` and `Other`. No fixture uses modifiers, shape keys
-or animation. File-browser directories are set to `//` before saving;
+or animation. The additional custom files each have one Mesh Object named
+after the capitalized file stem. File-browser directories are set to `//` before saving;
 generator regression tests reject Windows absolute UI/home paths.
 
 ## Geometry cases
@@ -64,8 +71,8 @@ the saved file. It contains:
 6. Face corner counts on one line, then corner vertex indices on one line.
 7. One source-basis normal vector per corner.
 
-`blendScene.normals` independently reads the original files and the 4.5.13
-`multi.blend` through
+`blendScene.normals` independently reads all files, including both
+`multi.blend` and all four custom fixtures per version, through
 `blendFile` and `DecodeScene`. It compares meter/basis-normalized positions,
 unchanged topology and basis-rotated corner normals. Vector components use
 absolute `2e-5` tolerance; native corner normals must have unit length within
@@ -107,10 +114,46 @@ topology and corner-normal records, `PACKED_CUSTOM_NORMALS 66` precedes one
 signed-short pair per corner, copied from Blender RNA. Positive, negative and
 automatic `(0, 0)` pairs are present. `blendScene.meshBoundaries` verifies the
 name, domain, storage shape and every packed value exactly against this oracle.
-It requires a fatal, non-recoverable `BLEND_MESH_NORMALS_UNSUPPORTED` at the
-attribute record block, with no partial Scene, for both normal and reversed
-block enumeration. The packed pairs are not float3 vectors; their presence
-does not prove a reconstruction algorithm or custom-normal decoding support.
+Both original custom files now decode, including reversed block enumeration,
+and their reconstructed vectors compare against the saved corner-normal
+oracles in `blendScene.normals`.
+
+### Normal-space reconstruction
+
+Additional fixtures verify the reference space rather than merely accepting
+the packed storage:
+
+| Fixture | Points / faces / corners | Evidence |
+| --- | --- | --- |
+| `custom_fans.blend` | 36 / 19 / 65 | smooth geometry with a uniform requested `(1, 2, 3)` normal; shared, open and closed fans, disconnected/nonmanifold/same-direction topology |
+| `custom_split_fans.blend` | 35 / 20 / 66 | split geometry with the same direction, plus raw pair mutations: signed-short minima, mixed positive/negative open fans, zero/nonzero closed-fan pairs |
+| `custom_angles.blend` | 597 / 199 / 597 | independent triangles with incoming-ray cosine `-0.99` through `0.99` in `0.01` increments; raw `(16384, 32767)` pairs expose reference-angle behavior |
+
+Blender's corner normals average packed pairs within a fan, with signed
+integer division toward zero, without rewriting the saved pairs. The mixed
+fan fixture distinguishes this from decoding each pair independently.
+Automatic normals use a zero averaged first component; -32768 is valid stored
+short data, not rejected as an out-of-range normalized number.
+
+The decoder's reference-angle mapping was independently inferred through
+Blender RNA with 199 triangle probes on each pinned executable. The two
+executables produced identical measured angles. A symmetric cubic times
+`sqrt(1 - abs(cosine))` reproduced these observations within `2.8e-7` radians;
+ordinary `acos` did not. Coefficients were derived from those measurements,
+not from Blender source. Reference vectors also retain single-precision
+normalization/dot behavior: double-precision geometry alone differs on
+opposing boundary rays. Closed fans and coincident boundary rays span `2*pi`.
+The serialized angle-sweep and shared-fan fixtures independently test this
+mapping through the native decoder, rather than using the fitted polynomial
+to construct expected output.
+
+The four custom fixtures contain 794 corners per version, 1,588 in total.
+All compare under the original absolute `2e-5` component threshold, with
+maximum measured component error below `6.25e-6`; published normals remain
+unit length within `1e-12`. Both storage families and all synthetic
+pointer-width/byte-order layouts also exercise signed pairs, automatic
+normals, malformed lengths and unit-scale independence in `blendScene.ir`.
+Repeated/reversed reads must preserve the output arrays exactly.
 
 ### Independently constructed multiple Meshes
 
@@ -120,8 +163,8 @@ and 65 corners. `Other` applies `2 * position + (7, -5, 2)` to the source
 points, so its saved positions differ while normal directions remain unchanged.
 The adjacent version-1 oracle records both Objects.
 
-The 4.5.13 file has unique reference-target addresses and decodes both meshes
-in `blendScene.normals` at the existing `2e-5` threshold. The 5.2.2 file has
+Both files decode both meshes in `blendScene.normals` at the existing `2e-5`
+threshold. The 4.5.13 file has unique reference-target addresses; the 5.2.2 file has
 repeated nonzero saved addresses for both `Attribute` and `AttributeArray`
 blocks. The collided records have the same SDNA type, count and byte length,
 but different payloads: these are **not byte-identical aliases**. Attribute
@@ -129,20 +172,25 @@ blocks contain nine records / 216 bytes; each AttributeArray block contains
 one record / 32 bytes. This reproduces the earlier uncommitted prototype's
 failure without sharing source Mesh data.
 
-`blendScene.meshBoundaries` checks those non-identical collision shapes and
-requires `BLEND_POINTER_DUPLICATE` from `BuildPointerMap`, `SelectScene` and
-`DecodeScene`, including exact fatal offset/block context and reversed
-enumeration. The generator regression suite checks collisions in independent
+`blendScene.meshBoundaries` checks those non-identical collision shapes.
+`BuildPointerMap` still returns contextual `BLEND_POINTER_DUPLICATE`.
+`SelectScene` and `DecodeScene` instead resolve the fixture's collided targets
+through serialized Mesh ownership and exact Mesh/Attribute references, not
+first/last matches or equal-shape aliases. Reversed enumeration preserves
+both distinct Mesh arrays. Mutations to duplicate IDs, non-Mesh or same-Mesh
+owners, missing owner pointers, unreferenced arrays, unrelated SDNA types and
+legacy headers remain fatal with exact duplicate-pointer context.
+The generator regression suite checks collisions in independent
 processes and output directories. It also checks that changing saved custom
 normals or the second Mesh's positions is rejected without rewriting files.
 
-No pointer-map or production decoder behavior is changed. Selecting the first
-or last address match, or merging records by shape alone, would choose between
-different saved values. Resolving ownership and defining an unambiguous
-reference boundary remain in [task 2.5](../../../docs/roadmap/current.md).
+The global reader pointer map is unchanged. The scoped resolver lives in
+`blendScene`; its [ownership/reference contract](../../../docs/design/DESIGN_POLICY.md#528-native-mesh-storage-boundary)
+is applied consistently to Scene selection, Object traversal and decoding.
+Constant AttributeArray and other named normal formats remain unsupported.
 
-This is source normal/mesh and explicit rejection evidence, not a custom-normal
-decoder, general multi-Mesh compatibility claim, Blender evaluation backend,
+This is source normal/Mesh decoding evidence for the tested storage families,
+not a general multi-Mesh compatibility claim, Blender evaluation backend,
 Mesh transform oracle, USD-authored stage or STAGE-O1's four-scale cube evidence.
 Current capabilities belong to the
 [capability matrix](../../../docs/reference/CAPABILITY_MATRIX.md#5-scene-ir).

@@ -80,7 +80,7 @@ class SceneDecoder {
 public:
   SceneDecoder(std::span<const std::byte> bytes,
       std::span<const BlendBlock> blocks, const DnaSchema& schema,
-      const Header& header, const PointerMap& pointers)
+      const Header& header, const detail::ScenePointers& pointers)
       : bytes_(bytes), blocks_(blocks), schema_(schema), header_(header),
         pointers_(pointers) {
   }
@@ -345,7 +345,7 @@ private:
   std::span<const BlendBlock> blocks_;
   const DnaSchema& schema_;
   const Header& header_;
-  const PointerMap& pointers_;
+  const detail::ScenePointers& pointers_;
   std::unordered_map<std::uint32_t, Matrix4> worlds_;
   std::vector<Diagnostic> diagnostics_;
 };
@@ -357,7 +357,7 @@ Result<Scene> DecodeScene(std::span<const std::byte> bytes,
     const Header& header, const SceneTraversalLimits& limits) {
   try {
     const auto selected = Take(SelectSceneObjectValues(bytes, blocks, schema, header, limits));
-    const auto pointers = Take(BuildPointerMap(blocks));
+    const auto pointers = Take(detail::BuildScenePointers(bytes, blocks, schema, header));
     return SceneDecoder(bytes, blocks, schema, header, pointers).Run(selected);
   } catch (const Diagnostic& error) {
     return Result<Scene>(error);

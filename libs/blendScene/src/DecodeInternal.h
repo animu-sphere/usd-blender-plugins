@@ -1,6 +1,7 @@
 #pragma once
 
 #include <blendScene/Decode.h>
+#include "ScenePointers.h"
 
 namespace blend::detail {
 
@@ -14,7 +15,7 @@ Value Take(const Result<Value>& result) {
 
 Mesh DecodeMesh(std::span<const std::byte> bytes,
     std::span<const BlendBlock> blocks, const DnaSchema& schema,
-    const Header& header, const PointerMap& pointers, std::uint32_t index,
+    const Header& header, const ScenePointers& pointers, std::uint32_t index,
     const UnitConversion& units, std::vector<Diagnostic>& diagnostics);
 
 } // namespace blend::detail
