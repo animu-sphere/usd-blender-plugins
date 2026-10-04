@@ -6,6 +6,8 @@ read-only `SdfFileFormat` that opens a `.blend` directly as a USD layer.
 Implemented behavior is recorded in the
 [capability matrix](docs/reference/CAPABILITY_MATRIX.md); phase status and
 upcoming work are in [the roadmap](docs/roadmap/README.md#status-at-a-glance).
+The current [Blender 5.x support scope](docs/design/BLEND_CONTRACT.md#9-version-support)
+defers full older-version compatibility to the later roadmap.
 
 The target scene workflow:
 

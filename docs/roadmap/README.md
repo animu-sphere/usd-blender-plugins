@@ -37,7 +37,7 @@ Completion does not imply that the planned release has been tagged.
 | 5 | object animation | ⬜ | v0.6.0 (planned) |
 | 6 | armatures and UsdSkel | ⬜ | v0.7.0 (planned) |
 | 7 | Blender host backend | ⬜ | v0.8.0 (planned) |
-| 8 | performance and robustness | ⬜ | v0.9.0 (planned) |
+| 8 | performance, robustness and deferred older-Blender compatibility | ⬜ | v0.9.0 (planned) |
 
 v1.0.0 is the first stable reader contract
 ([DESIGN_POLICY.md §14.1](../design/DESIGN_POLICY.md#141-first-stable-release)).

@@ -384,6 +384,11 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- Narrowed the current support guarantee, first stable release target and new
+    compatibility fixtures to Blender 5.x. Full older-Blender compatibility
+    moves to Phase 8, where its version and feature scope will be selected.
+    Existing older-version decoders, fixtures and regression tests remain;
+    runtime version handling and import behavior are unchanged.
 - Corrected a missing byte in the independent DEFLATE test vector; full-stream
     tests now verify its CRC and stored size as well as its header.
 - The dependency contract resolves zlib through a vendored decoder subset,
