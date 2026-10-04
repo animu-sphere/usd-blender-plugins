@@ -82,8 +82,11 @@ metadata, Object/mesh order, graph indices, matrices and Mesh/UV arrays exactly.
 
 Generation, check and regression commands are in the
 [build guide](../../../docs/guides/building.md#integrated-scene-oracles).
-This is fixed-scale native integration evidence, not a USD-authored stage,
-an importer/backend connection or STAGE-O1's multi-scale cube evidence.
+The registered-plugin `test_stage.py` now compares the same oracles to
+USD world/local transforms, hierarchy, visibility, points, topology, normals
+and expanded UVs. Shared Meshes author distinct Mesh children and parent-only
+Objects do not enter the stage. This remains fixed-scale integration evidence;
+STAGE-O1's multi-scale evidence is recorded separately.
 Current capability and incomplete milestone scope remain in the
 [capability matrix](../../../docs/reference/CAPABILITY_MATRIX.md#5-scene-ir)
 and [roadmap](../../../docs/roadmap/current.md).

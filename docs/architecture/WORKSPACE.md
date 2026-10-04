@@ -82,7 +82,14 @@ declared in both CMake and its bundle manifest. An internal object target
 shares authoring sources with the C++ regression executable; it is not an
 installed library or a second consumer requiring `blendUsd`. Standalone
 bundle builds resolve the installed Scene package and its reader prerequisite.
-The importer's input path and the inspection tool still use `blendFile` alone.
+The same internal object target shares the bundle's uncompressed `ReadScene`
+composition with that regression executable. The importer now consumes
+`blendFile` syntax and `blendScene` native decoding before USD authoring;
+the inspection tool still uses `blendFile` alone. No installed component or
+dependency direction changes. The
+[importer boundary](../design/DESIGN_POLICY.md#532-uncompressed-importer-boundary)
+derives uncompressed byte/block/graph budgets from the input and rejects
+compressed inputs without production defaults.
 
 `blend_inspect` composes these syntax APIs through `blendFile` alone in
 Phase 1. Its tool descriptor declares that library edge, and the root adds

@@ -22,7 +22,7 @@ if(NOT TARGET blendScene::blendScene)
     find_package(blendScene CONFIG REQUIRED)
 endif()
 
-add_library(usdBlendAuthoring OBJECT src/AuthorScene.cpp)
+add_library(usdBlendAuthoring OBJECT src/AuthorScene.cpp src/ReadScene.cpp)
 target_compile_features(usdBlendAuthoring PUBLIC cxx_std_20)
 set_target_properties(usdBlendAuthoring PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_EXTENSIONS OFF)
 target_include_directories(usdBlendAuthoring PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src" ${PXR_INCLUDE_DIRS})
@@ -82,7 +82,10 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-transforms/blender-4.5.13/transforms.blend"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-transforms/blender-5.2.2/transforms.blend"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-4.5.13/multi.blend"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-5.2.2/multi.blend")
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-5.2.2/multi.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-scene/blender-4.5.13/scene.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-scene/blender-5.2.2/scene.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/single_cube.blend")
     add_test(NAME usdBlend.units COMMAND usdBlendAuthoringTests --units
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-units/blender-4.5.13"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-units/blender-5.2.2")

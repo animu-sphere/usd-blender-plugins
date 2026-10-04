@@ -657,8 +657,9 @@ channels still define the result, including for parent-only Objects.
 
 An active Scene with empty Collections produces owning metadata and empty
 object/mesh vectors; the Scene-only library's null `curscene` remains an error.
-This is a library decoding boundary, not an `IBlendBackend` or USD/importer
-connection. Transform oracle fixtures compare
+This is a library decoding boundary, not an `IBlendBackend`. The bundle
+composes it under [the importer boundary](#532-uncompressed-importer-boundary).
+Transform oracle fixtures compare
 native world matrices, constructed parent-relative local matrices and
 converted parent/local composition against saved Blender values; that does not establish USD local-transform authoring or
 STAGE-O1's multi-scale end-to-end evidence. Fixture-backed scope is
@@ -818,7 +819,7 @@ inside the bundle (`src/AuthorScene.cpp`), so the `SdfFileFormat` class stays th
 
 ### 5.3.1 Scene IR USD authoring boundary
 
-`AuthorScene(scene)` in the bundle's internal `AuthorScene.h` returns
+`AuthorScene(scene, metadataOnly = false)` in the bundle's internal `AuthorScene.h` returns
 `Result<SdfLayerRefPtr>`. It consumes owning, already-normalized Mesh/Empty
 Scene IR, not bytes, SDNA, saved addresses or Blender evaluation. It creates
 a temporary stage and returns its root layer only after successful authoring;
@@ -847,21 +848,51 @@ one recoverable `BLEND_MESH_EMPTY` diagnostic per shared IR Mesh.
 UV naming follows [NAMING §4.2](NAMING_POLICY.md#42-uv-map-naming-boundary).
 
 `CreateAssetStage(sourceVersion, optionalSourceScene)` is the shared metadata
-scaffold used by this boundary and the existing header-only importer. The
-header path omits Scene provenance as before; Scene authoring records it.
+scaffold used by this boundary. Scene authoring records Scene provenance.
 Required scopes, kind, defaultPrim, Y-up, meters and contract version remain
 identical. Authoring diagnostics are returned to the caller, which must compose
 decoder diagnostics and translate them at the importer boundary.
 
-This does not connect native `DecodeScene` to `SdfFileFormat::Read`, supply
-production compression/block/traversal budgets,
-or claim `.blend` geometry opens through the plugin. Blender-written transform
+With `metadataOnly`, the same validated Scene produces the same hierarchy,
+Object transforms, render visibility and provenance, but typed Mesh children
+carry no geometry attributes. Geometry is still decoded and validated; this
+is not the Phase 8 lazy-decode fast path.
+
+Blender-written transform
 oracles and independent two-Mesh fixtures exercise native decoding through
 USD authoring, including repeated and reversed block enumeration.
 Separate [multi-scale fixtures](../../tests/fixtures/native-units/README.md)
 freeze the Mesh/Empty unit and ASCII identifier policies through this boundary.
 Fixture-backed scope belongs in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#31-scene-ir-usd-authoring).
+
+### 5.3.2 Uncompressed importer boundary
+
+The bundle's internal `ReadScene(ByteSource&)` composes block enumeration,
+owning byte reading, one bounded DNA1 schema and native `DecodeScene`.
+It requires a complete uncompressed container and the saved active Scene;
+header-only inputs and Scene-only libraries are not scene fallbacks.
+Compressed inputs fail with `BLEND_BLOCK_COMPRESSED` before full byte
+reading; no production decompression defaults resolve BLEND-O5 implicitly.
+`CanRead` remains a bounded header-identification probe, not a guarantee
+that full scene decoding succeeds.
+
+The block budget is `min(storedSize / 20 + 1, UINT32_MAX)`, following the
+inspection tool's minimum block-header bound. Uncompressed byte budgets
+equal the stored size, with ratio 1; the required compression window field
+is unused on this path. Visited-node and active-depth budgets equal the
+enumerated block count: every reached graph node occupies a distinct block.
+Cycles and invalid references still fail under the native graph contract.
+These structural bounds are not a new fixed-size production resource policy.
+
+`SdfFileFormat::Read` passes `metadataOnly` to `AuthorScene` and transfers the
+temporary authored layer only after both boundaries succeed. Fatal
+diagnostics become `TF_RUNTIME_ERROR`; recoverable Warning and Unsupported
+diagnostics become `TF_WARN`, preserving byte, block and datablock context.
+DNA1-relative failure offsets are translated into input-file coordinates.
+No Blender process, host fallback, second normalization or installed library
+is introduced. Fixture-backed scope belongs in the
+[capability matrix](../reference/CAPABILITY_MATRIX.md#3-stage).
 
 ### 5.4 `blend_inspect` — the tool
 

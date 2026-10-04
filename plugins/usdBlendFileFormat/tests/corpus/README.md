@@ -36,7 +36,9 @@ The [4.5.13 manifest](blender-4.5.13/manifest.json) records its 504,759-byte
 size, SHA-256, permission and reader evidence; the
 [5.2.2 manifest](blender-5.2.2/manifest.json) records the other input.
 These checks do not decode SDNA or establish scene compatibility, do not
-provide a Blender-written gzip file, and leave the importer header-only.
+provide a Blender-written gzip file. The importer accepts only uncompressed
+Mesh/Empty scope: the 4.5.13 corpus Scene fails on Camera/Light objects and the
+compressed 5.2.2 corpus is rejected before full decoding.
 This comparison was run locally on Windows; Linux execution remains
 unverified. Commands are in the
 [build guide](../../../../docs/guides/building.md#reader-through-openstrata).

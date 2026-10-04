@@ -8,6 +8,18 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Uncompressed registered-plugin native decoding and Scene IR authoring,
+    preserving Mesh/Empty hierarchy, local transforms, render visibility,
+    polygon geometry, normals and indexed UVs without a second normalization.
+    Structural byte/block/graph bounds derive from stored size and block count;
+    compressed inputs remain rejected without BLEND-O5 production defaults.
+    Fatal and recoverable diagnostics retain byte/block/datablock context.
+    Metadata-only layers retain transforms and typed Mesh children but omit
+    geometry attributes; lazy decoding is deferred. Registered Scene-oracle,
+    multi-scale, deterministic/reference and input-diagnostic regressions join
+    both build modes' byte-to-Scene/authoring checks. A reproducible semantic
+    `single_cube.blend` and Mesh golden replace header-only and Scene-library
+    smoke successes, which now fail explicitly without scene fallbacks.
 - Eight Blender-written 4.5.13/5.2.2 multi-scale cube/parenting fixtures and
     `usdBlend.units`, proving native-to-USD physical equivalence for source
     scales 1, 0.01, 0.001 and 10. Independent saved-value and world-vertex

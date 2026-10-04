@@ -294,7 +294,9 @@ diagnostic; its record remains in the block enumeration.
 and returns `Result<std::vector<BlendBlock>>`. A compressed source must first
 pass through `ReadFileBytes` (§4.1), then be wrapped in `MemoryByteSource`
 while the decoded bytes remain alive. No production defaults are selected
-by either API, and the importer keeps its header-only path.
+by either API. The importer composes this boundary for uncompressed input
+under its [structural budgets](DESIGN_POLICY.md#532-uncompressed-importer-boundary);
+compressed scene imports remain rejected pending BLEND-O5.
 
 `BlendBlock` normalizes both layouts as follows:
 
