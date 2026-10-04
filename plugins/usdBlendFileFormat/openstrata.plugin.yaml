@@ -27,6 +27,8 @@ requires:
   libraries:
     - id: blendFile
       version: "==0.1.0"
+    - id: blendScene
+      version: "==0.1.0"
 usd:
   # Where this bundle's plugInfo.json lives, relative to the bundle root.
   plug_info: plugin/resources/usdBlendFileFormat/plugInfo.json

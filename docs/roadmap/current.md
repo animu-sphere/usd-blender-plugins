@@ -26,9 +26,9 @@ transforms and mesh data under the
 | --- | --- | --- | --- |
 | 2.2 | Resolve STAGE-O1 and NAME-O1 | the selected meter-normalization policy is proven by Blender-written multi-scale cube/parenting fixtures through native decoding and USD authoring; the naming contract records its fixture-backed identifier policy | ⛔ |
 | 2.3 | [Native scene decoding and ID graph](../design/DESIGN_POLICY.md#527-native-scene-decoding-boundary) | complete the mesh/empty milestone scope beyond the current mesh-storage boundary, composing selection and [saved Object values](../design/DESIGN_POLICY.md#526-saved-object-value-boundary); recursive instance references retain bounded missing, linked, invalid and cycle diagnostics | 🚧 |
-| 2.4 | Objects, parenting and transforms | complete USD local-transform authoring beyond the fixture-backed native world-matrix and parent-relative affine construction boundary, retaining Mesh/Empty render visibility and hierarchy, including nonuniform and negative scales, with explicit singular-parent failures | 🚧 |
+| 2.4 | Objects, parenting and transforms | connect the fixture-backed native and USD local-transform boundaries to the importer, retaining Mesh/Empty render visibility and hierarchy, including nonuniform and negative scales, with explicit singular-parent failures | 🚧 |
 | 2.5 | [Version-aware mesh decoding](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary) | complete mesh storage beyond the fixture-backed CustomData/AttributeArray/AttributeSingle, packed custom-normal and synthetic MLoopUV boundary; points, topology, normals and indexed UVs populate the IR with tested empty/invalid/unsupported diagnostics | 🚧 |
-| 2.7 | USD authoring from the Scene IR | the importer authors object Xforms and Mesh children under `/Asset/geo`, with local matrices, extent, right-handed polygon topology, normals and UVs; shared meshes are duplicated per object and no second basis or unit conversion occurs | ⬜ |
+| 2.7 | USD authoring from the Scene IR | the importer connects the [fixture-backed authoring boundary](../design/DESIGN_POLICY.md#531-scene-ir-usd-authoring-boundary) to object Xforms and Mesh children under `/Asset/geo`, with local matrices, extent, right-handed polygon topology, normals and UVs; shared meshes are duplicated per object and no second basis or unit conversion occurs | 🚧 |
 | 2.8 | Cube milestone and regression fixtures | a reproducible `single_cube.blend` opens at `/Asset/geo/Cube/mesh`; parenting, transforms, normals and UV fixtures match an oracle, repeated reads author the same stage, and both build modes and dependency gates pass | ⬜ |
 
 Task 2.2 awaits the Blender-written multi-scale cube/parenting fixtures required
@@ -37,5 +37,10 @@ Phase 2 decoding and graph-validation work continues.
 
 The [Scene IR boundary](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 keeps basis conversion separate from binary decoding and USD authoring.
+Task 2.7 now has a separately tested Scene IR-to-layer boundary, including
+Blender-written transform oracles and independent two-Mesh fixtures, but remains
+incomplete until the importer connects it to native decoding. The input path
+still reads headers only; no production compression or traversal defaults
+were introduced.
 Phase 1's open compression decision remains open; compressed importer inputs
 must not acquire arbitrary production defaults to reach this milestone.

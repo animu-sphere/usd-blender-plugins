@@ -76,8 +76,13 @@ metadata and link-boundary checks, and rejection tests. The generated-link
 test helpers are shared with `blendFile`, keeping the existing reader defaults.
 The scene gate additionally allows `blendFile` and rejects OpenUSD, Blender,
 host-backend and unknown libraries; the reader gate still rejects scene links.
-The plugin and inspection tool still consume `blendFile` alone; no new runtime
-consumer edge is implied by registering the library as a workspace member.
+The plugin now consumes the allowed `blendScene` edge for its internal
+[Scene IR authoring boundary](../design/DESIGN_POLICY.md#531-scene-ir-usd-authoring-boundary),
+declared in both CMake and its bundle manifest. An internal object target
+shares authoring sources with the C++ regression executable; it is not an
+installed library or a second consumer requiring `blendUsd`. Standalone
+bundle builds resolve the installed Scene package and its reader prerequisite.
+The importer's input path and the inspection tool still use `blendFile` alone.
 
 `blend_inspect` composes these syntax APIs through `blendFile` alone in
 Phase 1. Its tool descriptor declares that library edge, and the root adds

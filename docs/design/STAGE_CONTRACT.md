@@ -239,8 +239,10 @@ OpenUSD's row-vector convention, without a second unit or basis conversion.
 A singular or numerically singular parent fails explicitly with
 `BLEND_SCENE_TRANSFORM_SINGULAR`, not by silently detaching the child or
 substituting an identity matrix. A zero-scale root or child is not itself an
-error unless its world matrix must be inverted as a parent. The helper has
-native/oracle evidence; USD Xform authoring remains unimplemented.
+error unless its world matrix must be inverted as a parent. The helper and the bundle's
+[Scene IR authoring boundary](DESIGN_POLICY.md#531-scene-ir-usd-authoring-boundary)
+have native/oracle evidence; the importer does not yet connect scene decoding
+to USD Xform authoring.
 
 Objects hidden for rendering (`hide_render`) are authored with
 `visibility = "invisible"`. Objects with no data and no children are still

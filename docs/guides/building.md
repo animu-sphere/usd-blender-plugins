@@ -24,7 +24,7 @@ The five pull-request cells are:
 - two root CMake build/CTest checks, including the reader and Scene IR tests
 	and their include/link boundary gates, plus the inspection CLI test;
 - two standalone bundle build, L0-L5 and package checks, exercising the
-	manifest's installed `blendFile` dependency.
+	manifest's installed `blendFile` and `blendScene` dependencies.
 
 The generated workflow is
 [ost-source-ci.yml](../../.github/workflows/ost-source-ci.yml). Change the
@@ -49,7 +49,8 @@ runs `test_stage.py`. The hand-maintained companion workflow
 the existing bundle cells with `ost ci matrix`, without copying their SDK
 digests, runners or host Python/package requirements. It builds the standalone
 bundle on both hosts, runs explicit `ost plugin doctor` diagnostics and all
-five stage-contract tests, and uploads their reports and logs. These additional
+five stage-contract tests plus the standalone `usdBlend.authoring` CTest, and
+uploads their reports and logs. These additional
 build jobs also use billed hosted infrastructure; they do not publish anything
 or use secrets. The resolver bootstrap is pinned to the matrix's `ost` version
 and rejects version drift; update both when changing that pin. Do not pass this
@@ -429,8 +430,8 @@ ost plugin test plugins/usdBlendFileFormat --target cy2026 --profile usd
 ost plugin run plugins/usdBlendFileFormat --target cy2026 --profile usd -- python plugins/usdBlendFileFormat/tests/test_stage.py
 ```
 
-The manifest declares the `blendFile` edge; `ost` builds and installs the
-library into its workspace prefix before configuring the standalone bundle.
+The manifest declares the `blendFile` and `blendScene` edges; `ost` builds and
+installs both libraries into its workspace prefix before configuring the standalone bundle.
 The five stage tests assert hierarchy, metadata, diagnostic codes, repeat-read
 determinism and contract-version preservation through a reference. Both the
 synthetic header and Blender-written empty scene exercise the stage contract.
@@ -440,6 +441,35 @@ uncompressed file written by Blender 5.2.2 LTS. L3/L4 use the real fixture;
 L5 compares both flattened
 minimal stages against their goldens. The generated source comment has its
 path removed by `ost` normalization. USDA files must use LF endings.
+
+### Scene IR USD authoring
+
+`usdBlend.authoring` exercises the bundle's internal authoring translation unit
+without changing the header-only importer. Synthetic IR pins parent-relative
+matrix transposition, visibility, duplicated Meshes, points/topology/normals,
+extent, indexed UV schema and `st` reservation, provenance, errors and
+determinism. Blender-written 4.5.13/5.2.2 transform fixtures compare all 27
+Objects' authored world/local matrices against their saved oracle at `2e-5`;
+independent two-Mesh fixtures retain native geometry. Repeated and reversed
+native block reads author identical text. Float-range checks accept the exact
+maximum and reject the next larger double. Singular roots without children
+and zero-scale leaves succeed; a singular authored parent fails explicitly.
+
+After the root plain-CMake build below and the standalone bundle build above,
+the following focused commands were exercised on Windows on 2026-10-04:
+
+```powershell
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir build\usd-vs18 -C Release --output-on-failure -R '^(usdBlend\.authoring|blendScene\.|blendFile\.(boundary|link))'
+ost library test libs\blendScene --target cy2026 --profile usd
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd --output-on-failure -R '^usdBlend\.authoring$'
+```
+
+The first command covers fourteen root CTests, including native/reader
+dependency gates. The others cover all nine standalone Scene tests and the
+standalone authoring test, with the same runtime activation as the plugin.
+Use the corresponding build directories on other hosts. The companion CI
+discovers its single standalone CTest directory rather than duplicating the
+runtime target triplet; root CI includes the new CTest automatically.
 
 ## Plain CMake with the installed SDK
 

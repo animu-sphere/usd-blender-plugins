@@ -810,7 +810,52 @@ The OpenUSD `SdfFileFormat` bundle, scaffolded from OpenStrata's
 `usd-fileformat-cpp` template. It owns `.blend` registration, the read path,
 stage metadata, prim layout, schema authoring and the diagnostics that cross
 the source → USD boundary (§2.2). USD authoring is a separate translation unit
-inside the bundle (`src/usd/`), so the `SdfFileFormat` class stays thin.
+inside the bundle (`src/AuthorScene.cpp`), so the `SdfFileFormat` class stays thin.
+
+### 5.3.1 Scene IR USD authoring boundary
+
+`AuthorScene(scene)` in the bundle's internal `AuthorScene.h` returns
+`Result<SdfLayerRefPtr>`. It consumes owning, already-normalized Mesh/Empty
+Scene IR, not bytes, SDNA, saved addresses or Blender evaluation. It creates
+a temporary stage and returns its root layer only after successful authoring;
+fatal input or OpenUSD errors publish no partial layer. This remains bundle
+implementation, not a new `blendUsd` package or backend.
+
+The [stage contract](STAGE_CONTRACT.md#7-objects-and-transforms) owns the
+schemas and matrix convention. Parent indices and Mesh indices are checked,
+parent cycles fail, and supplied Object identifiers must match the native
+naming pass. An iterative parent-before-child walk orders siblings by the
+shared unsigned source-byte comparator. Each Object has one matrix Xform op,
+saved render visibility and source-name provenance. Local matrices come from
+`ParentRelativeTransform` and are transposed for USD; singular-parent,
+invalid-affine and overflow diagnostics retain the affected Object name.
+No basis or unit conversion occurs here, and `sourceUnitScale` is not applied.
+
+Each referenced Mesh is validated and prepared once, then duplicated below
+every owning Object as `mesh`. Points, polygon counts and corner indices,
+face-varying normals and named indexed texCoord2f UV maps are authored unchanged
+apart from USD's float storage. Finite float-range inputs are required, with
+the exact maximum accepted and the immediately larger double rejected.
+Topology, normal lengths, UV index shapes and references must agree.
+Extent bounds the authored points; no points produces an explicit empty
+extent. A Mesh without polygons retains its points and empty topology, with
+one recoverable `BLEND_MESH_EMPTY` diagnostic per shared IR Mesh.
+UV naming follows [NAMING §4.2](NAMING_POLICY.md#42-uv-map-naming-boundary).
+
+`CreateAssetStage(sourceVersion, optionalSourceScene)` is the shared metadata
+scaffold used by this boundary and the existing header-only importer. The
+header path omits Scene provenance as before; Scene authoring records it.
+Required scopes, kind, defaultPrim, Y-up, meters and contract version remain
+identical. Authoring diagnostics are returned to the caller, which must compose
+decoder diagnostics and translate them at the importer boundary.
+
+This does not connect native `DecodeScene` to `SdfFileFormat::Read`, supply
+production compression/block/traversal budgets, resolve STAGE-O1/NAME-O1,
+or claim `.blend` geometry opens through the plugin. Blender-written transform
+oracles and independent two-Mesh fixtures exercise native decoding through
+USD authoring, including repeated and reversed block enumeration.
+Fixture-backed scope belongs in the
+[capability matrix](../reference/CAPABILITY_MATRIX.md#31-scene-ir-usd-authoring).
 
 ### 5.4 `blend_inspect` — the tool
 
@@ -1128,6 +1173,6 @@ Phase that first realizes it lands with a fixture, and binding from then.
 | --- | --- | --- | --- |
 | §3, §32 — `lib/blend/`, `lib/usd/`, `src/fileformat/`; targets `blend_reader`, `blend_usd`, `BlenderFileFormat`; tool `blend-inspect`; plugin `usd-blender` | identities `blendFile`, `blendScene`, `usdBlendFileFormat`, `blend_inspect` in `libs/`, `plugins/`, `tools/` | the sibling workspace naming: lower-camel identities equal to their directory, `snake_case` executables ([WORKSPACE.md §1](../architecture/WORKSPACE.md#1-identities)) | binding workspace identities ([WORKSPACE.md §1](../architecture/WORKSPACE.md#1-identities)) |
 | §4.2 — one `blend_reader` holding container, SDNA and Scene IR | `blendFile` (syntax) and `blendScene` (Scene IR, decoding, conversion) | `blend_inspect --blocks/--dna` needs syntax only; the host backend produces a Scene IR with no container reader; each half is testable alone | proposed (Phase 2) |
-| §32 — a `blend_usd` static library | USD authoring inside the bundle, in `src/usd/`; `blendUsd` reserved | no second consumer of authoring exists yet; separate translation units keep the `SdfFileFormat` thin (§5.6) | proposed (Phase 2) |
+| §32 — a `blend_usd` static library | USD authoring inside the bundle, in `src/AuthorScene.cpp`; `blendUsd` reserved | no second consumer of authoring exists yet; separate translation units keep the `SdfFileFormat` thin (§5.6) | proposed (Phase 2) |
 | §37 — releases v0.1.0–v1.0.0 as the plan's units | Phases 0–8 (§14); the release for each Phase only in the roadmap table | one source of truth per fact ([contributing/documentation.md](../contributing/documentation.md#one-source-of-truth-per-fact)) | accepted |
 | §9 — top-level metadata only | `/Asset.customData.blend:stageContractVersion` added | layer metadata is lost once the asset is referenced; `/Asset` customData travels with it, as in the siblings ([STAGE_CONTRACT.md §2](STAGE_CONTRACT.md#2-contract-version)) | binding contract version ([STAGE_CONTRACT.md §2](STAGE_CONTRACT.md#2-contract-version)) |

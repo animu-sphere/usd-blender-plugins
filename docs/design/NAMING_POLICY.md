@@ -44,7 +44,7 @@ The identifier is derived from the source name:
    removed.
 3. If the result starts with a digit, `_` is prepended.
 4. If nothing remains, the identifier is the kind fallback: `Object`,
-   `Material`, `Camera`, `Light`, `Armature`, `Collection`.
+   `Material`, `Camera`, `Light`, `Armature`, `Collection`, `UVMap`.
 
 Literal source underscores are retained, including repeated and trailing ones.
 Only runs and trailing underscores introduced by replacing other characters
@@ -83,8 +83,8 @@ An Empty parent has no data child to reserve, and a root Mesh does not reserve
 `mesh` among root Objects. Natural suffixes participate in the same occupied-name
 set: a source `A_B_1` can collide with an earlier assigned suffix.
 
-Names are compared as unsigned UTF-8 bytes, not with a locale or an input-order
-tie-break. Duplicate sibling source names fail with `BLEND_NAME_DUPLICATE`,
+`SourceNameLess` compares names as unsigned UTF-8 bytes, not with a locale or
+an input-order tie-break. Duplicate sibling source names fail with `BLEND_NAME_DUPLICATE`,
 because that scope has no total source-name order. Invalid immediate parent
 or Mesh indices fail with `BLEND_SCENE_REFERENCE_INVALID`. The helper expects
 an otherwise validated Scene IR; it neither traverses nor validates parent
@@ -93,7 +93,7 @@ chains. Allocation failure uses `BLEND_NAME_ALLOCATION`.
 `DecodeScene` calls this pass before publishing the Scene and copies its results
 into `Object.identifier`. It retains raw `sourceName` bytes, Object discovery
 order, parent and shared Mesh indices, visibility and normalized geometry.
-It does not reorder the IR: future USD authoring must visit sibling Objects in
+It does not reorder the IR: USD authoring must visit sibling Objects in
 the source-byte order above, not in IR vector or identifier order.
 
 `NameForDisplay(sourceName)` provides separate owning UTF-8 display text.
@@ -110,6 +110,29 @@ Material/Collection/UV identifiers, or resolve asset paths. It implements the
 proposed ASCII policy without closing NAME-O1's final decision. Fixture-backed
 evidence belongs in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
+
+### 4.2 UV map naming boundary
+
+`UvIdentifiers(mesh)` uses the same sanitization, source-byte ordering,
+collision allocator and display diagnostics as Object naming. Results align
+with the input UV vector; the helper does not reorder it. `UVMap` is the
+fallback for names with no identifier characters. UV source names must be
+unique within their Mesh, including the active map.
+
+`st` is reserved before assignment. The one active-render map, if any,
+receives `st` regardless of its source name; other maps use their sanitized
+names with the smallest free suffix. A non-render map named `st` therefore
+becomes `st_1`, even if no map is active, so no render selection is invented.
+Multiple active maps fail with `BLEND_NAME_RENDER_UV_INVALID`; duplicate source
+names fail with `BLEND_NAME_DUPLICATE`. No aliases for the render map are made.
+
+The bundle's [Scene IR authoring boundary](DESIGN_POLICY.md#531-scene-ir-usd-authoring-boundary)
+visits Objects and UV properties in the same unsigned source-byte order.
+Object/Mesh prims and UV properties carry exact raw
+`customData["blend:sourceName"]`, with repaired UTF-8 `displayName` when it
+differs from the identifier. The native decoder continues to retain UV source
+names and active flags, without storing or applying USD primvar identifiers.
+This does not close NAME-O1 or introduce Material/Collection naming.
 
 ## 5. Examples
 

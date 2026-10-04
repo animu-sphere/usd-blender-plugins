@@ -183,6 +183,28 @@ void CheckFailures() {
   Require(!blend::ObjectIdentifiers(duplicate).HasValue(), "A self-parent is not a naming scope");
 }
 
+void CheckUvNames() {
+  blend::Mesh mesh;
+  for (const auto& name : {"st", "Render Map", "A/B", "A_B", "A_B_1", "UVMap", "\xe6\x97\xa5"}) {
+    blend::UvMap map;
+    map.sourceName = name;
+    map.activeRender = map.sourceName == "Render Map";
+    mesh.uvMaps.push_back(std::move(map));
+  }
+  const auto names = Take(blend::UvIdentifiers(mesh));
+  Require(names == std::vector<std::string>{"st_1", "st", "A_B", "A_B_1", "A_B_1_1", "UVMap", "UVMap_1"},
+      "UV identifiers reserve st, use UVMap fallback and share Object collision rules");
+  std::reverse(mesh.uvMaps.begin(), mesh.uvMaps.end());
+  auto reversed = Take(blend::UvIdentifiers(mesh));
+  std::reverse(reversed.begin(), reversed.end());
+  Require(names == reversed, "UV naming is independent of saved map enumeration");
+  mesh.uvMaps.clear();
+  Require(Take(blend::UvIdentifiers(mesh)).empty(), "A Mesh without UV maps has no identifiers");
+  mesh.uvMaps.push_back({"st", {}, {}, false});
+  Require(Take(blend::UvIdentifiers(mesh)) == std::vector<std::string>{"st_1"},
+      "No active render map invents no st primvar");
+}
+
 } // namespace
 
 int main() {
@@ -192,7 +214,8 @@ int main() {
     CheckOrder();
     CheckDisplay();
     CheckFailures();
-    std::cout << "Deterministic Object naming and UTF-8 display checks passed\n";
+    CheckUvNames();
+    std::cout << "Deterministic Object/UV naming and UTF-8 display checks passed\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
