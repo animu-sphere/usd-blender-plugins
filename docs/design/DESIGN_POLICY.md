@@ -673,8 +673,14 @@ not every Mesh in those version ranges. Layouts come from SDNA, not host
 structures: embedded `attribute_storage` with nonzero `dna_attributes_num`
 selects `Attribute` records; otherwise embedded `vdata`, `edata`, `pdata` and
 `ldata` provide `CustomDataLayer` records. Mixed nonempty storage families and
-external CustomData are rejected. Legacy fixed arrays are not a fallback;
+external CustomData are rejected. Legacy fixed arrays never repair modern storage;
 modern attributes are authoritative even when legacy pointer fields are saved.
+The separate legacy fixed-array path is selected only when there are no
+Attribute records, neither `position` nor `.corner_vert` attributes, no
+`poly_offset_indices` pointer, and at least one nonnull saved `mvert`, `mloop`
+or `mpoly` pointer. Partial or invalid modern core storage never switches to
+legacy arrays. This does not broaden the decoder's 4.5/5.x version gate or
+claim older Blender compatibility.
 
 The initial domain/type mapping is:
 
@@ -689,7 +695,8 @@ The initial domain/type mapping is:
 | legacy UV maps | corner (3) | MLoopUV (16) | — |
 | packed custom normals | corner (3) | signed-short pair (41) | signed-short pair (2) |
 
-Required positions and corner indices must be present for nonempty domains.
+In the modern path, required position and corner-index attributes must be
+present for nonempty domains.
 Counts are nonnegative scalar `int`; `poly_offset_indices` holds `totpoly + 1`
 signed 32-bit offsets starting at zero, delimiting polygons of at least three
 corners and ending at `totloop`. Every corner vertex index must be within
@@ -733,9 +740,32 @@ Invalid SDNA/storage retains reader diagnostics. There is no first/last-wins,
 byte-identical alias or cross-owner fallback. `BuildPointerMap` itself is
 unchanged; these are scene-semantic ownership checks.
 
+Legacy fixed arrays resolve exact saved keys to `DATA` arrays with the declared
+record counts and complete SDNA lengths. `MVert.co` is embedded `float[3]`;
+stored vertex normals and other vertex fields are not interpreted. `MLoop.v`
+and `MLoop.e` are scalar `uint` values; consumed indices must fit the IR's
+signed index range and their corresponding domains. `MPoly.loopstart` and
+`MPoly.totloop` are scalar `int` values describing contiguous polygon ranges
+starting at zero, each with at least three corners and covering `totloop`
+exactly. Coordinate and topology publication reuse the modern path's owning
+IR, winding and one-time unit/basis conversion. Zero-count legacy vertex,
+polygon and corner domains require null corresponding pointers; polygon-free
+Meshes retain loose points with the existing empty-Mesh warning.
+
+On the legacy path, absent `sharp_face` uses bit 0 of scalar-char `MPoly.flag`
+as the smooth-face flag; absent `sharp_edge` uses bit 9 of scalar-short
+`MEdge.flag` as the sharp-edge flag. For nonempty polygon Meshes, that edge
+fallback requires an exact `totedge`-record `MEdge` array when `totedge` is
+nonzero. Other edge fields and loose edges are not published. Absent
+`.corner_edge` uses `MLoop.e` for split fans. Present normal attributes remain
+authoritative and retain their existing validation; packed custom normals
+and float2/MLoopUV UV maps compose with legacy geometry. Evidence for this
+fixed-array path is synthetic only, across both pointer widths and byte orders;
+there is no Blender-written legacy geometry fixture yet.
+
 Polygon normals are constructed from source positions and normalized.
-Missing `sharp_face` or `sharp_edge` attributes mean false, not an unsupported
-normal mode. All-flat polygons copy their face normal to each corner. An
+Outside the legacy flag path, missing `sharp_face` or `sharp_edge` attributes
+mean false, not an unsupported normal mode. All-flat polygons copy their face normal to each corner. An
 entirely smooth Mesh without sharp edges uses angle-weighted point normals,
 including across disconnected or nonmanifold incident faces. Otherwise,
 smooth corners use angle-weighted normals within connected split fans; flat
@@ -791,7 +821,8 @@ types or coordinate shapes fail explicitly, retaining reader diagnostics for
 malformed SDNA. Layer flags, names, references and empty-domain null pointers
 follow the same CustomData validation as float2 UV layers. A type-16 layer
 outside the corner domain fails with `BLEND_MESH_STORAGE_UNSUPPORTED`.
-Legacy fixed position/topology arrays remain outside this storage boundary.
+Legacy fixed position/topology arrays use the separate selection rules above,
+not this UV layer's presence.
 
 Every corner float2 or `MLoopUV` map becomes an owning indexed `UvMap`: equal
 numeric pairs share a value at first occurrence, indices preserve corner order,

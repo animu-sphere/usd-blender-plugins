@@ -25,7 +25,7 @@ transforms and mesh data under the
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
 | 2.3 | [Native scene decoding and ID graph](../design/DESIGN_POLICY.md#527-native-scene-decoding-boundary) | complete the mesh/empty milestone scope beyond the current mesh-storage boundary, composing selection and [saved Object values](../design/DESIGN_POLICY.md#526-saved-object-value-boundary); recursive instance references retain bounded missing, linked, invalid and cycle diagnostics | 🚧 |
-| 2.5 | [Version-aware mesh decoding](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary) | complete mesh storage beyond the fixture-backed CustomData/AttributeArray/AttributeSingle, packed custom-normal, [Mesh-domain oracle](../../tests/fixtures/native-mesh/README.md) and synthetic MLoopUV boundary; points, topology, normals and indexed UVs populate the IR with tested empty/invalid/unsupported diagnostics | 🚧 |
+| 2.5 | [Version-aware mesh decoding](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary) | complete mesh storage beyond the fixture-backed CustomData/AttributeArray/AttributeSingle, packed custom-normal, [Mesh-domain oracle](../../tests/fixtures/native-mesh/README.md) and synthetic MLoopUV/fixed-array boundary; points, topology, normals and indexed UVs populate the IR with tested empty/invalid/unsupported diagnostics | 🚧 |
 | 2.8 | Cube milestone and regression fixtures | verify the reproducible `single_cube.blend` directly in `usdview` and the hosted Windows/Linux checks; registered-plugin oracle, deterministic-read, metadata and both local build-mode checks cover the connected Mesh/Empty scope | 🚧 |
 
 The [Scene IR boundary](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
@@ -43,5 +43,8 @@ decoding and authoring; byte budgets use the stored size and graph budgets use
 the enumerated block count, not arbitrary production constants. `metadataOnly`
 retains Object transforms and typed Mesh children without geometry attributes;
 lazy decoding remains Phase 8 scope.
+Legacy MVert/MLoop/MPoly geometry now has four-layout synthetic coverage,
+including normal flags and UV composition, without repairing modern storage.
+Blender-written legacy geometry/MLoopUV evidence remains incomplete.
 Phase 1's open compression decision remains open; compressed importer inputs
 must not acquire arbitrary production defaults to reach this milestone.
