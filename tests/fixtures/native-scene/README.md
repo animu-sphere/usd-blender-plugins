@@ -58,9 +58,10 @@ datablocks, not transformed Object points or evaluated geometry.
 Generation compares the oracle again after reopening the file.
 `--check` first regenerates into a temporary directory, compares semantic
 oracles, then reopens and checks the stored file without rewriting the
-fixture or oracle. Numeric records use
-`math.isclose(rel_tol=2e-6, abs_tol=2e-6)`; names, references, flags, counts
-and topology are exact. Saved addresses and UI state are not byte-reproducible.
+fixture or oracle. Matrices, points and normals use
+`math.isclose(rel_tol=2e-6, abs_tol=2e-6)`; UV coordinates are exact, including
+zero signs, as are names, references, flags, counts and topology.
+Saved addresses and UI state are not byte-reproducible.
 [test_generate_scene.py](../test_generate_scene.py) checks independent-process
 and different-path reproduction, non-destructive success and failure,
 home-path exclusion, modified-oracle rejection, and saved transform,

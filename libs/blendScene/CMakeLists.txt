@@ -57,6 +57,9 @@ if(BUILD_TESTING)
     add_test(NAME blendScene.sceneFixture COMMAND blendSceneFixtureTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-scene/blender-4.5.13/scene.blend
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-scene/blender-5.2.2/scene.blend)
+    add_test(NAME blendScene.meshFixture COMMAND blendSceneFixtureTests --mesh-domains
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-mesh/blender-4.5.13/mesh.blend
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-mesh/blender-5.2.2/mesh.blend)
     add_test(NAME blendScene.ir COMMAND blendSceneTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests/fixtures/empty.blend
         ${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests/corpus/blender-4.5.13/Untitled.blend

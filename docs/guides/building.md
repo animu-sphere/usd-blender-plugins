@@ -328,7 +328,10 @@ block reordering, ownership and four unit scales without scaling normals/UVs.
 Constant AttributeArrays and AttributeSingles run raw/structured values across
 all four layouts, including empty domains, face/edge booleans, UV indexing and
 packed normals. Invalid sizes, single flags, lengths and references retain
-exact fatal context. Empty, malformed, nonfinite, invalid-index and unsupported
+exact fatal context. Dense zero-domain AttributeArrays do not follow their
+unused data keys, including nonzero keys without serialized DATA; nonempty
+and constant arrays retain strict reference/payload validation.
+Empty, malformed, nonfinite, invalid-index and unsupported
 named-normal/storage cases require no partial Scene.
 Legacy type-16 `MLoopUV` layers also run across all four synthetic layouts,
 including two maps and mixed float2/MLoopUV maps, SDNA-defined offsets/strides,
@@ -354,6 +357,16 @@ indices, matrices and Mesh/UV arrays exactly. Root and standalone Scene
 builds include this CTest without introducing Blender or OpenUSD dependencies.
 The fixture uses one source scale; multi-scale unit and USD/importer
 integration remain separate evidence requirements.
+
+`blendScene.meshFixture` uses the same executable to compare the saved
+[Mesh-domain oracles](../../tests/fixtures/native-mesh/README.md): empty and
+loose-point Meshes with empty UV domains, UV-free polygons, corner seams,
+signed-zero/out-of-range coordinates, constant UV coordinates and distinct
+editing/render maps. Exact first-occurrence UV values and indices, contextual
+empty warnings and repeated/reversed owning reads are checked in both build
+modes. Registered-plugin tests compare the same oracles, extent, metadata-only
+hierarchy and reference composition. The 5.2.2 file reproduces unused nonzero
+data keys in zero-domain dense AttributeArrays.
 
 `blendScene.normals` compares unchanged Blender-written 4.5.13 and 5.2.2 files
 against saved point, topology and corner-normal oracles. Each version has
@@ -456,8 +469,8 @@ ost plugin test plugins\usdBlendFileFormat --target cy2026 --profile usd --from-
 
 The manifest declares the `blendFile` and `blendScene` edges; `ost` builds and
 installs both libraries into its workspace prefix before configuring the standalone bundle.
-The eight stage tests assert the registered cube, integrated Scene oracles,
-multi-scale imports, metadata-only hierarchy, contextual fatal/recoverable
+The eight stage tests assert the registered cube, integrated Scene and
+Mesh-domain oracles, multi-scale imports, metadata-only hierarchy, contextual fatal/recoverable
 diagnostics, repeat-read determinism and referenced geometry.
 Compressed input is rejected without introducing BLEND-O5 defaults.
 
@@ -503,9 +516,9 @@ ost library test libs\blendScene --target cy2026 --profile usd
 ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(authoring|units)$'
 ```
 
-The first command covers eighteen root CTests, including native/reader
-dependency gates and the inspection CLI. The others cover all ten standalone
-Scene tests and both standalone authoring/unit tests, with the same runtime
+The first command covers root CTests, including native/reader dependency
+gates and the inspection CLI. The others cover the standalone Scene suite
+and both standalone authoring/unit tests, with the same runtime
 activation as the plugin.
 Use the corresponding build directories on other hosts. The companion CI
 discovers its single standalone CTest directory rather than duplicating the
@@ -629,6 +642,36 @@ Mesh-sharing and UV mutations. Full-file bytes are not reproducible; there
 is no `--check-bytes` claim. The native `blendScene.sceneFixture` regression
 runs with the regular root and standalone Scene CTests above. Registered-plugin
 stage tests now compare these same saved oracles against the authored stage.
+
+### Saved Mesh-domain oracles
+
+Run with each pinned Blender installation (4.5.13 or 5.2.2). The default
+output is `tests/fixtures/native-mesh/blender-<version>/mesh.blend` and its
+adjacent ASCII oracle. Cases and provenance are in the
+[Mesh fixture record](../../tests/fixtures/native-mesh/README.md).
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 4.5\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_mesh.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_mesh.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_mesh.py
+
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_mesh.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_mesh.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_mesh.py
+
+ost library test libs\blendScene --target cy2026 --profile usd --filter 'blendScene\.(ir|meshFixture|sceneFixture|normals|meshBoundaries|boundary|link)'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- python plugins\usdBlendFileFormat\tests\test_stage.py StageContractTests.test_integrated_scene_oracles StageContractTests.test_repeat_read_and_metadata StageContractTests.test_contract_survives_reference
+```
+
+`--check` is non-destructive and checks both a temporary regeneration and the
+saved input. `--output <path.blend>` redirects either mode. UV comparisons
+are exact, including zero signs; other numeric Scene-oracle values retain
+the existing `2e-6` relative/absolute generator tolerance. Regression checks
+reject saved UV-coordinate/zero-sign/render-selector/loose-point/sharing
+mutations. Normal-save bytes are not reproducible; no `--check-bytes` claim
+is made.
 
 ### Registered cube fixture
 

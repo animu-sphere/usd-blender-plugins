@@ -32,7 +32,7 @@ def make_mesh(name, height):
     return mesh
 
 
-def make_scene():
+def reset_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     for screen in bpy.data.screens:
         for area in screen.areas:
@@ -40,6 +40,11 @@ def make_scene():
                 if space.type == "FILE_BROWSER" and space.params is not None:
                     space.params.directory = b"//"
     bpy.context.preferences.filepaths.save_version = 0
+    return bpy.context.scene
+
+
+def make_scene():
+    reset_scene()
     scene = bpy.context.scene
     scene.name = "Integrated"
     scene.unit_settings.scale_length = 0.01
@@ -123,7 +128,14 @@ def compare_oracle(expected, actual):
         raise RuntimeError("Scene oracle record count differs")
     for index, (left, right) in enumerate(zip(left_rows, right_rows)):
         values, references = shlex.split(right), shlex.split(left)
-        if references and references[0] in ("WORLD", "LOCAL", "POINT", "NORMAL", "VALUE"):
+        if references and references[0] == "VALUE":
+            if len(values) != len(references) or values[0] != references[0] or not all(
+                math.isfinite(float(value)) and float(value) == float(reference) and
+                math.copysign(1.0, float(value)) == math.copysign(1.0, float(reference))
+                for reference, value in zip(references[1:], values[1:])
+            ):
+                raise RuntimeError(f"Scene oracle values differ at line {index + 1}")
+        elif references and references[0] in ("WORLD", "LOCAL", "POINT", "NORMAL"):
             if len(values) != len(references) or values[0] != references[0] or not all(
                 math.isfinite(float(value)) and math.isclose(
                     float(value), float(reference), rel_tol=2e-6, abs_tol=2e-6

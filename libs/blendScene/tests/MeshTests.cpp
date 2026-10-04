@@ -547,6 +547,42 @@ void CheckLegacyUvs(const Fixture& fixture) {
   Require(SameMesh(expected, owned.meshes[0]), "Legacy UV results own their names, values and indices");
 }
 
+void CheckEmptyArrays(const Fixture& fixture) {
+  for (const auto element : {0u, 3u}) {
+    auto empty = fixture;
+    empty.EmptyPolygons();
+    if (element == 0) {
+      empty.Set(empty.mesh, "Mesh", "totvert", 0);
+      empty.Set(empty.arrays[element], "AttributeArray", "size", 0);
+    }
+    for (const auto address : {std::uint64_t{0}, std::uint64_t{999}, fixture.blocks[fixture.uv].oldAddress + 1}) {
+      auto changed = empty;
+      changed.Set(changed.arrays[element], "AttributeArray", "data", address);
+      const auto result = changed.Decode();
+      const auto scene = Take(result);
+      const auto& mesh = scene.meshes[0];
+      Require(result.Diagnostics().size() == 1 && result.Diagnostics()[0].code == "BLEND_MESH_EMPTY" &&
+                  result.Diagnostics()[0].blockIndex == changed.mesh && result.Diagnostics()[0].recoverable &&
+                  mesh.points.size() == (element == 0 ? 0 : 4) && mesh.uvMaps.size() == 2 &&
+                  mesh.uvMaps[0].values.empty() && mesh.uvMaps[0].indices.empty() &&
+                  mesh.uvMaps[1].values.empty() && mesh.uvMaps[1].indices.empty() && mesh.uvMaps[1].activeRender,
+          "Zero-domain dense arrays do not follow null, absent or interior saved data keys");
+      auto malformed = changed;
+      malformed.Set(malformed.arrays[element], "AttributeArray", "size", 1);
+      malformed.Failure("BLEND_MESH_STORAGE_INVALID", malformed.arrays[element]);
+      malformed = changed;
+      malformed.Set(malformed.arrays[element], "AttributeArray", "is_single", 2);
+      malformed.Failure("BLEND_MESH_STORAGE_INVALID", malformed.arrays[element]);
+      malformed = changed;
+      malformed.Set(malformed.arrays[element], "AttributeArray", "is_single", 1);
+      malformed.Failure("BLEND_MESH_REFERENCE_INVALID", malformed.arrays[element]);
+      malformed = fixture;
+      malformed.Set(malformed.arrays[element], "AttributeArray", "data", address);
+      malformed.Failure("BLEND_MESH_REFERENCE_INVALID", malformed.arrays[element]);
+    }
+  }
+}
+
 void CheckConstantMeshes(const Fixture& fixture) {
   for (const bool separate : {false, true}) {
     for (const bool raw : {false, true}) {
@@ -698,6 +734,7 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
         "Native Mesh parents reserve the data child name without changing shared geometry");
     const auto& mesh = decoded.meshes[0];
     if (modern) {
+      CheckEmptyArrays(fixture);
       CheckConstantMeshes(fixture);
     } else {
       CheckLegacyUvs(fixture);

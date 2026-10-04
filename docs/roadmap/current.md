@@ -25,7 +25,7 @@ transforms and mesh data under the
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
 | 2.3 | [Native scene decoding and ID graph](../design/DESIGN_POLICY.md#527-native-scene-decoding-boundary) | complete the mesh/empty milestone scope beyond the current mesh-storage boundary, composing selection and [saved Object values](../design/DESIGN_POLICY.md#526-saved-object-value-boundary); recursive instance references retain bounded missing, linked, invalid and cycle diagnostics | 🚧 |
-| 2.5 | [Version-aware mesh decoding](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary) | complete mesh storage beyond the fixture-backed CustomData/AttributeArray/AttributeSingle, packed custom-normal and synthetic MLoopUV boundary; points, topology, normals and indexed UVs populate the IR with tested empty/invalid/unsupported diagnostics | 🚧 |
+| 2.5 | [Version-aware mesh decoding](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary) | complete mesh storage beyond the fixture-backed CustomData/AttributeArray/AttributeSingle, packed custom-normal, [Mesh-domain oracle](../../tests/fixtures/native-mesh/README.md) and synthetic MLoopUV boundary; points, topology, normals and indexed UVs populate the IR with tested empty/invalid/unsupported diagnostics | 🚧 |
 | 2.8 | Cube milestone and regression fixtures | verify the reproducible `single_cube.blend` directly in `usdview` and the hosted Windows/Linux checks; registered-plugin oracle, deterministic-read, metadata and both local build-mode checks cover the connected Mesh/Empty scope | 🚧 |
 
 The [Scene IR boundary](../design/DESIGN_POLICY.md#521-scene-ir-foundation)

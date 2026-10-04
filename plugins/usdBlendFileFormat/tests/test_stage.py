@@ -14,6 +14,7 @@ from pxr import Sdf, Tf, Usd, UsdGeom
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 NATIVE = Path(__file__).resolve().parents[3] / "tests" / "fixtures"
 SCENES = [NATIVE / "native-scene" / version / "scene.blend" for version in ("blender-4.5.13", "blender-5.2.2")]
+MESHES = [NATIVE / "native-mesh" / version / "mesh.blend" for version in ("blender-4.5.13", "blender-5.2.2")]
 
 
 def converted_vector(value, scale=1.0):
@@ -158,7 +159,7 @@ class StageContractTests(unittest.TestCase):
             self.assertIn("block ", result.stderr)
 
     def test_repeat_read_and_metadata(self):
-        for fixture in [FIXTURES / "single_cube.blend", *SCENES]:
+        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *MESHES]:
             with self.subTest(fixture=str(fixture)):
                 path = str(fixture)
                 first = Sdf.Layer.OpenAsAnonymous(path)
@@ -182,7 +183,7 @@ class StageContractTests(unittest.TestCase):
                                  Sdf.Layer.OpenAsAnonymous(path, metadataOnly=True).ExportToString())
 
     def test_contract_survives_reference(self):
-        for fixture in [FIXTURES / "single_cube.blend", *SCENES]:
+        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *MESHES]:
             with self.subTest(fixture=str(fixture)):
                 stage = Usd.Stage.CreateInMemory()
                 root = stage.DefinePrim("/Referenced")
@@ -193,10 +194,11 @@ class StageContractTests(unittest.TestCase):
                 self.assertTrue(any(prim.IsA(UsdGeom.Mesh) for prim in stage.Traverse()))
 
     def test_integrated_scene_oracles(self):
-        for fixture in SCENES:
+        for fixture in [*SCENES, *MESHES]:
             with self.subTest(fixture=str(fixture)):
                 stage = Usd.Stage.Open(str(fixture))
-                self._assert_contract(stage, "4.5" if "4.5" in str(fixture) else "5.2", "Integrated")
+                self._assert_contract(stage, "4.5" if "4.5" in str(fixture) else "5.2",
+                                      "Integrated" if fixture in SCENES else "MeshDomains")
                 records = iter(shlex.split(line) for line in fixture.with_suffix(".oracle.txt").read_text().splitlines())
                 self.assertEqual(next(records), ["BLEND_SCENE_ORACLE", "1"])
                 next(records)
@@ -248,13 +250,37 @@ class StageContractTests(unittest.TestCase):
                         self.assertEqual(len(mesh.GetFaceVertexCountsAttr().Get()), int(faces))
                         self.assertEqual(list(mesh.GetFaceVertexIndicesAttr().Get()), list(map(int, indices[1:])))
                         self._assert_close(mesh.GetNormalsAttr().Get(), expected_normals)
+                        expected_extent = [
+                            [operation(point[axis] for point in expected_points) for axis in range(3)]
+                            for operation in (min, max)
+                        ] if expected_points else []
+                        self._assert_close(mesh.GetExtentAttr().Get(), expected_extent)
+                        self.assertEqual(len(UsdGeom.PrimvarsAPI(mesh).GetAuthoredPrimvars()), len(uv_maps))
                         for identifier, values in uv_maps:
-                            self._assert_close(UsdGeom.PrimvarsAPI(mesh).GetPrimvar(identifier).ComputeFlattened(),
-                                               values, tolerance=0)
+                            primvar = UsdGeom.PrimvarsAPI(mesh).GetPrimvar(identifier)
+                            expected_values, expected_indices = [], []
+                            for value in values:
+                                if value not in expected_values:
+                                    expected_values.append(value)
+                                expected_indices.append(expected_values.index(value))
+                            self.assertEqual(primvar.GetTypeName(), Sdf.ValueTypeNames.TexCoord2fArray)
+                            self.assertEqual(primvar.GetInterpolation(), "faceVarying")
+                            self.assertEqual(list(primvar.GetIndices()), expected_indices)
+                            self._assert_close(primvar.Get(), expected_values, tolerance=0)
+                            self._assert_close(primvar.ComputeFlattened(), values, tolerance=0)
                 self.assertEqual(list(records), [])
-                self.assertEqual(len(mesh_objects["SharedGeometry"]), 3)
-                self.assertEqual(objects["mesh"].GetName(), "mesh_1")
-                self.assertNotIn("OutsideParent", objects)
+                if fixture in SCENES:
+                    self.assertEqual(len(mesh_objects["SharedGeometry"]), 3)
+                    self.assertEqual(objects["mesh"].GetName(), "mesh_1")
+                    self.assertNotIn("OutsideParent", objects)
+                else:
+                    self.assertEqual(len(mesh_objects["Seams"]), 2)
+                    self.assertEqual(len(objects), 5)
+                    self.assertEqual(len(mesh_objects), 4)
+                    for mesh in mesh_objects["Seams"]:
+                        uv = UsdGeom.PrimvarsAPI(mesh).GetPrimvar("Seams")
+                        self.assertEqual(list(uv.GetIndices()), [0, 1, 2, 0, 3, 4, 1])
+                        self.assertEqual(math.copysign(1, uv.Get()[0][1]), -1)
                 self.assertFalse(any(prim.IsInstance() for prim in stage.Traverse()))
 
     def test_multi_scale_imports(self):

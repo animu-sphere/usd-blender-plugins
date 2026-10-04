@@ -705,7 +705,12 @@ length. Modern consumed attributes accept `AttributeArray` storage
 domain element; either constant form stores exactly one value, addressed as
 element zero for every logical element. Constants on empty domains still
 require their one stored value, but publish no elements. Dense empty arrays
-retain their null-data allowance. Consumed CustomData layers require zero
+validate their zero logical size and zero single flag, but do not resolve
+the unused data key: Blender 5.2 can save a nonzero key without a DATA block
+for these arrays. Nonempty arrays and both constant forms retain exact-key
+reference and payload validation. Empty CustomData retains its null-data
+allowance; nonnull CustomData keys still require valid serialized storage.
+Consumed CustomData layers require zero
 flags. Raw arrays require `raw_data`, count one
 and the exact serialized byte length; scalar bytes are decoded in the source
 byte order. Structured vector/integer arrays use SDNA member views. Array
@@ -808,6 +813,9 @@ Evidence belongs in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir). Neither
 synthetic storage nor corpus Mesh decoding establishes Blender transform/unit
 oracle equivalence, identifier policy, backend integration or USD authoring.
+Separate [Mesh-domain oracles](../../tests/fixtures/native-mesh/README.md)
+cover empty and polygon-free domains, UV absence, seams, numeric signed-zero
+deduplication, constant coordinates and editing/render-map distinction.
 
 ### 5.3 `usdBlendFileFormat` — the importer
 

@@ -20,7 +20,8 @@ void Require(bool condition, const std::string& message) {
 
 template <class Value>
 Value Take(const blend::Result<Value>& result) {
-  Require(result.HasValue(), result.HasValue() ? "" : result.GetError().code + ": " + result.GetError().message);
+  Require(result.HasValue(), result.HasValue() ? "" : result.GetError().code + ": " + result.GetError().message +
+      (result.GetError().blockIndex ? " at block " + std::to_string(*result.GetError().blockIndex) : ""));
   return result.GetValue();
 }
 
@@ -83,7 +84,7 @@ blend::Matrix4 Multiply(const blend::Matrix4& left, const blend::Matrix4& right)
   return result;
 }
 
-blend::Scene LoadScene(const std::filesystem::path& path, bool reverse = false) {
+blend::Scene LoadScene(const std::filesystem::path& path, bool reverse = false, bool meshDomains = false) {
   blend::FileByteSource source(path);
   const auto bytes = Take(blend::ReadFileBytes(source, {4 * 1024 * 1024, 4 * 1024 * 1024, 16, 23}));
   blend::MemoryByteSource memory(bytes);
@@ -99,7 +100,22 @@ blend::Scene LoadScene(const std::filesystem::path& path, bool reverse = false) 
   }
   const auto decoded = blend::DecodeScene(bytes, blocks, schema, header, {10000, 64});
   auto scene = Take(decoded);
-  Require(decoded.Diagnostics().empty(), "Integrated source fixture needs no evaluation or repair");
+  if (meshDomains) {
+    Require(decoded.Diagnostics().size() == 2, "Only the two polygon-free Meshes need diagnostics");
+    std::vector<std::string> names;
+    for (const auto& diagnostic : decoded.Diagnostics()) {
+      Require(diagnostic.code == "BLEND_MESH_EMPTY" && diagnostic.severity == blend::Severity::Warning &&
+                  diagnostic.recoverable && diagnostic.blockIndex && *diagnostic.blockIndex < blocks.size() &&
+                  diagnostic.byteOffset == blocks[*diagnostic.blockIndex].offset &&
+                  blocks[*diagnostic.blockIndex].code == std::array<char, 4>{'M', 'E', '\0', '\0'},
+          "Empty Mesh warning retains exact Mesh block context");
+      names.push_back(diagnostic.datablock);
+    }
+    std::sort(names.begin(), names.end());
+    Require(names == std::vector<std::string>{"Empty", "Loose"}, "Each empty Mesh warns exactly once");
+  } else {
+    Require(decoded.Diagnostics().empty(), "Integrated source fixture needs no evaluation or repair");
+  }
   return scene;
 }
 
@@ -138,9 +154,10 @@ void CompareScenes(const blend::Scene& left, const blend::Scene& right) {
   }
 }
 
-void CheckFixture(const std::filesystem::path& path) {
-  const auto scene = LoadScene(path);
-  Require(scene.metadata.sourceScene == "Integrated" && scene.objects.size() == 7 && scene.meshes.size() == 2,
+void CheckFixture(const std::filesystem::path& path, bool meshDomains) {
+  const auto scene = LoadScene(path, false, meshDomains);
+  Require(scene.metadata.sourceScene == (meshDomains ? "MeshDomains" : "Integrated") &&
+              scene.objects.size() == (meshDomains ? 5 : 7) && scene.meshes.size() == (meshDomains ? 4 : 2),
       "Only selected membership and its two unique Meshes are published");
   std::unordered_map<std::string, std::size_t> objects, meshes;
   for (std::size_t index = 0; index < scene.objects.size(); ++index) {
@@ -149,15 +166,34 @@ void CheckFixture(const std::filesystem::path& path) {
   for (std::size_t index = 0; index < scene.meshes.size(); ++index) {
     Require(meshes.emplace(scene.meshes[index].sourceName, index).second, "Unique selected Mesh names");
   }
-  Require(!objects.contains("OutsideParent") && !meshes.contains("ParentOnlyGeometry"),
-      "Parent-only Mesh contributes transforms without membership or geometry");
-  const auto shared = scene.objects[objects.at("MeshParent")].mesh;
-  Require(shared && scene.objects[objects.at("SharedChild")].mesh == shared &&
-              scene.objects[objects.at("SharedRoot")].mesh == shared &&
-              scene.objects[objects.at("Independent")].mesh != shared,
-      "Three Mesh Objects share one IR index, independently of hierarchy");
-  Require(scene.objects[objects.at("mesh")].identifier == "mesh_1",
-      "Mesh parent's fixed child name is reserved for its Empty child");
+  if (meshDomains) {
+    const auto shared = scene.objects[objects.at("Seams")].mesh;
+    Require(shared && scene.objects[objects.at("SharedSeams")].mesh == shared,
+        "Transformed Objects share one Mesh without transforming its UV values");
+    for (const auto& [name, shape] : std::vector<std::pair<std::string, std::array<std::size_t, 4>>>{
+             {"Empty", {0, 0, 0, 1}}, {"Loose", {3, 0, 0, 1}},
+             {"NoUv", {3, 1, 3, 0}}, {"Seams", {5, 2, 7, 2}}}) {
+      const auto& mesh = scene.meshes[meshes.at(name)];
+      Require(mesh.points.size() == shape[0] && mesh.faceVertexCounts.size() == shape[1] &&
+                  mesh.faceVertexIndices.size() == shape[2] && mesh.uvMaps.size() == shape[3],
+          name + " preserves its empty, loose, UV-free or seam-bearing domains");
+    }
+    const auto& maps = scene.meshes[*shared].uvMaps;
+    Require(maps[0].sourceName == "Seams" && !maps[0].activeRender &&
+                maps[0].values.size() == 5 && maps[0].indices == std::vector<std::int32_t>{0, 1, 2, 0, 3, 4, 1} &&
+                maps[1].sourceName == "Constant" && maps[1].activeRender && maps[1].values.size() == 1,
+        "Corner seams, numeric signed-zero equality and the non-editing render map are preserved");
+  } else {
+    Require(!objects.contains("OutsideParent") && !meshes.contains("ParentOnlyGeometry"),
+        "Parent-only Mesh contributes transforms without membership or geometry");
+    const auto shared = scene.objects[objects.at("MeshParent")].mesh;
+    Require(shared && scene.objects[objects.at("SharedChild")].mesh == shared &&
+                scene.objects[objects.at("SharedRoot")].mesh == shared &&
+                scene.objects[objects.at("Independent")].mesh != shared,
+        "Three Mesh Objects share one IR index, independently of hierarchy");
+    Require(scene.objects[objects.at("mesh")].identifier == "mesh_1",
+        "Mesh parent's fixed child name is reserved for its Empty child");
+  }
   auto oraclePath = path;
   oraclePath.replace_extension(".oracle.txt");
   std::ifstream oracle(oraclePath);
@@ -204,7 +240,7 @@ void CheckFixture(const std::filesystem::path& path) {
     std::string name;
     std::size_t points = 0, faces = 0, corners = 0, uvs = 0;
     Require(static_cast<bool>(oracle >> std::quoted(name) >> points >> faces >> corners >> uvs) &&
-                meshes.contains(name) && points == 5 && faces == 2 && corners == 7 && uvs == 2,
+                meshes.contains(name) && (meshDomains || (points == 5 && faces == 2 && corners == 7 && uvs == 2)),
         "Oracle unique Mesh shape");
     const auto& mesh = scene.meshes[meshes.at(name)];
     Require(mesh.points.size() == points && mesh.faceVertexCounts.size() == faces &&
@@ -236,29 +272,44 @@ void CheckFixture(const std::filesystem::path& path) {
       bool active = false;
       Require(static_cast<bool>(oracle >> std::quoted(uvName) >> active), "Oracle UV header");
       const auto& map = mesh.uvMaps[uv];
-      Require(map.sourceName == uvName && map.activeRender == active && map.indices.size() == corners &&
-                  map.values.size() == (uvName == "Detail" ? 5 : 7),
+      Require(map.sourceName == uvName && map.activeRender == active && map.indices.size() == corners,
           name + " indexed UV names, deduplication and non-first render map");
+      std::vector<blend::Vector2> expectedValues;
       for (const auto index : map.indices) {
-        Require(index >= 0 && static_cast<std::size_t>(index) < map.values.size(), "UV index addresses owning values");
-        Require(map.values[static_cast<std::size_t>(index)] == ReadVector<2>(oracle, "VALUE"),
+        const auto value = ReadVector<2>(oracle, "VALUE");
+        const auto found = std::find(expectedValues.begin(), expectedValues.end(), value);
+        const auto expectedIndex = static_cast<std::int32_t>(found - expectedValues.begin());
+        if (found == expectedValues.end()) {
+          expectedValues.push_back(value);
+        }
+        Require(index == expectedIndex && index >= 0 && static_cast<std::size_t>(index) < map.values.size(),
+            "UV indices follow numeric first occurrence, not vertices or lexicographic order");
+        Require(map.values[static_cast<std::size_t>(index)] == value,
             name + " UV coordinates are unchanged by units, basis and Object transforms");
+      }
+      Require(map.values == expectedValues, "Indexed UV values have no unused entries");
+      for (std::size_t value = 0; value < expectedValues.size(); ++value) {
+        for (std::size_t axis = 0; axis < 2; ++axis) {
+          Require(std::signbit(map.values[value][axis]) == std::signbit(expectedValues[value][axis]),
+              "Indexed UV values preserve the first signed-zero representation");
+        }
       }
     }
   }
   oracle >> std::ws;
   Require(oracle.eof(), "Scene oracle has no trailing records");
-  CompareScenes(scene, LoadScene(path));
-  CompareScenes(scene, LoadScene(path, true));
+  CompareScenes(scene, LoadScene(path, false, meshDomains));
+  CompareScenes(scene, LoadScene(path, true, meshDomains));
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
   try {
-    Require(argc == 3, "Two Blender-written integrated Scene fixtures are required");
-    CheckFixture(argv[1]);
-    CheckFixture(argv[2]);
+    const bool meshDomains = argc == 4 && std::string(argv[1]) == "--mesh-domains";
+    Require(argc == 3 || meshDomains, "Two Blender-written Scene fixtures and an optional --mesh-domains are required");
+    CheckFixture(argv[meshDomains ? 2 : 1], meshDomains);
+    CheckFixture(argv[meshDomains ? 3 : 2], meshDomains);
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
