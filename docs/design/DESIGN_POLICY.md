@@ -672,7 +672,9 @@ The initial domain/type mapping is:
 | --- | --- | --- | --- |
 | `position` | point (0) | float3 (48) | float3 (7) |
 | `.corner_vert` | corner (3) | integer (11) | integer (3) |
+| `.corner_edge` (split normals) | corner (3) | integer (11) | integer (3) |
 | `sharp_face` | face (2) | boolean (50) | boolean (0) |
+| `sharp_edge` | edge (1) | boolean (50) | boolean (0) |
 | UV maps | corner (3) | float2 (49) | float2 (6) |
 
 Required positions and corner indices must be present for nonempty domains.
@@ -693,14 +695,28 @@ lengths are validated before output reservation. Names are bounded terminated
 character storage, nonempty and unique within a domain; raw source bytes are
 retained without assigning identifiers.
 
-The initial normal scope is flat polygons with all `sharp_face` values true.
-Area-weighted polygon normals are constructed from source positions, normalized
-and rotated into the USD basis without unit scaling, then copied per corner.
-Missing/smooth sharp-face data and packed or named custom normals fail with
-`BLEND_MESH_NORMALS_UNSUPPORTED`; degenerate polygons fail with
-`BLEND_MESH_NORMALS_INVALID`. Smooth fans, custom split normals, constant
-attribute storage and legacy `MLoopUV` storage remain separate work, not
-success-shaped approximations.
+Polygon normals are constructed from source positions and normalized.
+Missing `sharp_face` or `sharp_edge` attributes mean false, not an unsupported
+normal mode. All-flat polygons copy their face normal to each corner. An
+entirely smooth Mesh without sharp edges uses angle-weighted point normals,
+including across disconnected or nonmanifold incident faces. Otherwise,
+smooth corners use angle-weighted normals within connected split fans; flat
+corners retain their face normal. This domain selection matches Blender's
+source normal behavior rather than always imposing manifold fan separation.
+
+Split fans require nonnegative scalar `totedge` and dense `.corner_edge`
+storage. Corner edge indices must be in range; uses of a shared edge must
+agree on its vertex endpoints. Corners connect only across a non-sharp edge
+used by exactly two distinct smooth polygons in opposite directions.
+Boundary, nonmanifold, same-direction, sharp-edge and flat-face boundaries
+therefore separate fans. Loose edges and `.edge_verts` are not decoded by this
+normal boundary. Normals are rotated into the USD basis without unit scaling.
+Degenerate polygons, zero-length corner directions and zero/nonfinite weighted
+normal sums fail with `BLEND_MESH_NORMALS_INVALID`, without an arbitrary normal
+fallback. Packed or named custom normals still fail with
+`BLEND_MESH_NORMALS_UNSUPPORTED`. Custom split normals, constant attribute
+storage and legacy `MLoopUV` storage remain separate work, not success-shaped
+approximations.
 
 Every corner float2 map becomes an owning indexed `UvMap`: equal numeric pairs
 share a value at first occurrence, indices preserve corner order, and no UV

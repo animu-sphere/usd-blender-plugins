@@ -301,13 +301,26 @@ named indexed `UVMap` coordinates and repeated-read equality. Both storage
 forms also run across four synthetic layouts, covering mixed Mesh/Empty
 objects, shared Mesh indices, two indexed UV maps with a non-first render map,
 block reordering, ownership and four unit scales without scaling normals/UVs.
-Empty, malformed, nonfinite, invalid-index and unsupported smooth/custom/constant
+Empty, malformed, nonfinite, invalid-index and unsupported custom/constant
 storage cases require exact contextual diagnostics and no partial Scene.
 Modifier and shape-key presence reports source-only data without evaluation.
 The root reader build and standalone OpenStrata library build both run these
-tests and the existing four scene dependency-boundary gates. Smooth/custom
+tests and the existing four scene dependency-boundary gates. Custom
 normals, Blender-written Mesh transform/unit oracle fixtures and USD geometry remain
 unproven; no Blender executable is required by these CTests.
+
+`blendScene.normals` compares unchanged Blender-written 4.5.13 and 5.2.2 files
+against saved point, topology and corner-normal oracles. Each version has
+three single-Mesh fixtures with 15 geometry cases and 137 corners: flat,
+entirely smooth point normals and mixed/sharp split fans, including unequal
+corner angles, open/closed fans, concave polygons, disconnected faces,
+nonmanifold edges and same-direction edge uses. Normal components compare
+within absolute `2e-5`; output normals must have unit length within `1e-12`.
+Repeated reads with reversed block records must produce identical arrays.
+The synthetic IR tests also check angle weighting, missing sharp-face defaults,
+unit-scale independence, edge storage/range/endpoint errors and cancelling
+smooth normal sums. Both root and standalone Scene CTest suites include this
+oracle comparison, without requiring Blender at test time.
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines matrix storage and ownership; supported scope is in the
@@ -463,3 +476,32 @@ The regression suite checks cross-process/path oracle reproduction,
 non-destructive checks, absence of the user's home path, modified-oracle
 rejection and validation of changed saved transforms. Full-file saved addresses
 and UI state are not byte-reproducible; no `--check-bytes` claim is made.
+
+### Saved normal oracles
+
+Run with each pinned Blender installation (4.5.13 or 5.2.2). The default
+output directory holds `smooth.blend`, `flat.blend`, `split.blend` and their
+adjacent `.oracle.txt` files. Provenance, cases, comparison thresholds and the
+single-Mesh constraint are in the
+[normal fixture record](../../tests/fixtures/native-normals/README.md).
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 4.5\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_normals.py
+
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_normals.py
+```
+
+The generator constructs source geometry without modifiers or custom normals.
+`--check` regenerates into temporary files, compares the semantic oracles,
+then reopens and verifies each stored fixture without rewriting any fixture
+or oracle. `--output <directory>` redirects all three files in either mode.
+The regression suite checks every oracle's cross-process/path reproduction,
+non-destructive checks of all files, absence of Windows absolute UI/home paths,
+modified-oracle rejection and validation of changed saved smoothing flags.
+Saved addresses and UI state are not byte-reproducible.
