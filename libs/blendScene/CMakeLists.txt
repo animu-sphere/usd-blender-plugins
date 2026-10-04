@@ -53,6 +53,8 @@ if(BUILD_TESTING)
     add_test(NAME blendScene.normals COMMAND blendSceneNormalTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-4.5.13
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-5.2.2)
+    add_test(NAME blendScene.legacyNormals COMMAND blendSceneNormalTests --legacy
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-3.3.21)
     add_test(NAME blendScene.transforms COMMAND blendSceneTransformTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-transforms/blender-4.5.13/transforms.blend
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-transforms/blender-5.2.2/transforms.blend)

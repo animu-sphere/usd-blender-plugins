@@ -99,7 +99,8 @@ public:
                                                   {"CustomData", "edata"}, {"CustomData", "pdata"}, {"CustomData", "ldata"},
                                                   {"char", "default_uv_map_attribute", true}, {"Key", "key", true},
                                                   {"MVert", "mvert", true}, {"MLoop", "mloop", true},
-                                                  {"MPoly", "mpoly", true}, {"MEdge", "medge", true}, {"ushort", "flag"}});
+                                                  {"MPoly", "mpoly", true}, {"MEdge", "medge", true}, {"ushort", "flag"},
+                                                  {"float", "smoothresh"}});
     mesh = static_cast<std::uint32_t>(blocks.size() - 2);
     blocks[mesh].sdnaIndex = meshStruct;
     blocks[mesh].offset = bytes.size();
@@ -513,8 +514,47 @@ void CheckLegacyVersion(const Fixture& fixture) {
       "Blender 3.3 smooth corners include flat-face contributions while flat corners retain face normals");
   smooth.Bits(smooth.legacyEdges, 2 * smooth.Size("MEdge") + smooth.Member("MEdge", "flag").offset, 512, 2);
   Require(SameMesh(mixed, Take(smooth.Decode()).meshes[0]), "Blender 3.3 default normals do not split at sharp edges");
+  auto autoSmooth = legacy;
+  autoSmooth.Float(autoSmooth.legacyPoints, 3 * autoSmooth.Size("MVert") + autoSmooth.Member("MVert", "co").offset + 8, 3);
+  for (std::size_t face = 0; face < 2; ++face) {
+    autoSmooth.Bits(autoSmooth.legacyPolygons, face * autoSmooth.Size("MPoly") + autoSmooth.Member("MPoly", "flag").offset, 1, 1);
+  }
+  for (const auto flags : {32u, 0xd120u}) {
+    autoSmooth.Set(autoSmooth.mesh, "Mesh", "flag", flags);
+    autoSmooth.Float(autoSmooth.mesh, autoSmooth.Member("Mesh", "smoothresh").offset, std::numbers::pi_v<float>);
+    Require(Take(autoSmooth.Decode()).meshes[0].cornerNormals == smoothNormals,
+        "Auto-smooth at pi joins the two smooth faces for observed and synthetic flags");
+  }
+  autoSmooth.Float(autoSmooth.mesh, autoSmooth.Member("Mesh", "smoothresh").offset, 0);
+  const auto separated = Take(autoSmooth.Decode()).meshes[0];
+  Require(separated.cornerNormals.size() == 6, "Zero auto-smooth angle retains every corner normal");
+  const blend::Vector3 tiltedNormal = {3 / std::sqrt(17.0), 2 / std::sqrt(17.0), 2 / std::sqrt(17.0)};
+  for (std::size_t corner = 0; corner < separated.cornerNormals.size(); ++corner) {
+    const auto expectedNormal = corner < 3 ? blend::Vector3{0, 1, 0} : tiltedNormal;
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      Require(std::abs(separated.cornerNormals[corner][axis] - expectedNormal[axis]) < 1e-12,
+          "Zero auto-smooth angle retains each face's analytic normal");
+    }
+  }
+  autoSmooth.Float(autoSmooth.mesh, autoSmooth.Member("Mesh", "smoothresh").offset, std::numbers::pi_v<float>);
+  autoSmooth.Bits(autoSmooth.legacyEdges, 2 * autoSmooth.Size("MEdge") + autoSmooth.Member("MEdge", "flag").offset, 512, 2);
+  Require(SameMesh(separated, Take(autoSmooth.Decode()).meshes[0]), "Sharp edges split fans even at pi");
+  for (const auto angle : {-1.0f, std::nextafter(std::numbers::pi_v<float>, 4.0f),
+           std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+    auto invalid = autoSmooth;
+    invalid.Float(invalid.mesh, invalid.Member("Mesh", "smoothresh").offset, angle);
+    invalid.Failure("BLEND_MESH_NORMALS_INVALID", invalid.mesh);
+    invalid.Set(invalid.mesh, "Mesh", "flag", 0xd100);
+    Require(invalid.Decode().HasValue(), "Inactive auto-smooth angle is not interpreted");
+  }
+  auto wrongAngle = autoSmooth;
+  auto& angleFields = wrongAngle.schema.structs[wrongAngle.blocks[wrongAngle.mesh].sdnaIndex].members;
+  std::find_if(angleFields.begin(), angleFields.end(),
+      [](const auto& field) { return field.baseName == "smoothresh"; })
+      ->typeIndex = wrongAngle.Member("Mesh", "totvert").typeIndex;
+  wrongAngle.Failure("BLEND_MESH_STORAGE_INVALID", wrongAngle.mesh);
   auto changed = legacy;
-  changed.Set(changed.mesh, "Mesh", "flag", 32);
+  changed.Set(changed.mesh, "Mesh", "flag", 64);
   changed.Failure("BLEND_MESH_NORMALS_UNSUPPORTED", changed.mesh);
   changed = legacy;
   const auto packedValues = changed.Data("vec2s", 6, 0);

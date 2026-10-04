@@ -128,9 +128,11 @@ smooth corners use angle-weighted point normals from all adjacent faces,
 including flat ones; flat corners use face normals, and sharp edges do not
 split smooth fans. The original Seams oracle pins this older behavior, not
 the modern sharp/flat split-fan policy. Synthetic zero flags also select this
-mode. Other flag values and packed custom-normal layers fail explicitly with
-`BLEND_MESH_NORMALS_UNSUPPORTED`; auto-smooth/angle-dependent and custom
-legacy normal modes are not supported by this evidence.
+mode. Separate [auto-smooth fixtures](../native-normals/README.md#legacy-auto-smooth)
+establish bit 5 (`0xd120`) and angle-dependent split fans without changing
+this default-mode oracle. Other flag values and packed custom-normal layers
+fail explicitly with `BLEND_MESH_NORMALS_UNSUPPORTED`; custom legacy normal
+modes are not supported by this evidence.
 
 `blendScene.legacyMeshStorage` retains raw storage checks and now also tests
 signed negative/overflow/out-of-domain indices, unsupported saved Mesh flags

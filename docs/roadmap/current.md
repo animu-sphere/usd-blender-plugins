@@ -16,7 +16,7 @@ transforms and mesh data under the
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
 | 2.3 | [Native scene decoding and ID graph](../design/DESIGN_POLICY.md#527-native-scene-decoding-boundary) | complete the mesh/empty milestone scope beyond the current mesh-storage boundary, composing selection and [saved Object values](../design/DESIGN_POLICY.md#526-saved-object-value-boundary); recursive instance references retain bounded missing, linked, invalid and cycle diagnostics | 🚧 |
-| 2.5 | [Version-aware mesh decoding](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary) | complete mesh storage beyond the fixture-backed CustomData/AttributeArray/AttributeSingle, packed custom-normal, [Mesh-domain oracle](../../tests/fixtures/native-mesh/README.md) and 3.3 MLoopUV/fixed-array default-normal boundary; points, topology, normals and indexed UVs populate the IR with tested empty/invalid/unsupported diagnostics | 🚧 |
+| 2.5 | [Version-aware mesh decoding](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary) | complete mesh storage beyond the fixture-backed CustomData/AttributeArray/AttributeSingle, packed custom-normal, [Mesh-domain oracle](../../tests/fixtures/native-mesh/README.md) and 3.3 MLoopUV/fixed-array default/auto-smooth normal boundary; points, topology, normals and indexed UVs populate the IR with tested empty/invalid/unsupported diagnostics | 🚧 |
 
 The [Scene IR boundary](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 keeps basis conversion separate from binary decoding and USD authoring.
@@ -41,8 +41,11 @@ The unchanged
 now compares full owning IR and registered-plugin stages to its saved oracle,
 including default legacy point normals, transforms, shared geometry, empty
 domains and exact indexed MLoopUVs. Unverified versions and legacy normal
-modes retain contextual fatal diagnostics. Auto-smooth/angle-dependent and
-packed custom normals in older storage, and other 3.x–4.4 version evidence,
+modes retain contextual fatal diagnostics. Four saved
+[3.3.21 auto-smooth fixtures](../../tests/fixtures/native-normals/README.md#legacy-auto-smooth)
+now pin angle thresholds, sharp/flat boundaries and connected fan normals
+through owning IR, USD authoring and registered-plugin oracle comparisons.
+Packed custom normals in older storage and other 3.x–4.4 version evidence
 remain incomplete; the existing modern decoding boundary is unchanged.
 The accepted [full-stream limit policy](../design/BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
 does not broaden the importer's uncompressed-only boundary; compressed scene

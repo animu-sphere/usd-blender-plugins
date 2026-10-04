@@ -16,6 +16,8 @@ NATIVE = Path(__file__).resolve().parents[3] / "tests" / "fixtures"
 SCENES = [NATIVE / "native-scene" / version / "scene.blend" for version in ("blender-4.5.13", "blender-5.2.2")]
 MESHES = [NATIVE / "native-mesh" / version / "mesh.blend"
           for version in ("blender-3.3.21", "blender-4.5.13", "blender-5.2.2")]
+LEGACY_NORMALS = [NATIVE / "native-normals" / "blender-3.3.21" / f"{group}.blend"
+                  for group in ("auto_smooth", "auto_angle", "auto_zero", "auto_boundary")]
 
 
 def converted_vector(value, scale=1.0):
@@ -160,7 +162,7 @@ class StageContractTests(unittest.TestCase):
             self.assertIn("block ", result.stderr)
 
     def test_repeat_read_and_metadata(self):
-        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *MESHES]:
+        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *MESHES, *LEGACY_NORMALS]:
             with self.subTest(fixture=str(fixture)):
                 path = str(fixture)
                 first = Sdf.Layer.OpenAsAnonymous(path)
@@ -184,7 +186,7 @@ class StageContractTests(unittest.TestCase):
                                  Sdf.Layer.OpenAsAnonymous(path, metadataOnly=True).ExportToString())
 
     def test_contract_survives_reference(self):
-        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *MESHES]:
+        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *MESHES, *LEGACY_NORMALS]:
             with self.subTest(fixture=str(fixture)):
                 stage = Usd.Stage.CreateInMemory()
                 root = stage.DefinePrim("/Referenced")
@@ -283,6 +285,46 @@ class StageContractTests(unittest.TestCase):
                         self.assertEqual(list(uv.GetIndices()), [0, 1, 2, 0, 3, 4, 1])
                         self.assertEqual(math.copysign(1, uv.Get()[0][1]), -1)
                 self.assertFalse(any(prim.IsInstance() for prim in stage.Traverse()))
+
+    def test_legacy_auto_smooth_oracles(self):
+        for fixture in LEGACY_NORMALS:
+            with self.subTest(fixture=str(fixture)):
+                stage = Usd.Stage.Open(str(fixture))
+                self._assert_contract(stage, "3.3", "Normals")
+                records = iter(fixture.with_suffix(".oracle.txt").read_text(encoding="ascii").splitlines())
+                self.assertEqual(next(records), "BLEND_NORMALS_ORACLE 3")
+                self.assertEqual(next(records), "'3.3.21'")
+                scale, count = next(records).split()
+                self.assertEqual(int(count), 1)
+                name, points, faces, corners = shlex.split(next(records))
+                marker, enabled, angle = next(records).split()
+                self.assertEqual((marker, enabled), ("AUTO_SMOOTH", "1"))
+                self.assertGreaterEqual(float(angle), 0)
+                self.assertLessEqual(float(angle), math.pi + 1e-7)
+                mesh = UsdGeom.Mesh(stage.GetPrimAtPath(f"/Asset/geo/{name}/mesh"))
+                self.assertTrue(mesh)
+                expected_points = [converted_vector(tuple(map(float, next(records).split())), float(scale))
+                                   for _ in range(int(points))]
+                self._assert_close(mesh.GetPointsAttr().Get(), expected_points)
+                counts = list(map(int, next(records).split()))
+                indices = list(map(int, next(records).split()))
+                self.assertEqual(len(counts), int(faces))
+                self.assertEqual(len(indices), int(corners))
+                self.assertEqual(list(mesh.GetFaceVertexCountsAttr().Get()), counts)
+                self.assertEqual(list(mesh.GetFaceVertexIndicesAttr().Get()), indices)
+                expected_normals = [converted_vector(tuple(map(float, next(records).split())))
+                                    for _ in range(int(corners))]
+                normals = mesh.GetNormalsAttr().Get()
+                self.assertEqual(mesh.GetNormalsInterpolation(), "faceVarying")
+                self.assertEqual(len(normals), int(corners))
+                for actual, expected in zip(normals, expected_normals):
+                    for component, target in zip(actual, expected):
+                        self.assertLessEqual(abs(component - target), 2e-5)
+                self.assertEqual(list(records), [])
+                referenced = Usd.Stage.CreateInMemory()
+                referenced.DefinePrim("/Referenced").GetReferences().AddReference(str(fixture))
+                other = UsdGeom.Mesh(referenced.GetPrimAtPath(f"/Referenced/geo/{name}/mesh"))
+                self.assertEqual(other.GetNormalsAttr().Get(), normals)
 
     def test_multi_scale_imports(self):
         baseline = None

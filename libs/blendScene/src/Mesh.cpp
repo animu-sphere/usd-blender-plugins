@@ -786,8 +786,9 @@ private:
 
   void ReadNormals(Mesh& mesh, const DnaValueView& source, std::uint32_t faces) const {
     const auto custom = Find("custom_normal", 3, Kind::Short2, false);
-    const bool legacyPointNormals = header_.version == 303;
-    if (legacyPointNormals) {
+    bool legacyPointNormals = header_.version == 303;
+    std::optional<double> splitAngleCosine;
+    if (header_.version == 303) {
       const auto flag = Take(source.Member("flag"));
       if (flag.Type().name != "ushort" || flag.Type().length != 2 ||
           flag.PointerLevel() != 0 || !flag.ArrayDimensions().empty()) {
@@ -795,8 +796,23 @@ private:
       }
       const auto flags = Take(flag.UnsignedInteger());
       constexpr std::uint64_t observedDefaultFlags = 0xd100;
-      if ((flags != 0 && flags != observedDefaultFlags) || custom) {
-        Fail("BLEND_MESH_NORMALS_UNSUPPORTED", "Blender 3.3 Mesh flags (" + std::to_string(flags) + ") and packed custom normals are outside the tested point-normal mode", index_);
+      constexpr std::uint64_t autoSmoothFlag = 32;
+      if (((flags & ~autoSmoothFlag) != 0 && (flags & ~autoSmoothFlag) != observedDefaultFlags) || custom) {
+        Fail("BLEND_MESH_NORMALS_UNSUPPORTED", "Blender 3.3 Mesh flags (" + std::to_string(flags) + ") or packed custom normals are outside the tested normal modes", index_);
+      }
+      if ((flags & autoSmoothFlag) != 0) {
+        const auto angle = Take(source.Member("smoothresh"));
+        if (angle.Type().name != "float" || angle.Type().length != 4 ||
+            angle.PointerLevel() != 0 || !angle.ArrayDimensions().empty()) {
+          Fail("BLEND_MESH_STORAGE_INVALID", "Blender 3.3 smoothing angle must be a scalar float", index_);
+        }
+        const auto radians = Take(angle.FloatingPoint());
+        if (!std::isfinite(radians) || radians < 0 ||
+            radians > static_cast<double>(static_cast<float>(std::numbers::pi))) {
+          Fail("BLEND_MESH_NORMALS_INVALID", "Blender 3.3 smoothing angle must be finite and between zero and pi", index_);
+        }
+        splitAngleCosine = std::cos(static_cast<float>(radians));
+        legacyPointNormals = false;
       }
     }
     const auto corners = mesh.faceVertexIndices.size();
@@ -859,7 +875,7 @@ private:
       return;
     }
     const auto split = !legacyPointNormals &&
-                       (custom || std::any_of(flat.begin(), flat.end(), [](bool value) { return value; }) ||
+                       (splitAngleCosine || custom || std::any_of(flat.begin(), flat.end(), [](bool value) { return value; }) ||
                            std::any_of(sharpEdges.begin(), sharpEdges.end(), [](bool value) { return value; }));
     std::vector<std::size_t> groups(corners), next(corners), previous(corners);
     std::vector<std::optional<std::size_t>> acrossOut(corners), acrossIn(corners);
@@ -923,7 +939,8 @@ private:
         const auto a = topologyEdge.uses[0], b = topologyEdge.uses[1];
         if (cornerFaces[a] == cornerFaces[b] || flat[cornerFaces[a]] || flat[cornerFaces[b]] ||
             mesh.faceVertexIndices[a] != mesh.faceVertexIndices[next[b]] ||
-            mesh.faceVertexIndices[next[a]] != mesh.faceVertexIndices[b]) {
+            mesh.faceVertexIndices[next[a]] != mesh.faceVertexIndices[b] ||
+            (splitAngleCosine && Dot(normals[cornerFaces[a]], normals[cornerFaces[b]]) < *splitAngleCosine)) {
           continue;
         }
         join(a, next[b]);

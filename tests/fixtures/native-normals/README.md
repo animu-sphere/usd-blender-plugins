@@ -89,6 +89,68 @@ addresses and UI state may vary. See the
 generation/check commands and
 [test_generate_normals.py](../test_generate_normals.py) for regression checks.
 
+## Legacy auto-smooth
+
+Four additional files were generated, saved and reopened on Windows on
+2026-10-05 with the official Blender 3.3.21 portable build `e016c21db151`.
+The archive's SHA-256 was verified against Blender's published list; Blender
+is not bundled. These fixtures use the same generator's version-specific
+groups, without modifying any existing modern files or the legacy Mesh-domain
+fixture.
+
+| File | Bytes | SHA-256 |
+| --- | --- | --- |
+| `blender-3.3.21/auto_smooth.blend` | 437332 | `bb2b2f5ca53326470eda59b8e47d6425ce3c66a3a33368ace96581e75a3ae0f5` |
+| `blender-3.3.21/auto_angle.blend` | 437332 | `5192f066ebcc77846624eca8efa5ddab6566aa6723695b3d32957778f9506031` |
+| `blender-3.3.21/auto_zero.blend` | 437332 | `0bfbb9d3ed248c18f8053484a99f0a8b25a81c5920d41e21a9c05292a871882c` |
+| `blender-3.3.21/auto_boundary.blend` | 437332 | `68e3a5817c7b187d3f3425535c744753646e9c083dd010571c8c7fe195baaf44` |
+
+Each uncompressed file has one identity-transform Mesh Object, source unit
+scale `0.01`, 91 points, 49 polygons and 161 corners. It combines all original
+smooth/flat/split geometry cases above, three wedges immediately below, at
+and above a right-angle dihedral (third-point offsets `-0.0001`, `0`,
+`0.0001`), and a coplanar wedge. Source auto-smooth angles are respectively
+180, 60, 0 and 90 degrees; the oracle records their exact saved float32
+radians. Nonmanifold, disconnected and same-direction cases distinguish
+auto-smooth's connected fans from the unchanged default point-normal mode,
+even at 180 degrees. Sharp edges and flat faces still split fans at that
+maximum angle.
+
+`BLEND_NORMALS_ORACLE 3` keeps the original point/topology/normal records and
+adds `AUTO_SMOOTH <enabled> <saved-angle>` immediately after each Mesh header.
+Blender 3.3 supplies normals through `calc_normals_split()` and
+`MeshLoop.normal`. Capture follows saving; reopening the committed file must
+produce the same oracle. Generator comparisons use the existing `2e-6`
+relative/absolute vector tolerance and exact mode/angle records.
+
+`blendScene.legacyNormals` compares saved Mesh flags `0xd120`, exact
+`smoothresh`, converted points, unchanged topology and all 644 corner
+normals against the oracles in root and standalone builds. Normal-component
+tolerance is absolute `2e-5`, measured maximum error `8.23126e-8`; native
+normals are unit length within `1e-12`. Repeated/reversed-block decoding is
+exactly deterministic. Four synthetic pointer-width/byte-order layouts in
+`blendScene.ir` test zero/pi angles, synthetic `0x20` flags, sharp-edge
+splitting at pi and negative/nonfinite/immediately-above-pi/wrong-type angle
+failures with exact fatal Mesh block/byte context and no partial Scene.
+Inactive smoothing angles are not interpreted.
+Zero-angle synthetic normals compare to each face's analytic normal within
+`1e-12`, rather than requiring bit-identical results from independently
+weighted/renormalized corner fans. Exact comparisons still pin
+repeated/reversed decoding of the same input.
+
+`usdBlend.authoring` checks native-to-USD identity, repeated/reversed stages
+and metadata-only reads in both build modes. Registered-plugin tests compare
+all source oracles with face-varying USD normals, repeated/metadata reads
+and reference composition. Default 3.3 point normals and modern storage/
+normal behavior retain their existing tests. Legacy packed custom normals
+and other 3.x–4.4 version support are not established.
+
+[test_generate_legacy_normals.py](../test_generate_legacy_normals.py) checks
+cross-process/path reproduction, absolute-path exclusion, non-destructive
+successful/failed checks, selected-group isolation, modified-oracle rejection
+and saved mode/angle/sharp-edge/flat-face mutations. Generation/check commands
+are in the [build guide](../../../docs/guides/building.md#legacy-auto-smooth-oracles).
+
 ## Boundary limitations
 
 ### Packed custom normals

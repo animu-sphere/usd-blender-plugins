@@ -63,8 +63,10 @@ void CheckFixture(const std::filesystem::path& path) {
   std::ifstream oracle(oraclePath);
   std::string line;
   const auto custom = path.stem().string().starts_with("custom");
+  const auto legacy = header.version == 303;
   Require(static_cast<bool>(std::getline(oracle, line)) &&
-              line == (custom ? "BLEND_NORMALS_ORACLE 2" : "BLEND_NORMALS_ORACLE 1"),
+              line == (legacy ? "BLEND_NORMALS_ORACLE 3" : custom ? "BLEND_NORMALS_ORACLE 2"
+                                                                  : "BLEND_NORMALS_ORACLE 1"),
       "Normal oracle version");
   Require(static_cast<bool>(std::getline(oracle, line)), "Oracle Blender version");
   double scale = 0;
@@ -79,6 +81,22 @@ void CheckFixture(const std::filesystem::path& path) {
     std::string name;
     std::size_t points = 0, faces = 0, corners = 0;
     Require(static_cast<bool>(oracle >> std::quoted(name) >> points >> faces >> corners), "Normal oracle mesh header");
+    if (legacy) {
+      std::string marker;
+      bool enabled = false;
+      double angle = 0;
+      Require(static_cast<bool>(oracle >> marker >> enabled >> angle) && marker == "AUTO_SMOOTH" && enabled &&
+                  std::isfinite(angle) && angle >= 0 && angle <= 3.141593,
+          "Legacy oracle records enabled auto-smooth and its saved angle");
+      const auto block = std::find_if(blocks.begin(), blocks.end(),
+          [](const auto& entry) { return entry.code == std::array<char, 4>{'M', 'E', '\0', '\0'}; });
+      Require(block != blocks.end(), "Legacy normal fixture has a saved Mesh");
+      const auto sourceMesh = Take(blend::ViewDnaBlock(bytes, blocks, schema, header,
+          static_cast<std::uint32_t>(block - blocks.begin())));
+      Require(Take(Take(sourceMesh.Member("flag")).UnsignedInteger()) == 0xd120 &&
+                  Take(Take(sourceMesh.Member("smoothresh")).FloatingPoint()) == angle,
+          "Saved auto-smooth flag and float angle match the oracle exactly");
+    }
     const auto object = std::find_if(scene.objects.begin(), scene.objects.end(),
         [&](const auto& entry) { return entry.sourceName == name; });
     Require(object != scene.objects.end() && object->mesh, name + " references a decoded Mesh");
@@ -125,6 +143,10 @@ void CheckFixture(const std::filesystem::path& path) {
   }
   oracle >> std::ws;
   Require(oracle.eof(), "Normal oracle has no trailing records");
+  if (legacy) {
+    std::cout << header.SourceVersion() << " " << path.stem().string() << ": " << compared
+              << " corners, maximum normal component error " << maximumError << '\n';
+  }
   auto reordered = blocks;
   std::reverse(reordered.begin(), reordered.end());
   const auto repeated = Take(blend::DecodeScene(bytes, reordered, schema, header, {10000, 64}));
@@ -143,6 +165,12 @@ void CheckFixture(const std::filesystem::path& path) {
 
 int main(int argc, char** argv) {
   try {
+    if (argc == 3 && std::string(argv[1]) == "--legacy") {
+      for (const auto name : {"auto_smooth", "auto_angle", "auto_zero", "auto_boundary"}) {
+        CheckFixture(std::filesystem::path(argv[2]) / (std::string(name) + ".blend"));
+      }
+      return 0;
+    }
     Require(argc == 3, "Two Blender-written normal fixture directories are required");
     for (const auto directory : {argv[1], argv[2]}) {
       for (const auto name : {"smooth.blend", "flat.blend", "split.blend",
