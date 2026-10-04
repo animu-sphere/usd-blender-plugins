@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <numbers>
 #include <stdexcept>
@@ -16,7 +17,9 @@ enum class Kind { Other,
   Float2,
   Float3,
   Short2,
-  LoopUv };
+  LoopUv,
+  Vertex,
+  Loop };
 
 struct Attribute {
   std::string name;
@@ -51,9 +54,21 @@ public:
       Fail("BLEND_MESH_TOPOLOGY_INVALID", "Face and corner counts must both be empty or nonempty", index_);
     }
     ReadAttributes(source);
-    const auto position = Find("position", 0, Kind::Float3, vertices != 0);
-    if (position) {
-      const auto values = Values(*position, vertices);
+    const auto position = Find("position", 0, Kind::Float3, false);
+    const auto cornerVertices = Find(".corner_vert", 3, Kind::Integer, false);
+    const auto offsetsAddress = Pointer(source, "poly_offset_indices", "int", index_);
+    // Saved legacy pointers must never rescue partial or invalid modern core storage.
+    const auto legacy = !modernStorage_ && !position && !cornerVertices && offsetsAddress == 0 &&
+                        (LegacyPointer(source, "mvert", "MVert") != 0 ||
+                            LegacyPointer(source, "mloop", "MLoop") != 0 ||
+                            LegacyPointer(source, "mpoly", "MPoly") != 0);
+    if (!legacy) {
+      Find("position", 0, Kind::Float3, vertices != 0);
+      Find(".corner_vert", 3, Kind::Integer, corners != 0);
+    }
+    if (position || (legacy && vertices != 0)) {
+      const auto values = position ? Values(*position, vertices)
+                                   : Array(LegacyPointer(source, "mvert", "MVert"), vertices, Kind::Vertex, index_);
       mesh.points.reserve(vertices);
       for (std::uint32_t vertex = 0; vertex < vertices; ++vertex) {
         const auto point = Vector<3>(values, vertex);
@@ -67,8 +82,9 @@ public:
         }
       }
     }
-    const auto cornerVertices = Find(".corner_vert", 3, Kind::Integer, corners != 0);
-    if (cornerVertices) {
+    if (legacy) {
+      ReadLegacyTopology(mesh, source, vertices, faces, corners);
+    } else if (cornerVertices) {
       const auto values = Values(*cornerVertices, corners);
       mesh.faceVertexIndices.reserve(corners);
       for (std::uint32_t corner = 0; corner < corners; ++corner) {
@@ -79,8 +95,7 @@ public:
         mesh.faceVertexIndices.push_back(vertex);
       }
     }
-    const auto offsetsAddress = Pointer(source, "poly_offset_indices", "int", index_);
-    if (faces != 0 || offsetsAddress != 0) {
+    if (!legacy && (faces != 0 || offsetsAddress != 0)) {
       const auto offsets = Array(offsetsAddress, std::uint64_t{faces} + 1, Kind::Integer, index_);
       if (Integer(offsets, 0) != 0) {
         Fail("BLEND_MESH_TOPOLOGY_INVALID", "Face offsets must start at zero", offsets.index);
@@ -153,6 +168,55 @@ private:
       Fail("BLEND_MESH_STORAGE_INVALID", "Mesh pointer has incompatible SDNA storage", index);
     }
     return Take(value.Pointer());
+  }
+
+  std::uint64_t LegacyPointer(const DnaValueView& source, std::string_view member,
+      std::string_view type) const {
+    if (!schema_.FindStruct("Mesh")->FindMember(member)) {
+      return 0;
+    }
+    return Pointer(source, member, type, index_);
+  }
+
+  void ReadLegacyTopology(Mesh& mesh, const DnaValueView& source,
+      std::uint32_t vertices, std::uint32_t faces, std::uint32_t corners) {
+    if (vertices == 0 && LegacyPointer(source, "mvert", "MVert") != 0) {
+      Fail("BLEND_MESH_STORAGE_INVALID", "Empty legacy vertex storage must be null", index_);
+    }
+    if (corners == 0) {
+      if (LegacyPointer(source, "mloop", "MLoop") != 0 ||
+          LegacyPointer(source, "mpoly", "MPoly") != 0) {
+        Fail("BLEND_MESH_STORAGE_INVALID", "Empty legacy polygon and corner storage must be null", index_);
+      }
+      return;
+    }
+    legacyLoops_ = Array(LegacyPointer(source, "mloop", "MLoop"), corners, Kind::Loop, index_);
+    mesh.faceVertexIndices.reserve(corners);
+    for (std::uint32_t corner = 0; corner < corners; ++corner) {
+      const auto vertex = Integer(*legacyLoops_, corner);
+      if (static_cast<std::uint32_t>(vertex) >= vertices) {
+        Fail("BLEND_MESH_TOPOLOGY_INVALID", "Legacy corner vertex index is outside the source points", legacyLoops_->index);
+      }
+      mesh.faceVertexIndices.push_back(vertex);
+    }
+    const auto address = LegacyPointer(source, "mpoly", "MPoly");
+    Records(address, faces, "MPoly", index_);
+    legacyPolygons_ = Resolve(address, index_);
+    std::uint32_t previous = 0;
+    mesh.faceVertexCounts.reserve(faces);
+    for (std::uint32_t face = 0; face < faces; ++face) {
+      const auto polygon = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, *legacyPolygons_, face));
+      const auto start = Scalar(polygon, "loopstart", "int", 4, *legacyPolygons_);
+      const auto count = Scalar(polygon, "totloop", "int", 4, *legacyPolygons_);
+      if (start != previous || count < 3 || static_cast<std::uint64_t>(count) > corners - previous) {
+        Fail("BLEND_MESH_TOPOLOGY_INVALID", "Legacy polygons must cover contiguous ranges of at least three corners", *legacyPolygons_);
+      }
+      mesh.faceVertexCounts.push_back(static_cast<std::int32_t>(count));
+      previous += static_cast<std::uint32_t>(count);
+    }
+    if (previous != corners) {
+      Fail("BLEND_MESH_TOPOLOGY_INVALID", "Legacy polygons must cover every saved corner", *legacyPolygons_);
+    }
   }
 
   std::uint32_t Resolve(std::uint64_t address, std::uint32_t referrer) const {
@@ -237,6 +301,7 @@ private:
       Fail("BLEND_MESH_STORAGE_INVALID", "Mesh attribute storage must be embedded", index_);
     }
     const auto count = Count(storage, "dna_attributes_num", index_);
+    modernStorage_ = count != 0;
     const auto address = Pointer(storage, "dna_attributes", "Attribute", index_);
     if (count != 0) {
       Records(address, count, "Attribute", index_);
@@ -331,13 +396,26 @@ private:
       Kind kind, std::uint32_t referrer) const {
     const auto index = Resolve(address, referrer);
     const auto bytes = Payload(index);
-    if (kind == Kind::LoopUv) {
-      const auto source = Records(address, count, "MLoopUV", referrer);
-      const auto uv = Take(source.Member("uv"));
-      if (uv.Type().name != "float" || uv.Type().length != 4 ||
-          uv.PointerLevel() != 0 || uv.ArrayDimensions().size() != 1 ||
-          uv.ArrayDimensions()[0] != 2) {
-        Fail("BLEND_MESH_STORAGE_INVALID", "MLoopUV coordinates must be an embedded float[2]", index);
+    if (kind == Kind::LoopUv || kind == Kind::Vertex || kind == Kind::Loop) {
+      const auto source = Records(address, count,
+          kind == Kind::LoopUv ? "MLoopUV" : kind == Kind::Vertex ? "MVert"
+                                                                  : "MLoop",
+          referrer);
+      if (kind == Kind::Loop) {
+        for (const auto name : {"v", "e"}) {
+          const auto member = Take(source.Member(name));
+          if (member.Type().name != "uint" || member.Type().length != 4 ||
+              member.PointerLevel() != 0 || !member.ArrayDimensions().empty()) {
+            Fail("BLEND_MESH_STORAGE_INVALID", "Legacy corner indices must be scalar uint values", index);
+          }
+        }
+      } else {
+        const auto vector = Take(source.Member(kind == Kind::LoopUv ? "uv" : "co"));
+        if (vector.Type().name != "float" || vector.Type().length != 4 ||
+            vector.PointerLevel() != 0 || vector.ArrayDimensions().size() != 1 ||
+            vector.ArrayDimensions()[0] != (kind == Kind::LoopUv ? 2 : 3)) {
+          Fail("BLEND_MESH_STORAGE_INVALID", "Legacy coordinates must be an embedded float vector", index);
+        }
       }
       return {bytes, index, kind, false};
     }
@@ -409,7 +487,7 @@ private:
     return value;
   }
 
-  std::int32_t Integer(const ValuesView& values, std::uint64_t element) const {
+  std::int32_t Integer(const ValuesView& values, std::uint64_t element, bool edge = false) const {
     if (values.single) {
       element = 0;
     }
@@ -417,6 +495,13 @@ private:
       return std::bit_cast<std::int32_t>(Bits(values.bytes.subspan(static_cast<std::size_t>(element * 4), 4)));
     }
     const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, values.index, element));
+    if (values.kind == Kind::Loop) {
+      const auto value = Take(Take(source.Member(edge ? "e" : "v")).UnsignedInteger());
+      if (value > std::numeric_limits<std::int32_t>::max()) {
+        Fail("BLEND_MESH_TOPOLOGY_INVALID", "Legacy corner index exceeds the supported signed range", values.index);
+      }
+      return static_cast<std::int32_t>(value);
+    }
     return static_cast<std::int32_t>(Scalar(source, "i", "int", 4, values.index));
   }
 
@@ -471,8 +556,8 @@ private:
         result[axis] = std::bit_cast<float>(Bits(values.bytes.subspan((static_cast<std::size_t>(element) * Size + axis) * 4, 4)));
       } else {
         const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, values.index, element));
-        const auto member = values.kind == Kind::LoopUv
-                                ? Take(Take(source.Member("uv")).Element(axis))
+        const auto member = values.kind == Kind::LoopUv || values.kind == Kind::Vertex
+                                ? Take(Take(source.Member(values.kind == Kind::LoopUv ? "uv" : "co")).Element(axis))
                                 : Take(source.Member(members[axis]));
         if (member.Type().name != "float" || member.Type().length != 4 ||
             member.PointerLevel() != 0 || !member.ArrayDimensions().empty()) {
@@ -670,6 +755,16 @@ private:
       for (std::uint32_t face = 0; face < faces; ++face) {
         flat[face] = Boolean(values, face);
       }
+    } else if (legacyPolygons_) {
+      for (std::uint32_t face = 0; face < faces; ++face) {
+        const auto polygon = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, *legacyPolygons_, face));
+        const auto flag = Take(polygon.Member("flag"));
+        if (flag.Type().name != "char" || flag.Type().length != 1 ||
+            flag.PointerLevel() != 0 || !flag.ArrayDimensions().empty()) {
+          Fail("BLEND_MESH_STORAGE_INVALID", "Legacy polygon flags must be scalar chars", *legacyPolygons_);
+        }
+        flat[face] = (Bits(flag.Bytes()) & 1) == 0;
+      }
     }
     const auto sharpEdge = Find("sharp_edge", 1, Kind::Boolean, false);
     std::vector<bool> sharpEdges;
@@ -679,6 +774,18 @@ private:
       sharpEdges.reserve(edges);
       for (std::uint32_t edge = 0; edge < edges; ++edge) {
         sharpEdges.push_back(Boolean(values, edge));
+      }
+    } else if (legacyLoops_) {
+      const auto edges = Count(source, "totedge", index_);
+      if (edges != 0) {
+        const auto address = LegacyPointer(source, "medge", "MEdge");
+        Records(address, edges, "MEdge", index_);
+        const auto index = Resolve(address, index_);
+        sharpEdges.reserve(edges);
+        for (std::uint32_t edge = 0; edge < edges; ++edge) {
+          const auto record = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, index, edge));
+          sharpEdges.push_back((Scalar(record, "flag", "short", 2, index) & 512) != 0);
+        }
       }
     }
     const auto allFlat = std::all_of(flat.begin(), flat.end(), [](bool value) { return value; });
@@ -717,15 +824,15 @@ private:
     }
     if (split) {
       const auto edges = Count(source, "totedge", index_);
-      const auto cornerEdge = Find(".corner_edge", 3, Kind::Integer, true);
-      const auto values = Values(*cornerEdge, static_cast<std::uint32_t>(corners));
+      const auto cornerEdge = Find(".corner_edge", 3, Kind::Integer, !legacyLoops_);
+      const auto values = cornerEdge ? Values(*cornerEdge, static_cast<std::uint32_t>(corners)) : *legacyLoops_;
       struct Edge {
         std::pair<std::int32_t, std::int32_t> vertices;
         std::vector<std::size_t> uses;
       };
       std::map<std::int32_t, Edge> topology;
       for (std::size_t corner = 0; corner < corners; ++corner) {
-        const auto edge = Integer(values, corner);
+        const auto edge = Integer(values, corner, true);
         if (edge < 0 || static_cast<std::uint32_t>(edge) >= edges) {
           Fail("BLEND_MESH_TOPOLOGY_INVALID", "Corner edge index is outside the source edges", values.index);
         }
@@ -854,6 +961,9 @@ private:
   std::vector<Diagnostic>& diagnostics_;
   std::vector<Attribute> attributes_;
   std::vector<Vector3> sourcePoints_;
+  bool modernStorage_ = false;
+  std::optional<ValuesView> legacyLoops_;
+  std::optional<std::uint32_t> legacyPolygons_;
   std::map<std::pair<std::int64_t, std::string>, std::size_t> names_;
 };
 

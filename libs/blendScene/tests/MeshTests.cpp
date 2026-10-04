@@ -6,6 +6,7 @@
 #include <limits>
 #include <numbers>
 #include <stdexcept>
+#include <tuple>
 
 namespace {
 
@@ -65,6 +66,7 @@ public:
     header.version = modern ? 502 : 405;
     Structure("raw_data", {});
     Type("int", 4);
+    Type("uint", 4);
     Type("short", 2);
     Type("int8_t", 1);
     Type("int64_t", 8);
@@ -74,6 +76,10 @@ public:
     Structure("vec3f", {{"float", "x"}, {"float", "y"}, {"float", "z"}});
     Structure("vec2f", {{"float", "x"}, {"float", "y"}});
     Structure("MLoopUV", {{"float", "uv", false, 2}, {"int", "flag"}});
+    Structure("MVert", {{"char", "flag"}, {"float", "co", false, 3}, {"short", "no", false, 3}});
+    Structure("MLoop", {{"short", "pad"}, {"uint", "v"}, {"uint", "e"}});
+    Structure("MPoly", {{"short", "mat_nr"}, {"int", "loopstart"}, {"int", "totloop"}, {"char", "flag"}});
+    Structure("MEdge", {{"uint", "v1"}, {"uint", "v2"}, {"short", "flag"}});
     Structure("vec2s", {{"short", "x"}, {"short", "y"}});
     Structure("MIntProperty", {{"int", "i"}});
     Structure("MBoolProperty", {{"uchar", "b"}});
@@ -90,7 +96,9 @@ public:
                                                   {"int", "totpoly"}, {"int", "totloop"}, {"int", "poly_offset_indices", true},
                                                   {"AttributeStorage", "attribute_storage"}, {"CustomData", "vdata"},
                                                   {"CustomData", "edata"}, {"CustomData", "pdata"}, {"CustomData", "ldata"},
-                                                  {"char", "default_uv_map_attribute", true}, {"Key", "key", true}});
+                                                  {"char", "default_uv_map_attribute", true}, {"Key", "key", true},
+                                                  {"MVert", "mvert", true}, {"MLoop", "mloop", true},
+                                                  {"MPoly", "mpoly", true}, {"MEdge", "medge", true}});
     mesh = static_cast<std::uint32_t>(blocks.size() - 2);
     blocks[mesh].sdnaIndex = meshStruct;
     blocks[mesh].offset = bytes.size();
@@ -265,7 +273,7 @@ public:
 
   void Domain(std::string_view name, std::uint32_t layers, std::uint32_t count) {
     const auto offset = Member("Mesh", name).offset;
-    Bits(mesh, offset + Member("CustomData", "layers").offset, blocks[layers].oldAddress, header.pointerSize);
+    Bits(mesh, offset + Member("CustomData", "layers").offset, count == 0 ? 0 : blocks[layers].oldAddress, header.pointerSize);
     Bits(mesh, offset + Member("CustomData", "totlayer").offset, count, 4);
   }
 
@@ -342,12 +350,54 @@ public:
     }
   }
 
+  void LegacyGeometry(bool clearCore = true) {
+    legacyPoints = Data("MVert", 4, 0);
+    legacyLoops = Data("MLoop", 6, 0);
+    legacyPolygons = Data("MPoly", 2, 0);
+    legacyEdges = Data("MEdge", 5, 0);
+    Set(mesh, "Mesh", "mvert", blocks[legacyPoints].oldAddress);
+    Set(mesh, "Mesh", "mloop", blocks[legacyLoops].oldAddress);
+    Set(mesh, "Mesh", "mpoly", blocks[legacyPolygons].oldAddress);
+    Set(mesh, "Mesh", "medge", blocks[legacyEdges].oldAddress);
+    for (std::size_t vertex = 0; vertex < 4; ++vertex) {
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        const auto offset = blocks[points].offset + (vertex * 3 + axis) * 4;
+        std::copy_n(bytes.begin() + static_cast<std::size_t>(offset), 4,
+            bytes.begin() + static_cast<std::size_t>(blocks[legacyPoints].offset +
+                                                     vertex * Size("MVert") + Member("MVert", "co").offset + axis * 4));
+      }
+    }
+    constexpr std::array<int, 6> vertices = {0, 1, 2, 0, 2, 3};
+    constexpr std::array<int, 6> edges = {0, 1, 2, 2, 3, 4};
+    for (std::size_t corner = 0; corner < 6; ++corner) {
+      Bits(legacyLoops, corner * Size("MLoop") + Member("MLoop", "v").offset, vertices[corner], 4);
+      Bits(legacyLoops, corner * Size("MLoop") + Member("MLoop", "e").offset, edges[corner], 4);
+    }
+    for (std::size_t face = 0; face < 2; ++face) {
+      Bits(legacyPolygons, face * Size("MPoly") + Member("MPoly", "loopstart").offset, face * 3, 4);
+      Bits(legacyPolygons, face * Size("MPoly") + Member("MPoly", "totloop").offset, 3, 4);
+    }
+    if (clearCore) {
+      Require(!modern, "Legacy geometry fixture retains CustomData UV layers");
+      Set(mesh, "Mesh", "poly_offset_indices", 0);
+      for (const auto domain : {"vdata", "edata", "pdata"}) {
+        Domain(domain, 0, 0);
+      }
+      const auto old = attributeRecords;
+      attributeRecords = Data("CustomDataLayer", 2, 0);
+      std::copy_n(bytes.begin() + static_cast<std::size_t>(blocks[old].offset + Size("CustomDataLayer")),
+          2 * Size("CustomDataLayer"), bytes.begin() + static_cast<std::size_t>(blocks[attributeRecords].offset));
+      Domain("ldata", attributeRecords, 2);
+    }
+  }
+
   std::vector<std::byte> bytes;
   std::vector<blend::BlendBlock> blocks;
   blend::DnaSchema schema;
   blend::Header header;
   bool modern;
   std::uint32_t mesh, points, corners, offsets, sharp, uv, attributeRecords, cornerEdges, sharpEdges;
+  std::uint32_t legacyPoints = 0, legacyLoops = 0, legacyPolygons = 0, legacyEdges = 0;
   std::vector<std::uint32_t> arrays;
 
 private:
@@ -386,6 +436,179 @@ private:
     return static_cast<std::uint32_t>(schema.structs.size() - 1);
   }
 };
+
+void CheckLegacyGeometry(const Fixture& fixture) {
+  const auto expected = Take(fixture.Decode()).meshes[0];
+  auto legacy = fixture;
+  legacy.LegacyGeometry();
+  const auto result = legacy.Decode();
+  Require(result.HasValue() && result.Diagnostics().empty() &&
+              result.GetValue().objects[0].mesh == 0 && result.GetValue().objects[1].mesh == 0 &&
+              SameMesh(expected, result.GetValue().meshes[0]),
+      "SDNA legacy arrays preserve shared owning points, topology, flat normals and indexed UVs");
+  auto loopUv = fixture;
+  loopUv.LegacyUv(1);
+  loopUv.LegacyUv(2);
+  loopUv.LegacyGeometry();
+  Require(SameMesh(expected, Take(loopUv.Decode()).meshes[0]),
+      "Legacy geometry composes with SDNA MLoopUV maps");
+  auto packed = legacy;
+  const auto values = packed.Data("vec2s", 6, 0);
+  const auto oldLayers = packed.attributeRecords;
+  packed.attributeRecords = packed.Data("CustomDataLayer", 3, 0);
+  std::copy_n(packed.bytes.begin() + static_cast<std::size_t>(packed.blocks[oldLayers].offset),
+      2 * packed.Size("CustomDataLayer"),
+      packed.bytes.begin() + static_cast<std::size_t>(packed.blocks[packed.attributeRecords].offset));
+  packed.Layer(packed.attributeRecords, 2, "", 41, values);
+  packed.Domain("ldata", packed.attributeRecords, 3);
+  Require(SameMesh(expected, Take(packed.Decode()).meshes[0]),
+      "Legacy geometry composes with automatic packed custom normals");
+  auto changed = legacy;
+  std::reverse(changed.blocks.begin(), changed.blocks.end());
+  Require(SameMesh(expected, Take(changed.Decode()).meshes[0]) &&
+              SameMesh(expected, Take(legacy.Decode()).meshes[0]),
+      "Legacy arrays retain exact repeated and reversed-block results");
+  changed = legacy;
+  changed.header.version = 502;
+  Require(SameMesh(expected, Take(changed.Decode()).meshes[0]),
+      "Legacy array selection uses storage shape, not a version-based fallback");
+  for (const float scale : {1.0f, 0.01f, 0.001f, 10.0f}) {
+    changed = legacy;
+    changed.Float(1, changed.Member("Scene", "unit").offset, scale);
+    const auto mesh = Take(changed.Decode()).meshes[0];
+    for (std::size_t vertex = 0; vertex < 4; ++vertex) {
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        Require(mesh.points[vertex][axis] == expected.points[vertex][axis] * scale,
+            "Legacy positions are normalized exactly once");
+      }
+    }
+    Require(mesh.cornerNormals == expected.cornerNormals && mesh.uvMaps[0].values == expected.uvMaps[0].values,
+        "Legacy normals and UVs are independent of source units");
+  }
+  changed = legacy;
+  auto owned = Take(changed.Decode());
+  changed.bytes.clear();
+  changed.blocks.clear();
+  changed.schema = {};
+  Require(SameMesh(expected, owned.meshes[0]), "Legacy results retain no borrowed arrays");
+
+  auto modernSmooth = fixture;
+  modernSmooth.Float(modernSmooth.points, 11 * 4, 3);
+  modernSmooth.Bits(modernSmooth.sharp, 0, 0, 1);
+  modernSmooth.Bits(modernSmooth.sharp, 1, 0, 1);
+  auto legacySmooth = legacy;
+  legacySmooth.Float(legacySmooth.legacyPoints,
+      3 * legacySmooth.Size("MVert") + legacySmooth.Member("MVert", "co").offset + 8, 3);
+  for (std::size_t face = 0; face < 2; ++face) {
+    legacySmooth.Bits(legacySmooth.legacyPolygons,
+        face * legacySmooth.Size("MPoly") + legacySmooth.Member("MPoly", "flag").offset, 1, 1);
+  }
+  Require(SameMesh(Take(modernSmooth.Decode()).meshes[0], Take(legacySmooth.Decode()).meshes[0]),
+      "Legacy smooth polygon flags reuse angle-weighted normal construction");
+  modernSmooth.Bits(modernSmooth.sharpEdges, 2, 1, 1);
+  legacySmooth.Bits(legacySmooth.legacyEdges,
+      2 * legacySmooth.Size("MEdge") + legacySmooth.Member("MEdge", "flag").offset, 512, 2);
+  Require(SameMesh(Take(modernSmooth.Decode()).meshes[0], Take(legacySmooth.Decode()).meshes[0]),
+      "Legacy sharp-edge flags and corner edge indices reuse split normal fans");
+  modernSmooth.Bits(modernSmooth.sharp, 1, 1, 1);
+  legacySmooth.Bits(legacySmooth.legacyPolygons,
+      legacySmooth.Size("MPoly") + legacySmooth.Member("MPoly", "flag").offset, 0, 1);
+  Require(SameMesh(Take(modernSmooth.Decode()).meshes[0], Take(legacySmooth.Decode()).meshes[0]),
+      "Legacy mixed flat/smooth polygons preserve normal boundaries");
+  for (const auto invalid : {5u, 0xffffffffu}) {
+    changed = legacySmooth;
+    changed.Set(changed.legacyLoops, "MLoop", "e", invalid);
+    changed.Failure("BLEND_MESH_TOPOLOGY_INVALID", changed.legacyLoops);
+  }
+  changed = legacySmooth;
+  changed.Set(changed.legacyLoops, "MLoop", "e", 2);
+  changed.Failure("BLEND_MESH_TOPOLOGY_INVALID", changed.legacyLoops);
+
+  for (const auto [member, block] : {
+           std::pair{"mvert", legacy.legacyPoints}, {"mloop", legacy.legacyLoops},
+           {"mpoly", legacy.legacyPolygons}, {"medge", legacy.legacyEdges}}) {
+    for (const auto invalid : {std::uint64_t{0}, std::uint64_t{999}, legacy.blocks[block].oldAddress + 1}) {
+      changed = legacy;
+      changed.Set(changed.mesh, "Mesh", member, invalid);
+      changed.Failure("BLEND_MESH_REFERENCE_INVALID", changed.mesh);
+    }
+    changed = legacy;
+    ++changed.blocks[block].count;
+    changed.Failure("BLEND_MESH_STORAGE_INVALID", block);
+    changed = legacy;
+    --changed.blocks[block].length;
+    changed.Failure("BLEND_DNA_SIZE", block);
+    changed = legacy;
+    changed.blocks[block].sdnaIndex = changed.blocks[changed.points].sdnaIndex;
+    changed.blocks[block].length = changed.blocks[block].count * changed.Size("vec3f");
+    changed.bytes.resize(changed.bytes.size() + 48);
+    changed.Failure("BLEND_MESH_STORAGE_INVALID", block);
+    changed = legacy;
+    changed.blocks[block].code = {'M', 'E', 0, 0};
+    changed.Failure("BLEND_MESH_REFERENCE_INVALID", block);
+    changed = legacy;
+    changed.blocks[block].offset = changed.bytes.size();
+    changed.Failure("BLEND_BLOCK_SIZE", block);
+  }
+  for (const auto invalid : {4u, 0xffffffffu}) {
+    changed = legacy;
+    changed.Set(changed.legacyLoops, "MLoop", "v", invalid);
+    changed.Failure("BLEND_MESH_TOPOLOGY_INVALID", changed.legacyLoops);
+  }
+  for (const auto [element, member, value] : {
+           std::tuple{0u, "loopstart", 1u}, {0u, "loopstart", 0xffffffffu},
+           {1u, "loopstart", 2u}, {1u, "loopstart", 4u}, {0u, "totloop", 2u},
+           {0u, "totloop", 7u}, {0u, "totloop", 0xffffffffu}, {1u, "totloop", 4u}}) {
+    changed = legacy;
+    changed.Bits(changed.legacyPolygons,
+        element * changed.Size("MPoly") + changed.Member("MPoly", member).offset, value, 4);
+    changed.Failure("BLEND_MESH_TOPOLOGY_INVALID", changed.legacyPolygons);
+  }
+  changed = legacy;
+  changed.Set(changed.mesh, "Mesh", "totloop", 7);
+  changed.blocks[changed.legacyLoops].count = 7;
+  changed.blocks[changed.legacyLoops].length = 7 * changed.Size("MLoop");
+  changed.Failure("BLEND_MESH_TOPOLOGY_INVALID", changed.legacyPolygons);
+  changed = legacy;
+  changed.Set(changed.mesh, "Mesh", "poly_offset_indices", changed.blocks[changed.offsets].oldAddress);
+  changed.Failure("BLEND_MESH_STORAGE_UNSUPPORTED", changed.mesh);
+  for (const auto invalid : {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+    changed = legacy;
+    changed.Float(changed.legacyPoints, changed.Member("MVert", "co").offset, invalid);
+    changed.Failure("BLEND_MESH_VALUE_INVALID", changed.legacyPoints);
+  }
+  for (const auto [type, member, block] : {
+           std::tuple{"MVert", "co", legacy.legacyPoints}, {"MLoop", "v", legacy.legacyLoops},
+           {"MPoly", "flag", legacy.legacyPolygons}, {"MEdge", "flag", legacy.legacyEdges}}) {
+    changed = legacy;
+    auto& field = *std::find_if(changed.schema.structs.begin(), changed.schema.structs.end(),
+        [&](const auto& record) { return changed.schema.types[record.typeIndex].name == type; });
+    auto& value = *std::find_if(field.members.begin(), field.members.end(),
+        [&](const auto& record) { return record.baseName == member; });
+    value.arrayDimensions = member == std::string_view{"co"} ? std::vector<std::uint64_t>{1, 3}
+                                                             : std::vector<std::uint64_t>{1};
+    changed.Failure("BLEND_MESH_STORAGE_INVALID", block);
+  }
+
+  changed = legacy;
+  changed.Set(changed.mesh, "Mesh", "totpoly", 0);
+  changed.Set(changed.mesh, "Mesh", "totloop", 0);
+  changed.Set(changed.mesh, "Mesh", "mloop", 0);
+  changed.Set(changed.mesh, "Mesh", "mpoly", 0);
+  changed.Domain("ldata", 0, 0);
+  const auto loose = changed.Decode();
+  Require(loose.HasValue() && loose.GetValue().meshes[0].points == expected.points &&
+              loose.GetValue().meshes[0].faceVertexCounts.empty() &&
+              loose.GetValue().meshes[0].cornerNormals.empty() &&
+              loose.Diagnostics().size() == 1 && loose.Diagnostics()[0].code == "BLEND_MESH_EMPTY" &&
+              loose.Diagnostics()[0].blockIndex == changed.mesh && loose.Diagnostics()[0].recoverable,
+      "Polygon-free legacy Meshes retain loose points and one contextual warning");
+  auto invalidEmpty = changed;
+  invalidEmpty.Set(invalidEmpty.mesh, "Mesh", "mloop", invalidEmpty.blocks[invalidEmpty.legacyLoops].oldAddress);
+  invalidEmpty.Failure("BLEND_MESH_STORAGE_INVALID", invalidEmpty.mesh);
+  changed.Set(changed.mesh, "Mesh", "totvert", 0);
+  changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.mesh);
+}
 
 void CheckLegacyUvs(const Fixture& fixture) {
   const auto expected = Take(fixture.Decode()).meshes[0];
@@ -738,7 +961,30 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
       CheckConstantMeshes(fixture);
     } else {
       CheckLegacyUvs(fixture);
+      CheckLegacyGeometry(fixture);
     }
+    auto shadowed = fixture;
+    shadowed.LegacyGeometry(false);
+    for (const auto member : {"mvert", "mloop", "mpoly", "medge"}) {
+      shadowed.Set(shadowed.mesh, "Mesh", member, 999);
+    }
+    Require(SameMesh(mesh, Take(shadowed.Decode()).meshes[0]),
+        "Modern geometry does not interpret stale legacy pointers");
+    shadowed.Float(shadowed.points, 0, std::numeric_limits<float>::infinity());
+    shadowed.Failure("BLEND_MESH_VALUE_INVALID", shadowed.points);
+    shadowed = fixture;
+    shadowed.LegacyGeometry(false);
+    shadowed.Set(shadowed.mesh, "Mesh", "poly_offset_indices", 0);
+    if (modern) {
+      for (const auto element : {0u, 1u}) {
+        shadowed.Bits(shadowed.attributeRecords,
+            element * shadowed.Size("Attribute") + shadowed.Member("Attribute", "name").offset,
+            shadowed.blocks[shadowed.Text(element == 0 ? "other_position" : "other_corner")].oldAddress, header.pointerSize);
+      }
+    } else {
+      shadowed.Domain("vdata", 0, 0);
+    }
+    shadowed.Failure("BLEND_MESH_STORAGE_UNSUPPORTED", shadowed.mesh);
     const std::vector<blend::Vector3> expectedPoints = {{0, 0, 0}, {2, 0, 0}, {2, 0, -3}, {0, 0, -3}};
     Require(mesh.sourceName == "Shared" && mesh.points == expectedPoints &&
                 mesh.faceVertexCounts == std::vector<std::int32_t>{3, 3} &&

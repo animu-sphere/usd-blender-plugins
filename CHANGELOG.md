@@ -8,6 +8,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Native legacy fixed-array Mesh geometry through SDNA `MVert`, `MLoop`,
+    `MPoly` and normal-related `MEdge` flags. Explicit legacy storage selection
+    preserves modern attribute/offset authority without rescuing malformed or
+    partial modern cores. Four synthetic pointer-width/byte-order layouts
+    cover owning/shared positions and topology, flat/smooth/mixed and sharp
+    normals, packed automatic normals, indexed float2/MLoopUV maps, loose
+    points, unit independence, determinism and contextual fatal diagnostics.
+    No Blender-written fixed-array fixture or additional Blender version
+    compatibility is claimed.
 - Blender-written 4.5.13/5.2.2 Mesh-domain oracles and `blendScene.meshFixture`,
     covering empty Meshes, loose points, UV-free polygons, corner seams,
     out-of-range and signed-zero UVs, constant coordinates and distinct

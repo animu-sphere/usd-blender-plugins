@@ -341,6 +341,15 @@ reads. Invalid SDNA/value shapes, counts, lengths, pointers, layer domains,
 names and flags require contextual fatal failures without a partial Scene.
 These legacy UV cases have no Blender-written fixture; the corpus UV evidence
 still covers float2 layers and AttributeArrays only.
+Legacy fixed `MVert`/`MLoop`/`MPoly` arrays run across the same four layouts,
+with SDNA-defined offsets and strides, flat/smooth/mixed polygon flags,
+`MEdge` sharp flags, split fans, packed automatic normals, float2/MLoopUV maps,
+loose points, sharing, ownership, repeated/reversed reads and four unit scales.
+Malformed references, record lengths/counts/types, member shapes, nonfinite
+positions, unsigned indices and noncontiguous/invalid polygon ranges retain
+exact fatal context. Saved legacy pointers do not repair partial or invalid
+modern core attributes/offsets. These cases have no Blender-written geometry
+fixture and do not broaden version support beyond the existing 4.5/5.x gate.
 Modifier and shape-key presence reports source-only data without evaluation.
 The root reader build and standalone OpenStrata library build both run these
 tests and the existing four scene dependency-boundary gates. No Blender
