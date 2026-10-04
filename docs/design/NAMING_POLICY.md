@@ -46,6 +46,10 @@ The identifier is derived from the source name:
 4. If nothing remains, the identifier is the kind fallback: `Object`,
    `Material`, `Camera`, `Light`, `Armature`, `Collection`.
 
+Literal source underscores are retained, including repeated and trailing ones.
+Only runs and trailing underscores introduced by replacing other characters
+are collapsed or removed; for example, `A/__B` becomes `A___B`.
+
 Identifiers are ASCII so that every OpenUSD release, file system and USDZ
 consumer accepts them, as in the sibling repositories. Whether to use OpenUSD's
 UTF-8 identifiers instead is NAME-O1.
@@ -67,6 +71,45 @@ when Blender re-saves a file and reorders its blocks. Blender names are unique
 per type, so the order is total within a scope.
 
 Authored children appear in the same order.
+
+### 4.1 Native Object naming boundary
+
+`ObjectIdentifiers(scene)` in `blendScene/Naming.h` returns owning identifiers
+aligned with the input Object vector. It applies the ASCII rules above to the
+current Mesh/Empty scope, with `Object` as the fallback for either kind.
+Each IR parent index defines a sibling scope; absent parents share the geometry
+root scope. A Mesh parent reserves `mesh` before naming its Object children.
+An Empty parent has no data child to reserve, and a root Mesh does not reserve
+`mesh` among root Objects. Natural suffixes participate in the same occupied-name
+set: a source `A_B_1` can collide with an earlier assigned suffix.
+
+Names are compared as unsigned UTF-8 bytes, not with a locale or an input-order
+tie-break. Duplicate sibling source names fail with `BLEND_NAME_DUPLICATE`,
+because that scope has no total source-name order. Invalid immediate parent
+or Mesh indices fail with `BLEND_SCENE_REFERENCE_INVALID`. The helper expects
+an otherwise validated Scene IR; it neither traverses nor validates parent
+chains. Allocation failure uses `BLEND_NAME_ALLOCATION`.
+
+`DecodeScene` calls this pass before publishing the Scene and copies its results
+into `Object.identifier`. It retains raw `sourceName` bytes, Object discovery
+order, parent and shared Mesh indices, visibility and normalized geometry.
+It does not reorder the IR: future USD authoring must visit sibling Objects in
+the source-byte order above, not in IR vector or identifier order.
+
+`NameForDisplay(sourceName)` provides separate owning UTF-8 display text.
+Valid scalar sequences are retained exactly. Each maximal ill-formed subpart
+is replaced with U+FFFD; overlong encodings, surrogate code points, out-of-range
+scalars and truncated sequences are invalid. One recoverable
+`BLEND_NAME_INVALID_UTF8` warning per affected name retains the raw name as
+diagnostic context. `ObjectIdentifiers` propagates these warnings; native
+decoding adds each selected Object's payload offset and block index. Display
+repair never changes identifier allocation or raw source provenance.
+
+This boundary does not author `blend:sourceName` or `displayName`, assign
+Material/Collection/UV identifiers, or resolve asset paths. It implements the
+proposed ASCII policy without closing NAME-O1's final decision. Fixture-backed
+evidence belongs in the
+[capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 
 ## 5. Examples
 

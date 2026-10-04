@@ -103,7 +103,7 @@ void CheckFixture(const std::filesystem::path& path) {
     const auto& object = scene.objects[indices.at(name)];
     const auto world = units.WorldTransform(ReadMatrix(oracle));
     const auto local = units.WorldTransform(ReadMatrix(oracle));
-    Require(object.hiddenForRender == hidden && object.identifier.empty() && !object.mesh,
+    Require(object.hiddenForRender == hidden && object.identifier == name && !object.mesh,
         name + " preserves visibility without inheriting the parent's render flag");
     Compare(object.worldTransform, world, name + " world");
     if (parent.empty()) {
@@ -132,6 +132,7 @@ void CheckFixture(const std::filesystem::path& path) {
   for (std::size_t index = 0; index < scene.objects.size(); ++index) {
     const auto& object = repeated.GetValue().objects[index];
     Require(object.sourceName == scene.objects[index].sourceName && object.parent == scene.objects[index].parent &&
+                object.identifier == scene.objects[index].identifier &&
                 object.worldTransform == scene.objects[index].worldTransform,
         "Repeated/reordered reads are deterministic");
     const auto localTransform = [](const blend::Scene& value, std::size_t objectIndex) {

@@ -1,4 +1,5 @@
 #include <blendScene/Decode.h>
+#include <blendScene/Naming.h>
 
 #include "DecodeInternal.h"
 
@@ -123,6 +124,35 @@ public:
         UnitFailure(error, selectedObject);
       }
       scene.objects.push_back(std::move(object));
+    }
+    const auto names = ObjectIdentifiers(scene);
+    const auto contextualize = [&](Diagnostic diagnostic, std::size_t occurrence = 0) {
+      const auto object = std::find_if(selected.objects.begin(), selected.objects.end(),
+          [&](const auto& entry) {
+            if (entry.sourceName != diagnostic.datablock) {
+              return false;
+            }
+            if (occurrence != 0) {
+              --occurrence;
+              return false;
+            }
+            return true;
+          });
+      if (object != selected.objects.end() && diagnostic.code != "BLEND_NAME_ALLOCATION") {
+        diagnostic.blockIndex = object->blockIndex;
+        diagnostic.byteOffset = blocks_[object->blockIndex].offset;
+      }
+      return diagnostic;
+    };
+    if (!names.HasValue()) {
+      throw contextualize(names.GetError());
+    }
+    for (std::size_t index = 0; index < scene.objects.size(); ++index) {
+      scene.objects[index].identifier = names.GetValue()[index];
+    }
+    std::unordered_map<std::string, std::size_t> nameOccurrences;
+    for (const auto& diagnostic : names.Diagnostics()) {
+      diagnostics_.push_back(contextualize(diagnostic, nameOccurrences[diagnostic.datablock]++));
     }
     return Result<Scene>(std::move(scene), std::move(diagnostics_));
   }

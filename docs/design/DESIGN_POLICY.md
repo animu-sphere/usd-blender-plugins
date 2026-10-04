@@ -636,8 +636,10 @@ world matrix. Source names and render visibility are copied. Selected Mesh
 Objects receive indices into the owning mesh vector under the
 [Mesh storage boundary](#528-native-mesh-storage-boundary); shared data targets
 are decoded once, in first selected-object discovery order. Parent-only Mesh
-Objects contribute transforms but do not publish their geometry. Identifiers
-stay empty pending the naming pass. One selected-Scene
+Objects contribute transforms but do not publish their geometry. Before
+publication, the [Object naming pass](NAMING_POLICY.md#41-native-object-naming-boundary)
+assigns sibling-scoped ASCII identifiers without changing raw source names,
+discovery order or graph indices. One selected-Scene
 `UnitConversion` normalizes complete source world matrices into meters and the
 USD basis before publication. Unit-helper exceptions become contextual fatal
 diagnostics; authoring must not convert these matrices again.
@@ -651,8 +653,8 @@ channels still define the result, including for parent-only Objects.
 
 An active Scene with empty Collections produces owning metadata and empty
 object/mesh vectors; the Scene-only library's null `curscene` remains an error.
-This is a library decoding boundary, not an `IBlendBackend`,
-identifier pass or USD/importer connection. Transform oracle fixtures compare
+This is a library decoding boundary, not an `IBlendBackend` or USD/importer
+connection. Transform oracle fixtures compare
 native world matrices, constructed parent-relative local matrices and
 converted parent/local composition against saved Blender values; that does not establish USD local-transform authoring or
 STAGE-O1's multi-scale end-to-end evidence. Fixture-backed scope is

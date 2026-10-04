@@ -648,7 +648,8 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
               result.GetValue().metadata.sourceUnitScale == 1 &&
               result.GetValue().objects[0].sourceName == "One" &&
               result.GetValue().objects[1].sourceName == "Two" &&
-              result.GetValue().objects[0].identifier.empty() &&
+              result.GetValue().objects[0].identifier == "One" &&
+              result.GetValue().objects[1].identifier == "Two" &&
               !result.GetValue().objects[0].mesh && !result.GetValue().objects[1].mesh &&
               !result.GetValue().objects[0].parent && result.GetValue().objects[1].parent == 0 &&
               result.GetValue().objects[0].hiddenForRender && !result.GetValue().objects[1].hiddenForRender &&
@@ -657,6 +658,50 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
               result.Diagnostics().empty(),
       "Native decoding publishes only owning normalized Empty objects and selected parent indices");
   CheckNativeMeshes(bytes, blocks, schema, header);
+  const auto rename = [&](auto& input, std::uint32_t index, std::string_view name) {
+    const auto start = input.begin() + static_cast<std::ptrdiff_t>(blocks[index].offset);
+    std::fill_n(start, 16, std::byte{0});
+    start[0] = std::byte{'O'};
+    start[1] = std::byte{'B'};
+    for (std::size_t byte = 0; byte < name.size(); ++byte) {
+      start[2 + byte] = static_cast<std::byte>(name[byte]);
+    }
+  };
+  auto namedBytes = bytes;
+  bits(namedBytes, 5, idSize, 0, width);
+  rename(namedBytes, 4, "Cube_001");
+  rename(namedBytes, 5, "Cube.001");
+  const auto named = decode(namedBytes, blocks, schema);
+  Require(named.HasValue() && named.Diagnostics().empty() &&
+              named.GetValue().objects[0].sourceName == "Cube_001" &&
+              named.GetValue().objects[1].sourceName == "Cube.001" &&
+              named.GetValue().objects[0].identifier == "Cube_001_1" &&
+              named.GetValue().objects[1].identifier == "Cube_001",
+      "Native naming uses source byte order, not saved Object discovery order");
+  rename(namedBytes, 4, "\xc3(");
+  const auto invalidName = decode(namedBytes, blocks, schema);
+  Require(invalidName.HasValue() && invalidName.GetValue().objects[0].sourceName == "\xc3(" &&
+              invalidName.GetValue().objects[0].identifier == "Object" &&
+              invalidName.Diagnostics().size() == 1 &&
+              invalidName.Diagnostics()[0].code == "BLEND_NAME_INVALID_UTF8" &&
+              invalidName.Diagnostics()[0].severity == blend::Severity::Warning &&
+              invalidName.Diagnostics()[0].recoverable &&
+              invalidName.Diagnostics()[0].datablock == "\xc3(" &&
+              invalidName.Diagnostics()[0].blockIndex == 4 &&
+              invalidName.Diagnostics()[0].byteOffset == blocks[4].offset,
+      "Native malformed UTF-8 retains raw source bytes and exact recoverable Object context");
+  rename(namedBytes, 4, "Cube.001");
+  failure(namedBytes, blocks, schema, "BLEND_NAME_DUPLICATE", 4);
+  bits(namedBytes, 5, idSize, blocks[4].oldAddress, width);
+  rename(namedBytes, 4, "\xff");
+  rename(namedBytes, 5, "\xff");
+  const auto scopedNames = decode(namedBytes, blocks, schema);
+  Require(scopedNames.HasValue() && scopedNames.Diagnostics().size() == 2 &&
+              scopedNames.Diagnostics()[0].blockIndex == 4 &&
+              scopedNames.Diagnostics()[0].byteOffset == blocks[4].offset &&
+              scopedNames.Diagnostics()[1].blockIndex == 5 &&
+              scopedNames.Diagnostics()[1].byteOffset == blocks[5].offset,
+      "Equal raw names in separate naming scopes retain each Object's warning context");
   for (const float scale : {1.0f, 0.01f, 0.001f, 10.0f}) {
     auto changed = bytes;
     scalar(changed, 1, idSize, scale);
@@ -671,6 +716,8 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
   std::reverse(reorderedBlocks.begin(), reorderedBlocks.end());
   const auto reordered = decode(bytes, reorderedBlocks, schema);
   Require(reordered.HasValue() && reordered.GetValue().objects[0].sourceName == "One" &&
+              reordered.GetValue().objects[0].identifier == "One" &&
+              reordered.GetValue().objects[1].identifier == "Two" &&
               reordered.GetValue().objects[1].parent == 0 &&
               reordered.GetValue().objects[1].worldTransform == result.GetValue().objects[1].worldTransform,
       "Native parent indices and object discovery order do not depend on block enumeration");

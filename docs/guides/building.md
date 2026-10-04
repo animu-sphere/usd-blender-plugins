@@ -292,6 +292,25 @@ decoder's own affine validation remains exact. Neither test authors USD or
 closes STAGE-O1's multi-scale evidence. Fixture provenance and regeneration
 are in the [transform fixture README](../../tests/fixtures/native-transforms/README.md).
 
+`blendScene.naming` exercises the
+[native Object naming boundary](../design/NAMING_POLICY.md#41-native-object-naming-boundary):
+ASCII sanitization, preserved literal underscores, unsigned UTF-8 source-byte
+ordering, natural suffix collisions and fixed `mesh` child reservations.
+All 40,320 permutations of an eight-Object IR, with parent indices remapped,
+must assign the same identifiers to the same source Objects. UTF-8 display
+tests pin valid scalar boundaries, maximal ill-formed-subpart replacement,
+one recoverable warning per affected name, duplicate sibling rejection and
+invalid immediate IR references.
+
+`blendScene.ir` connects naming to native decoding across all four synthetic
+layouts, requiring unchanged raw names and exact Object context for warnings
+and fatal duplicate-name failures. Both Mesh storage families prove fixed-child
+reservation without changing shared geometry. `blendScene.transforms` also
+requires unchanged identifiers when the unmodified Blender-written fixtures'
+block records are reversed. These tests run in both root and standalone Scene
+builds alongside the existing dependency gates. They do not author USD names,
+close NAME-O1 or change the header-only importer.
+
 The same `blendScene.ir` executable includes `MeshTests.cpp`, exercising the
 [native Mesh storage boundary](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary).
 The real 4.5.13 CustomData and 5.2.2 AttributeArray Cube Mesh payloads retain

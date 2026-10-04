@@ -503,8 +503,17 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
     const auto decoded = Take(fixture.Decode());
     Require(decoded.objects.size() == 2 && decoded.meshes.size() == 1 &&
                 decoded.objects[0].mesh == 0 && decoded.objects[1].mesh == 0 &&
+                decoded.objects[0].identifier == "One" && decoded.objects[1].identifier == "Two" &&
                 decoded.objects[1].parent == 0 && decoded.objects[0].hiddenForRender,
         "Mesh objects share owning data indices while preserving saved membership, parenting and visibility");
+    auto named = fixture;
+    named.Name(5, 0, "OBmesh");
+    named.Bits(5, 6, 0, 1);
+    const auto reserved = Take(named.Decode());
+    Require(reserved.objects[1].sourceName == "mesh" && reserved.objects[1].identifier == "mesh_1" &&
+                reserved.objects[1].parent == 0 && reserved.objects[1].mesh == 0 &&
+                SameMesh(decoded.meshes[0], reserved.meshes[0]),
+        "Native Mesh parents reserve the data child name without changing shared geometry");
     const auto& mesh = decoded.meshes[0];
     if (modern) {
       CheckConstantMeshes(fixture);
