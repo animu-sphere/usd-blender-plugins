@@ -20,6 +20,7 @@ Generated and verified on Windows on 2026-10-04:
 | `blender-4.5.13/custom_fans.blend` | 4.5.13 LTS, `daeeeca98fb0` | 378610 | `2b14945a40afa7d1ee834737ce2d876831554b4eaaea50a0dcfd75ec5adc60b3` |
 | `blender-4.5.13/custom_split_fans.blend` | 4.5.13 LTS, `daeeeca98fb0` | 378615 | `157d0659cd188a2eda11dc3b38ac253d0396e9e5c252bab1ca0919206f40b77b` |
 | `blender-4.5.13/custom_angles.blend` | 4.5.13 LTS, `daeeeca98fb0` | 398867 | `1b8860ecd88e9abc48c8e39e54256f3ec72ad59fb52381f5bd1256c16a4370fd` |
+| `blender-4.5.13/constant.blend` | 4.5.13 LTS, `daeeeca98fb0` | 381192 | `7c05f0960b46fe7103c7888f587b2f6fc3aaf0abc2489c3ef28bd98d52dc9e70` |
 | `blender-5.2.2/smooth.blend` | 5.2.2 LTS, `d13f752e3b9c` | 494111 | `880cb968ae2dbee365ce2edbef1bf5b366c27d9b3dada25a3df99173ac0af924` |
 | `blender-5.2.2/flat.blend` | 5.2.2 LTS, `d13f752e3b9c` | 492743 | `897b0b944b37406706e0b8b7856acf533022b64c73fe971df4b466a06a4dffcb` |
 | `blender-5.2.2/split.blend` | 5.2.2 LTS, `d13f752e3b9c` | 494112 | `1480358ac6af9234904d0638713983a2525e1c7ae5b9c0c87c504273d7ec75a9` |
@@ -28,6 +29,7 @@ Generated and verified on Windows on 2026-10-04:
 | `blender-5.2.2/custom_fans.blend` | 5.2.2 LTS, `d13f752e3b9c` | 494537 | `bc8b41316a99491a7b6b61542cba91e2f89543a1401491ec9fb8f322015e5310` |
 | `blender-5.2.2/custom_split_fans.blend` | 5.2.2 LTS, `d13f752e3b9c` | 494542 | `45db8bb91affb443ab764ab131a5a80e6bcfec3a1fa0d18a6ffa284fa1fdaecf` |
 | `blender-5.2.2/custom_angles.blend` | 5.2.2 LTS, `d13f752e3b9c` | 514244 | `d11ad0c92525916fd8e6cd63ec6dd804a56c58210d1d2e8766263a6916783986` |
+| `blender-5.2.2/constant.blend` | 5.2.2 LTS, `d13f752e3b9c` | 497859 | `38fceca0f4c2b0a6b107f2d68568a0790f6ab65d275d4c4f45ca020802b65ff6` |
 
 All are uncompressed, normal-save files with one active Scene named `Normals`
 and source unit scale `0.01`. The three original normal fixtures each have one
@@ -72,7 +74,7 @@ the saved file. It contains:
 7. One source-basis normal vector per corner.
 
 `blendScene.normals` independently reads all files, including both
-`multi.blend` and all four custom fixtures per version, through
+`multi.blend`, `constant.blend` and all four custom fixtures per version, through
 `blendFile` and `DecodeScene`. It compares meter/basis-normalized positions,
 unchanged topology and basis-rotated corner normals. Vector components use
 absolute `2e-5` tolerance; native corner normals must have unit length within
@@ -187,7 +189,38 @@ normals or the second Mesh's positions is rejected without rewriting files.
 The global reader pointer map is unchanged. The scoped resolver lives in
 `blendScene`; its [ownership/reference contract](../../../docs/design/DESIGN_POLICY.md#528-native-mesh-storage-boundary)
 is applied consistently to Scene selection, Object traversal and decoding.
-Constant AttributeArray and other named normal formats remain unsupported.
+Other named normal formats remain unsupported.
+
+### Constant modern attributes
+
+`constant.blend` constructs two independent flat wedges, each with four points,
+two faces and six corners. `Other` uses `2 * position + (7, -5, 2)`.
+After removing the dense `sharp_face` attribute, the generator calls Blender's
+`shade_flat` operator. The version-1 oracle records both source Meshes and
+their corner normals, checked again after reopening the saved file.
+
+The 5.2.2 file stores each `sharp_face` as a face-domain boolean `Attribute`,
+data type zero, storage type one. Its `data` pointer names one `AttributeSingle`
+record with a `void *data` member; that points to one `raw_data` byte of value
+one, not two domain bytes. `blendScene.meshBoundaries` pins this exact shape.
+The 4.5.13 file is the legacy CustomData control. Both saved normal oracles
+compare in `blendScene.normals`, including reversed enumeration.
+
+The saved 5.2.2 Singles have unique addresses. In-memory mutations deliberately
+collide the two sharp-face Single addresses and adjust the owning Attribute
+reference, preserving the differing payloads. Selection and decoding must
+resolve each through Mesh ownership; wrong discriminators, owners, missing
+references, unrelated types, duplicate IDs and legacy headers remain fatal.
+No saved fixture bytes are rewritten by these CTests.
+
+`AttributeArray.is_single == 1` is a separate accepted constant form with
+logical `size` equal to the Mesh domain and exactly one serialized value.
+It has synthetic evidence only, not a Blender-written fixture. Both constant
+forms run raw and SDNA-structured positions, integers, face/edge booleans, UVs
+and packed signed-short normals across both pointer widths and byte orders
+in `blendScene.ir`. Empty domains publish no values but still require the
+one-value payload. Invalid flags, sizes, lengths/counts, references and values
+retain exact fatal context and no partial Scene.
 
 This is source normal/Mesh decoding evidence for the tested storage families,
 not a general multi-Mesh compatibility claim, Blender evaluation backend,

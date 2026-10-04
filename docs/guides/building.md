@@ -301,8 +301,11 @@ named indexed `UVMap` coordinates and repeated-read equality. Both storage
 forms also run across four synthetic layouts, covering mixed Mesh/Empty
 objects, shared Mesh indices, two indexed UV maps with a non-first render map,
 block reordering, ownership and four unit scales without scaling normals/UVs.
-Empty, malformed, nonfinite, invalid-index and unsupported custom/constant
-storage cases require exact contextual diagnostics and no partial Scene.
+Constant AttributeArrays and AttributeSingles run raw/structured values across
+all four layouts, including empty domains, face/edge booleans, UV indexing and
+packed normals. Invalid sizes, single flags, lengths and references retain
+exact fatal context. Empty, malformed, nonfinite, invalid-index and unsupported
+named-normal/storage cases require no partial Scene.
 Modifier and shape-key presence reports source-only data without evaluation.
 The root reader build and standalone OpenStrata library build both run these
 tests and the existing four scene dependency-boundary gates. Blender-written Mesh transform/unit oracle fixtures
@@ -331,6 +334,11 @@ rejection for non-identical 5.2.2 Attribute/AttributeArray collisions.
 Scene selection/decoding resolve only validated Mesh-owned occurrences.
 Wrong/same/non-Mesh owners, duplicate IDs, unreferenced targets, unrelated
 SDNA types and legacy-header mutations remain contextual fatal errors.
+Both `constant.blend` files compare two independent flat Meshes with saved
+normal oracles. The 5.2.2 fixture stores `sharp_face` as `AttributeSingle`,
+one true byte for two faces. In-memory Single-address collisions exercise
+the same scoped ownership checks, including wrong storage discriminators.
+Single-flag AttributeArrays have synthetic evidence only.
 The reader's global uniqueness contract and the header-only importer remain
 unchanged.
 
@@ -494,7 +502,7 @@ and UI state are not byte-reproducible; no `--check-bytes` claim is made.
 Run with each pinned Blender installation (4.5.13 or 5.2.2). The default
 output directory holds `smooth.blend`, `flat.blend`, `split.blend`,
 `custom.blend`, `custom_fans.blend`, `custom_split_fans.blend`,
-`custom_angles.blend`, `multi.blend` and adjacent `.oracle.txt` files.
+`custom_angles.blend`, `multi.blend`, `constant.blend` and adjacent `.oracle.txt` files.
 Provenance, cases, comparison thresholds and ownership/reconstruction evidence are in the
 [normal fixture record](../../tests/fixtures/native-normals/README.md).
 
@@ -526,6 +534,9 @@ The fan fixtures exercise shared spaces and integer averaging; the angle
 fixture pins the observed reference-angle approximation independently of
 native decoder math. `multi` creates separate Mesh datablocks, not copies or shared
 Object data, with uniform scaling and translation of the second Mesh's points.
+`constant` creates two independent flat wedges and calls `shade_flat` after
+removing dense sharp-face attributes, producing constant `AttributeSingle`
+booleans in 5.2.2 and legacy CustomData in 4.5.13.
 `--check` regenerates into temporary files, compares the semantic oracles,
 then reopens and verifies each stored fixture without rewriting any fixture
 or oracle. `--output <directory>` redirects all selected files in either mode;
@@ -536,3 +547,12 @@ modified-oracle rejection, unchanged unselected files, validation of changed
 saved smoothing flags/custom normals/second-Mesh geometry, and same-shape,
 non-identical 5.2.2 address collisions across independent processes.
 Saved addresses and UI state are not byte-reproducible.
+
+To check only the constant-storage controls without rewriting them:
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 4.5\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check --groups constant
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check --groups constant
+```

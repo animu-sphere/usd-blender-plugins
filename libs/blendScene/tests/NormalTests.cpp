@@ -54,7 +54,7 @@ void CheckFixture(const std::filesystem::path& path) {
       header));
   const auto decoded = blend::DecodeScene(bytes, blocks, schema, header, {10000, 64});
   const auto scene = Take(decoded);
-  const std::size_t expectedCount = path.stem() == "multi" ? 2 : 1;
+  const std::size_t expectedCount = path.stem() == "multi" || path.stem() == "constant" ? 2 : 1;
   Require(scene.metadata.sourceScene == "Normals" && scene.objects.size() == expectedCount &&
               scene.meshes.size() == expectedCount && decoded.Diagnostics().empty(),
       "Normal fixture has only source Mesh objects without evaluation diagnostics");
@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
     Require(argc == 3, "Two Blender-written normal fixture directories are required");
     for (const auto directory : {argv[1], argv[2]}) {
       for (const auto name : {"smooth.blend", "flat.blend", "split.blend",
-               "custom.blend", "custom_fans.blend", "custom_split_fans.blend", "custom_angles.blend", "multi.blend"}) {
+               "custom.blend", "custom_fans.blend", "custom_split_fans.blend", "custom_angles.blend", "multi.blend", "constant.blend"}) {
         CheckFixture(std::filesystem::path(directory) / name);
       }
     }

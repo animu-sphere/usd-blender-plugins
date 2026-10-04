@@ -322,6 +322,7 @@ private:
     std::uint32_t index;
     Kind kind;
     bool raw;
+    bool single = false;
   };
 
   ValuesView Array(std::uint64_t address, std::uint64_t count,
@@ -352,22 +353,30 @@ private:
   ValuesView Values(const Attribute& attribute, std::uint32_t count) const {
     auto address = Pointer(attribute.source, "data", "void", attribute.index);
     if (attribute.modern) {
-      if (Scalar(attribute.source, "storage_type", "int8_t", 1, attribute.index) != 0) {
-        Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "Only dense AttributeArray storage is decoded", attribute.index);
+      const auto storage = Scalar(attribute.source, "storage_type", "int8_t", 1, attribute.index);
+      if (storage != 0 && storage != 1) {
+        Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "Only AttributeArray and AttributeSingle storage is decoded", attribute.index);
       }
-      const auto array = Records(address, 1, "AttributeArray", attribute.index);
+      const auto array = Records(address, 1, storage == 0 ? "AttributeArray" : "AttributeSingle", attribute.index);
       const auto index = Resolve(address, attribute.index);
-      if (Scalar(array, "size", "int64_t", 8, index) != count) {
-        Fail("BLEND_MESH_STORAGE_INVALID", "AttributeArray size differs from its Mesh domain", index);
-      }
-      if (Scalar(array, "is_single", "int8_t", 1, index) != 0) {
-        Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "Constant AttributeArray storage is not decoded", index);
+      bool single = storage == 1;
+      if (storage == 0) {
+        if (Scalar(array, "size", "int64_t", 8, index) != count) {
+          Fail("BLEND_MESH_STORAGE_INVALID", "AttributeArray size differs from its Mesh domain", index);
+        }
+        const auto flag = Scalar(array, "is_single", "int8_t", 1, index);
+        if (flag != 0 && flag != 1) {
+          Fail("BLEND_MESH_STORAGE_INVALID", "AttributeArray is_single must be zero or one", index);
+        }
+        single = flag != 0;
       }
       address = Pointer(array, "data", "void", index);
-      if (count == 0 && address == 0) {
+      if (!single && count == 0 && address == 0) {
         return {{}, index, attribute.kind, true};
       }
-      return Array(address, count, attribute.kind, index);
+      auto values = Array(address, single ? 1 : count, attribute.kind, index);
+      values.single = single;
+      return values;
     }
     if (Scalar(attribute.source, "flag", "int", 4, attribute.index) != 0) {
       Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "Flagged CustomData storage is not decoded", attribute.index);
@@ -388,6 +397,9 @@ private:
   }
 
   std::int32_t Integer(const ValuesView& values, std::uint64_t element) const {
+    if (values.single) {
+      element = 0;
+    }
     if (values.raw) {
       return std::bit_cast<std::int32_t>(Bits(values.bytes.subspan(static_cast<std::size_t>(element * 4), 4)));
     }
@@ -396,6 +408,9 @@ private:
   }
 
   std::array<std::int32_t, 2> PackedNormal(const ValuesView& values, std::size_t element) const {
+    if (values.single) {
+      element = 0;
+    }
     std::array<std::int32_t, 2> result{};
     for (std::size_t axis = 0; axis < 2; ++axis) {
       if (values.raw) {
@@ -410,6 +425,9 @@ private:
   }
 
   bool Boolean(const ValuesView& values, std::uint32_t element) const {
+    if (values.single) {
+      element = 0;
+    }
     std::uint64_t value;
     if (values.raw) {
       value = std::to_integer<std::uint8_t>(values.bytes[element]);
@@ -430,6 +448,9 @@ private:
 
   template <std::size_t Size>
   std::array<double, Size> Vector(const ValuesView& values, std::uint32_t element) const {
+    if (values.single) {
+      element = 0;
+    }
     std::array<double, Size> result{};
     constexpr std::array<std::string_view, 3> members = {"x", "y", "z"};
     for (std::size_t axis = 0; axis < Size; ++axis) {

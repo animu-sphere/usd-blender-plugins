@@ -68,12 +68,14 @@ public:
     Type("short", 2);
     Type("int8_t", 1);
     Type("int64_t", 8);
+    Type("uchar", 1);
     Type("CustomDataExternal", 0);
     Type("Key", 0);
     Structure("vec3f", {{"float", "x"}, {"float", "y"}, {"float", "z"}});
     Structure("vec2f", {{"float", "x"}, {"float", "y"}});
     Structure("vec2s", {{"short", "x"}, {"short", "y"}});
     Structure("MIntProperty", {{"int", "i"}});
+    Structure("MBoolProperty", {{"uchar", "b"}});
     Structure("CustomDataLayer", {{"int", "type"}, {"int", "flag"}, {"int", "active_rnd"},
                                      {"char", "name", false, 32}, {"void", "data", true}});
     Structure("CustomData", {{"CustomDataLayer", "layers", true},
@@ -81,6 +83,7 @@ public:
     Structure("Attribute", {{"char", "name", true}, {"short", "data_type"},
                                {"int8_t", "domain"}, {"int8_t", "storage_type"}, {"void", "data", true}});
     Structure("AttributeArray", {{"void", "data", true}, {"int64_t", "size"}, {"int8_t", "is_single"}});
+    Structure("AttributeSingle", {{"void", "data", true}});
     Structure("AttributeStorage", {{"Attribute", "dna_attributes", true}, {"int", "dna_attributes_num"}});
     const auto meshStruct = Structure("Mesh", {{"ID", "id"}, {"int", "totvert"}, {"int", "totedge"},
                                                   {"int", "totpoly"}, {"int", "totloop"}, {"int", "poly_offset_indices", true},
@@ -285,6 +288,38 @@ public:
     Bits(attributeRecords, offset + Member("Attribute", "data").offset, blocks[array].oldAddress, header.pointerSize);
   }
 
+  std::uint32_t Constant(std::uint32_t element, std::string_view type,
+      std::uint64_t stride, bool separate) {
+    const auto source = Take(blend::ViewDnaBlock(bytes, blocks, schema, header, arrays[element]));
+    const auto address = Take(Take(source.Member("data")).Pointer());
+    const auto values = *Take(Take(blend::BuildPointerMap(blocks)).Resolve(address));
+    const auto offset = blocks[values].offset;
+    const auto data = Data(type, 1, stride);
+    std::copy_n(bytes.begin() + static_cast<std::size_t>(offset), static_cast<std::size_t>(stride),
+        bytes.begin() + static_cast<std::size_t>(blocks[data].offset));
+    if (separate) {
+      const auto single = Data("AttributeSingle", 1, 0);
+      Set(single, "AttributeSingle", "data", blocks[data].oldAddress);
+      Bits(attributeRecords, element * Size("Attribute") + Member("Attribute", "storage_type").offset, 1, 1);
+      Bits(attributeRecords, element * Size("Attribute") + Member("Attribute", "data").offset,
+          blocks[single].oldAddress, header.pointerSize);
+    } else {
+      Set(arrays[element], "AttributeArray", "is_single", 1);
+      Set(arrays[element], "AttributeArray", "data", blocks[data].oldAddress);
+    }
+    return data;
+  }
+
+  void EmptyPolygons() {
+    for (const auto member : {"totpoly", "totloop", "poly_offset_indices"}) {
+      Set(mesh, "Mesh", member, 0);
+    }
+    for (const auto element : {1, 3, 4, 5}) {
+      Set(arrays[element], "AttributeArray", "size", 0);
+      Set(arrays[element], "AttributeArray", "data", 0);
+    }
+  }
+
   std::vector<std::byte> bytes;
   std::vector<blend::BlendBlock> blocks;
   blend::DnaSchema schema;
@@ -330,6 +365,134 @@ private:
   }
 };
 
+void CheckConstantMeshes(const Fixture& fixture) {
+  for (const bool separate : {false, true}) {
+    for (const bool raw : {false, true}) {
+      auto changed = fixture;
+      const auto uv = changed.Constant(3, raw ? "raw_data" : "vec2f", 8, separate);
+      changed.Float(uv, 0, 0.25f);
+      changed.Float(uv, 4, -0.75f);
+      const auto scene = Take(changed.Decode());
+      const auto mesh = scene.meshes[0];
+      Require(mesh.uvMaps[0].values == std::vector<blend::Vector2>{{0.25, -0.75}} &&
+                  mesh.uvMaps[0].indices == std::vector<std::int32_t>(6, 0) &&
+                  !mesh.uvMaps[0].activeRender && mesh.uvMaps[1].activeRender,
+          "Both constant storage forms expand raw/structured UVs without changing render-map selection");
+      auto reordered = changed;
+      std::reverse(reordered.blocks.begin(), reordered.blocks.end());
+      Require(SameMesh(mesh, Take(reordered.Decode()).meshes[0]) &&
+                  SameMesh(mesh, Take(changed.Decode()).meshes[0]),
+          "Constant decoding is deterministic across repeated/reversed block reads");
+      changed.Float(1, changed.Member("Scene", "unit").offset, 10);
+      Require(Take(changed.Decode()).meshes[0].uvMaps[0].values == mesh.uvMaps[0].values,
+          "Constant UV values are not unit-scaled");
+      changed.Float(uv, 0, std::numeric_limits<float>::infinity());
+      changed.Failure("BLEND_MESH_VALUE_INVALID", uv);
+      changed = fixture;
+      changed.EmptyPolygons();
+      const auto points = changed.Constant(0, raw ? "raw_data" : "vec3f", 12, separate);
+      changed.Float(points, 0, 2);
+      changed.Float(points, 4, 3);
+      changed.Float(points, 8, 4);
+      for (const float scale : {0.01f, 1.0f, 10.0f}) {
+        changed.Float(1, changed.Member("Scene", "unit").offset, scale);
+        const auto result = changed.Decode();
+        Require(result.HasValue() && result.Diagnostics().size() == 1 &&
+                    result.Diagnostics()[0].code == "BLEND_MESH_EMPTY" &&
+                    result.GetValue().meshes[0].points ==
+                        std::vector<blend::Vector3>(4, {2 * scale, 4 * scale, -3 * scale}),
+            "Constant positions expand into owning points with one basis/unit conversion");
+      }
+      changed.Float(points, 0, std::numeric_limits<float>::quiet_NaN());
+      changed.Failure("BLEND_MESH_VALUE_INVALID", points);
+      for (const auto element : {2u, 6u}) {
+        for (const auto value : {0u, 1u}) {
+          changed = fixture;
+          changed.Bits(changed.sharp, 0, 0, 1);
+          changed.Bits(changed.sharp, 1, 0, 1);
+          changed.Float(changed.points, 11 * 4, 4);
+          const auto values = element == 2 ? changed.sharp : changed.sharpEdges;
+          const auto count = element == 2 ? 2u : 5u;
+          for (std::size_t item = 0; item < count; ++item) {
+            changed.Bits(values, item, value, 1);
+          }
+          const auto expected = Take(changed.Decode()).meshes[0];
+          const auto data = changed.Constant(element, raw ? "raw_data" : "MBoolProperty", 1, separate);
+          Require(SameMesh(expected, Take(changed.Decode()).meshes[0]),
+              "Constant face/edge booleans preserve flat/smooth/split normal domains");
+          changed.Bits(data, 0, 2, 1);
+          changed.Failure("BLEND_MESH_STORAGE_INVALID", data);
+        }
+      }
+      for (const auto pair : {std::array<std::int16_t, 2>{0, 0}, {16384, 32767}, {-32768, -32768}}) {
+        changed = fixture;
+        changed.AddPackedNormals(pair);
+        const auto expected = Take(changed.Decode()).meshes[0];
+        const auto packed = changed.Constant(7, raw ? "raw_data" : "vec2s", 4, separate);
+        Require(SameMesh(expected, Take(changed.Decode()).meshes[0]),
+            "Constant packed normals preserve automatic values and the signed-short range");
+        --changed.blocks[packed].length;
+        changed.Failure("BLEND_MESH_STORAGE_INVALID", packed);
+      }
+      changed = fixture;
+      const auto corners = changed.Constant(1, raw ? "raw_data" : "MIntProperty", 4, separate);
+      changed.Bits(corners, 0, 4, 4);
+      changed.Failure("BLEND_MESH_TOPOLOGY_INVALID", corners);
+      changed.Bits(corners, 0, 0, 4);
+      changed.Failure("BLEND_MESH_NORMALS_INVALID", changed.mesh);
+      changed = fixture;
+      changed.EmptyPolygons();
+      const auto emptyUv = changed.Data(raw ? "raw_data" : "vec2f", 1, 8);
+      changed.Set(changed.arrays[3], "AttributeArray", "data", changed.blocks[emptyUv].oldAddress);
+      const auto emptyData = changed.Constant(3, raw ? "raw_data" : "vec2f", 8, separate);
+      const auto empty = Take(changed.Decode()).meshes[0];
+      Require(empty.uvMaps[0].values.empty() && empty.uvMaps[0].indices.empty(),
+          "A constant with an empty domain retains its one stored value without publishing elements");
+      changed.blocks[emptyData].length = 0;
+      changed.Failure("BLEND_MESH_STORAGE_INVALID", emptyData);
+      changed = fixture;
+      const auto data = changed.Constant(3, raw ? "raw_data" : "vec2f", 8, separate);
+      changed.bytes.resize(changed.bytes.size() + 8);
+      for (const auto length : {0u, 7u, 16u}) {
+        auto malformed = changed;
+        malformed.blocks[data].length = length;
+        malformed.Failure("BLEND_MESH_STORAGE_INVALID", data);
+      }
+      auto malformed = changed;
+      malformed.blocks[data].count = 2;
+      malformed.Failure("BLEND_MESH_STORAGE_INVALID", data);
+      const auto attribute = Take(blend::ViewDnaBlock(changed.bytes, changed.blocks,
+          changed.schema, changed.header, changed.attributeRecords, 3));
+      const auto wrapper = *Take(Take(blend::BuildPointerMap(changed.blocks))
+              .Resolve(Take(Take(attribute.Member("data")).Pointer())));
+      for (const auto address : {std::uint64_t{0}, std::uint64_t{999}, changed.blocks[data].oldAddress + 1}) {
+        malformed = changed;
+        malformed.Set(wrapper, separate ? "AttributeSingle" : "AttributeArray", "data", address);
+        malformed.Failure("BLEND_MESH_REFERENCE_INVALID", wrapper);
+      }
+      malformed = changed;
+      malformed.blocks[wrapper].count = 2;
+      malformed.Failure("BLEND_MESH_STORAGE_INVALID", wrapper);
+      malformed = changed;
+      malformed.blocks[wrapper].sdnaIndex = changed.blocks[data].sdnaIndex;
+      malformed.blocks[wrapper].length = changed.blocks[data].length;
+      malformed.Failure(raw ? "BLEND_DNA_SIZE" : "BLEND_MESH_STORAGE_INVALID", wrapper);
+      if (!separate) {
+        for (const auto size : {0u, 5u, 7u, std::numeric_limits<unsigned>::max()}) {
+          malformed = changed;
+          malformed.Set(wrapper, "AttributeArray", "size", size);
+          malformed.Failure("BLEND_MESH_STORAGE_INVALID", wrapper);
+        }
+        for (const auto flag : {2u, 255u}) {
+          malformed = changed;
+          malformed.Set(wrapper, "AttributeArray", "is_single", flag);
+          malformed.Failure("BLEND_MESH_STORAGE_INVALID", wrapper);
+        }
+      }
+    }
+  }
+}
+
 } // namespace
 
 void CheckNativeMeshes(const std::vector<std::byte>& bytes,
@@ -343,6 +506,9 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
                 decoded.objects[1].parent == 0 && decoded.objects[0].hiddenForRender,
         "Mesh objects share owning data indices while preserving saved membership, parenting and visibility");
     const auto& mesh = decoded.meshes[0];
+    if (modern) {
+      CheckConstantMeshes(fixture);
+    }
     const std::vector<blend::Vector3> expectedPoints = {{0, 0, 0}, {2, 0, 0}, {2, 0, -3}, {0, 0, -3}};
     Require(mesh.sourceName == "Shared" && mesh.points == expectedPoints &&
                 mesh.faceVertexCounts == std::vector<std::int32_t>{3, 3} &&
@@ -576,9 +742,9 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
       changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.arrays[0]);
       changed = fixture;
       changed.Set(changed.arrays[0], "AttributeArray", "is_single", 1);
-      changed.Failure("BLEND_MESH_STORAGE_UNSUPPORTED", changed.arrays[0]);
+      changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.points);
       changed = fixture;
-      changed.Set(changed.attributeRecords, "Attribute", "storage_type", 1);
+      changed.Set(changed.attributeRecords, "Attribute", "storage_type", 2);
       changed.Failure("BLEND_MESH_STORAGE_UNSUPPORTED", changed.attributeRecords);
       changed = fixture;
       changed.Set(changed.attributeRecords, "Attribute", "domain", 3);
