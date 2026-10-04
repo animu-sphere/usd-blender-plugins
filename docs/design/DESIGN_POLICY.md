@@ -542,10 +542,15 @@ current corpus SDNA, is checked even when collection instancing is inactive.
 Every nonnull value must resolve exactly to one local `Collection` with
 `GR` or `DATA` code and a valid GR-prefixed ID. Bit 8 of `transflag` requires
 a nonnull target. The optional `instanceCollectionBlockIndex` refers to the
-caller's block sequence. Each distinct instance target outside already visited
-Collections/Object/data IDs consumes one visit; shared targets count once.
-Instance targets do not extend depth or membership. Their internal lists and
-recursive instance edges are not expanded, evaluated or cycle-checked here.
+caller's block sequence. Each distinct Collection, list node, Object and data
+target consumes one visit; shared targets count once. For this opt-in value
+boundary, target Collections and their saved child and Object lists are
+traversed recursively to validate nested instance references. Collection
+containment and instance edges share the caller's Collection depth and visit
+budgets; active-path repeats fail with `BLEND_SCENE_CYCLE`, while completed
+shared targets are not expanded twice. Objects discovered only through an
+instance target are validated but are not added to the selected Scene
+membership.
 
 All failures are fatal with source context and no partial result. Existing
 reader, linked-ID, name and budget diagnostics retain their behavior. No

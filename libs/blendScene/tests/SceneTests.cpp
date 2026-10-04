@@ -837,6 +837,11 @@ void CheckCollectionLayouts() {
       valueBytes.resize(valueBytes.size() + idSize);
       valueBytes[static_cast<std::size_t>(valueBlocks.back().offset)] = std::byte{'M'};
       valueBytes[static_cast<std::size_t>(valueBlocks.back().offset) + 1] = std::byte{'E'};
+      const auto instanceIndex = static_cast<std::uint32_t>(valueBlocks.size());
+      valueBlocks.push_back({{'G', 'R', 0, 0}, collectionSize, 3100, 5, 1, valueBytes.size()});
+      valueBytes.resize(valueBytes.size() + collectionSize);
+      valueBytes[static_cast<std::size_t>(valueBlocks.back().offset)] = std::byte{'G'};
+      valueBytes[static_cast<std::size_t>(valueBlocks.back().offset) + 1] = std::byte{'R'};
       auto setValue = [&](auto& input, std::uint32_t index, std::uint64_t offset,
                           std::uint64_t value, std::size_t size) {
         StoreBits(input, static_cast<std::size_t>(valueBlocks[index].offset + offset), value, size, order);
@@ -847,9 +852,9 @@ void CheckCollectionLayouts() {
       }
       setValue(valueBytes, 4, visibilityOffset, 4, visibilitySize);
       setValue(valueBytes, 4, flagsOffset, 256, 2);
-      setValue(valueBytes, 4, instanceOffset, valueBlocks[3].oldAddress, width);
+      setValue(valueBytes, 4, instanceOffset, valueBlocks[instanceIndex].oldAddress, width);
       auto readValues = [&](const auto& input, const auto& records, const auto& dna,
-                            blend::SceneTraversalLimits limits = {9, 2}) {
+                            blend::SceneTraversalLimits limits = {10, 3}) {
         return blend::SelectSceneObjectValues(input, records, dna, header, limits);
       };
       auto valueFailure = [&](const auto& input, const auto& records, const auto& dna,
@@ -874,7 +879,7 @@ void CheckCollectionLayouts() {
                   values.GetValue().objects[0].values && values.GetValue().objects[0].values->type == 1 &&
                   values.GetValue().objects[0].values->hiddenForRender &&
                   values.GetValue().objects[0].values->transformFlags == 256 &&
-                  values.GetValue().objects[0].values->instanceCollectionBlockIndex == 3 &&
+                  values.GetValue().objects[0].values->instanceCollectionBlockIndex == instanceIndex &&
                   !values.GetValue().objects[1].values->hiddenForRender &&
                   !values.GetValue().objects[1].values->instanceCollectionBlockIndex &&
                   !result.GetValue().objects[0].values,
@@ -928,18 +933,13 @@ void CheckCollectionLayouts() {
       setValue(changedValues, 10, typeOffset, 1, 2);
       valueFailure(changedValues, valueBlocks, valueDna, "BLEND_SCENE_REFERENCE_INVALID", 10);
       setValue(changedValues, 10, idSize + width, 3000, width);
-      Require(readValues(changedValues, valueBlocks, valueDna, {10, 2}).HasValue(),
+      Require(readValues(changedValues, valueBlocks, valueDna, {11, 3}).HasValue(),
           "Parent-only Object values are validated but do not expand membership");
-      const auto instanceIndex = static_cast<std::uint32_t>(valueBlocks.size());
-      valueBlocks.push_back({{'G', 'R', 0, 0}, collectionSize, 3100, 5, 1, valueBytes.size()});
-      valueBytes.resize(valueBytes.size() + collectionSize);
-      valueBytes[static_cast<std::size_t>(valueBlocks.back().offset)] = std::byte{'G'};
-      valueBytes[static_cast<std::size_t>(valueBlocks.back().offset) + 1] = std::byte{'R'};
       for (const auto index : {4, 5}) {
         setValue(valueBytes, index, instanceOffset, 3100, width);
       }
-      Require(readValues(valueBytes, valueBlocks, valueDna, {10, 2}).HasValue(),
-          "Shared instance targets consume one additional visit without traversal");
+      Require(readValues(valueBytes, valueBlocks, valueDna, {10, 3}).HasValue(),
+          "Shared empty instance targets consume one additional visit");
       valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_VISIT_LIMIT", 4, {9, 2});
       changedValues = valueBytes;
       setValue(changedValues, instanceIndex, 16, 999, width);
@@ -952,10 +952,122 @@ void CheckCollectionLayouts() {
       valueFailure(valueBytes, badInstance, valueDna, "BLEND_SCENE_REFERENCE_INVALID", instanceIndex);
       std::reverse(badInstance.begin(), badInstance.end());
       badInstance.front().count = 1;
-      const auto reorderedValues = readValues(valueBytes, badInstance, valueDna, {10, 2});
+      const auto reorderedValues = readValues(valueBytes, badInstance, valueDna, {10, 3});
       Require(reorderedValues.HasValue() &&
                   badInstance[*reorderedValues.GetValue().objects[0].values->instanceCollectionBlockIndex].oldAddress == 3100,
           "Instance indices refer to the caller's reordered blocks");
+      const auto mappingBytes = valueBytes;
+      const auto mappingBlocks = valueBlocks;
+      const auto instanceNodeIndex = static_cast<std::uint32_t>(valueBlocks.size());
+      valueBlocks.push_back({{'D', 'A', 'T', 'A'}, nodeSize, 3200, 7, 1, valueBytes.size()});
+      valueBytes.resize(valueBytes.size() + nodeSize);
+      setValue(valueBytes, instanceIndex, idSize, valueBlocks[instanceNodeIndex].oldAddress, width);
+      setValue(valueBytes, instanceIndex, idSize + width, valueBlocks[instanceNodeIndex].oldAddress, width);
+      setValue(valueBytes, instanceNodeIndex, 2 * width, valueBlocks[4].oldAddress, width);
+      valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_VISIT_LIMIT",
+          instanceNodeIndex, {10, 3});
+      valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_CYCLE", 4);
+      const auto nestedObjectIndex = static_cast<std::uint32_t>(valueBlocks.size());
+      valueBlocks.push_back({{'O', 'B', 0, 0}, valueSize, 3600, 6, 1, valueBytes.size()});
+      valueBytes.resize(valueBytes.size() + valueSize);
+      constexpr std::string_view nestedObjectName = "OBNested";
+      for (std::size_t character = 0; character < nestedObjectName.size(); ++character) {
+        valueBytes[static_cast<std::size_t>(valueBlocks[nestedObjectIndex].offset) + character] =
+            static_cast<std::byte>(nestedObjectName[character]);
+      }
+      setValue(valueBytes, nestedObjectIndex, typeOffset, 0, 2);
+      setValue(valueBytes, instanceNodeIndex, 2 * width,
+          valueBlocks[nestedObjectIndex].oldAddress, width);
+      for (const auto address : {std::uint64_t{999}, valueBlocks[instanceIndex].oldAddress + 1,
+               valueBlocks[valueMesh].oldAddress}) {
+        setValue(valueBytes, nestedObjectIndex, instanceOffset, address, width);
+        valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_REFERENCE_INVALID",
+            address == valueBlocks[valueMesh].oldAddress ? valueMesh : nestedObjectIndex);
+        Require(select(valueBytes, valueBlocks, valueDna, {9, 2}).HasValue(),
+            "Generic selection does not follow recursive instance references");
+      }
+      const auto linkedInstanceIndex = static_cast<std::uint32_t>(valueBlocks.size());
+      valueBlocks.push_back({{'G', 'R', 0, 0}, collectionSize, 3700, 5, 1, valueBytes.size()});
+      valueBytes.resize(valueBytes.size() + collectionSize);
+      valueBytes[static_cast<std::size_t>(valueBlocks[linkedInstanceIndex].offset)] = std::byte{'G'};
+      valueBytes[static_cast<std::size_t>(valueBlocks[linkedInstanceIndex].offset) + 1] = std::byte{'R'};
+      setValue(valueBytes, linkedInstanceIndex, 16, 999, width);
+      setValue(valueBytes, nestedObjectIndex, instanceOffset,
+          valueBlocks[linkedInstanceIndex].oldAddress, width);
+      valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_LINKED_UNSUPPORTED",
+          linkedInstanceIndex);
+      setValue(valueBytes, nestedObjectIndex, instanceOffset,
+          valueBlocks[instanceIndex].oldAddress, width);
+      valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_CYCLE",
+          nestedObjectIndex);
+      setValue(valueBytes, nestedObjectIndex, instanceOffset,
+          valueBlocks[2].oldAddress, width);
+      valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_CYCLE",
+          nestedObjectIndex);
+      setValue(valueBytes, nestedObjectIndex, instanceOffset, 0, width);
+      const auto deepCollectionIndex = static_cast<std::uint32_t>(valueBlocks.size());
+      valueBlocks.push_back({{'G', 'R', 0, 0}, collectionSize, 3300, 5, 1, valueBytes.size()});
+      valueBytes.resize(valueBytes.size() + collectionSize);
+      valueBytes[static_cast<std::size_t>(valueBlocks[deepCollectionIndex].offset)] = std::byte{'G'};
+      valueBytes[static_cast<std::size_t>(valueBlocks[deepCollectionIndex].offset) + 1] = std::byte{'R'};
+      const auto childNodeIndex = static_cast<std::uint32_t>(valueBlocks.size());
+      valueBlocks.push_back({{'D', 'A', 'T', 'A'}, nodeSize, 3400, 8, 1, valueBytes.size()});
+      valueBytes.resize(valueBytes.size() + nodeSize);
+      setValue(valueBytes, instanceIndex, idSize + 2 * width,
+          valueBlocks[childNodeIndex].oldAddress, width);
+      setValue(valueBytes, instanceIndex, idSize + 3 * width,
+          valueBlocks[childNodeIndex].oldAddress, width);
+      setValue(valueBytes, childNodeIndex, 2 * width,
+          valueBlocks[deepCollectionIndex].oldAddress, width);
+      const auto deepObjectNodeIndex = static_cast<std::uint32_t>(valueBlocks.size());
+      valueBlocks.push_back({{'D', 'A', 'T', 'A'}, nodeSize, 3500, 7, 1, valueBytes.size()});
+      valueBytes.resize(valueBytes.size() + nodeSize);
+      setValue(valueBytes, deepCollectionIndex, idSize,
+          valueBlocks[deepObjectNodeIndex].oldAddress, width);
+      setValue(valueBytes, deepCollectionIndex, idSize + width,
+          valueBlocks[deepObjectNodeIndex].oldAddress, width);
+      setValue(valueBytes, deepObjectNodeIndex, 2 * width,
+          valueBlocks[4].oldAddress, width);
+      valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_DEPTH_LIMIT",
+          instanceIndex, {32, 3});
+      setValue(valueBytes, nestedObjectIndex, instanceOffset, 0, width);
+      setValue(valueBytes, deepObjectNodeIndex, 2 * width,
+          valueBlocks[nestedObjectIndex].oldAddress, width);
+      const auto recursive = readValues(valueBytes, valueBlocks, valueDna, {15, 4});
+      Require(recursive.HasValue() && recursive.GetValue().objects.size() == 2 &&
+                  recursive.GetValue().objects[0].blockIndex == 4 &&
+                  recursive.GetValue().objects[1].blockIndex == 5,
+          "Exactly sufficient recursive budgets validate nested Objects without publishing membership");
+      valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_VISIT_LIMIT",
+          deepObjectNodeIndex, {14, 4});
+      auto previousCollection = deepCollectionIndex;
+      auto recursiveReferrer = deepCollectionIndex;
+      for (std::uint32_t child = 0; child < 256; ++child) {
+        const auto childCollection = static_cast<std::uint32_t>(valueBlocks.size());
+        valueBlocks.push_back({{'G', 'R', 0, 0}, collectionSize,
+            5000 + 200 * child, 5, 1, valueBytes.size()});
+        valueBytes.resize(valueBytes.size() + collectionSize);
+        valueBytes[static_cast<std::size_t>(valueBlocks[childCollection].offset)] = std::byte{'G'};
+        valueBytes[static_cast<std::size_t>(valueBlocks[childCollection].offset) + 1] = std::byte{'R'};
+        const auto childNode = static_cast<std::uint32_t>(valueBlocks.size());
+        valueBlocks.push_back({{'D', 'A', 'T', 'A'}, nodeSize,
+            5100 + 200 * child, 8, 1, valueBytes.size()});
+        valueBytes.resize(valueBytes.size() + nodeSize);
+        setValue(valueBytes, previousCollection, idSize + 2 * width,
+            valueBlocks[childNode].oldAddress, width);
+        setValue(valueBytes, previousCollection, idSize + 3 * width,
+            valueBlocks[childNode].oldAddress, width);
+        setValue(valueBytes, childNode, 2 * width,
+            valueBlocks[childCollection].oldAddress, width);
+        recursiveReferrer = previousCollection;
+        previousCollection = childCollection;
+      }
+      Require(readValues(valueBytes, valueBlocks, valueDna, {527, 260}).HasValue(),
+          "A 256-child chain below an instance target uses bounded iterative traversal");
+      valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_DEPTH_LIMIT",
+          recursiveReferrer, {527, 259});
+      valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_VISIT_LIMIT",
+          recursiveReferrer, {526, 260});
       struct Mapping {
         std::uint16_t type;
         std::string_view code;
@@ -968,8 +1080,8 @@ void CheckCollectionLayouts() {
                {25, "AR", "bArmature"}, {26, "GD", "bGPdata"}, {27, "CV", "Curves"},
                {28, "PT", "PointCloud"}, {29, "VO", "Volume"}, {30, "GP", "GreasePencil"}}) {
         auto dna = valueDna;
-        auto records = valueBlocks;
-        changedValues = valueBytes;
+        auto records = mappingBlocks;
+        changedValues = mappingBytes;
         for (const auto index : {4, 5}) {
           setValue(changedValues, index, typeOffset, mapping.type, 2);
         }
@@ -977,7 +1089,7 @@ void CheckCollectionLayouts() {
         changedValues[static_cast<std::size_t>(records[valueMesh].offset)] = static_cast<std::byte>(mapping.code[0]);
         changedValues[static_cast<std::size_t>(records[valueMesh].offset) + 1] = static_cast<std::byte>(mapping.code[1]);
         dna.types[13].name = mapping.dnaType;
-        Require(readValues(changedValues, records, dna, {10, 2}).HasValue(),
+        Require(readValues(changedValues, records, dna, {10, 3}).HasValue(),
             "Each verified Object type requires the corresponding code and SDNA data type");
         dna.types[13].name = "Wrong";
         valueFailure(changedValues, records, dna, "BLEND_SCENE_REFERENCE_INVALID", valueMesh);
@@ -988,7 +1100,7 @@ void CheckCollectionLayouts() {
       }
       valueBytes.clear();
       Require(values.GetValue().objects[0].values->hiddenForRender &&
-                  values.GetValue().objects[0].values->instanceCollectionBlockIndex == 3,
+                  values.GetValue().objects[0].values->instanceCollectionBlockIndex == instanceIndex,
           "Saved Object values own their output after inputs are released");
       name(4, "OBChanged");
       schema.types[10].name = "Changed";
@@ -1137,11 +1249,10 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
       const auto checked = blend::SelectSceneObjectValues(changed, blocks.GetValue(),
           schema.GetValue(), header.GetValue(), {10000, 64});
       if (instanceAddress == blocks.GetValue()[*target.GetValue()].oldAddress) {
-        Require(checked.HasValue(), "A corpus instance reference resolves to its local master Collection");
-        const auto found = std::find_if(checked.GetValue().objects.begin(), checked.GetValue().objects.end(),
-            [&](const auto& candidate) { return candidate.blockIndex == object.blockIndex; });
-        Require(found->values->instanceCollectionBlockIndex == *target.GetValue(),
-            "Corpus instance output retains the caller's exact block index without expanding membership");
+        Require(!checked.HasValue() && checked.GetError().code == "BLEND_SCENE_CYCLE" &&
+                    checked.GetError().blockIndex == object.blockIndex &&
+                    checked.GetError().byteOffset == blocks.GetValue()[object.blockIndex].offset,
+            "A corpus Object instancing its containing master Collection fails with exact cycle context");
       } else {
         Require(!checked.HasValue() && checked.GetError().code == "BLEND_SCENE_REFERENCE_INVALID" &&
                     checked.GetError().blockIndex == object.blockIndex &&

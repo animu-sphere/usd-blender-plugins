@@ -160,7 +160,8 @@ authored-stage support. The importer remains header-only.
 | data ID-reference, linked-target and explicit visit-budget diagnostics | supported | synthetic absent/interior/metadata/DATA/wrong-count targets, malformed member/ID shapes, linked data, invalid names, exact/one-smaller budgets and Object/data visit deduplication; every corpus Object has null/interior/absent data-pointer mutations in `blendScene.ir` | Phase 2 |
 | saved Object type, render visibility, transform flags and type-specific data ID requirements | supported | opt-in `SelectSceneObjectValues`; four synthetic layouts cover all mapped kinds, missing/wrong data, scalar shapes, parent-only values and ownership; both 4.5.13/5.2.2 corpus files cover native kinds, saved short/int visibility and visibility/data mutations in `blendScene.ir` | Phase 2 |
 | immediate instance Collection references and explicit visit-budget diagnostics | supported | four synthetic layouts cover saved member names, null/absent/interior/wrong/count/linked/name targets, inactive references, shared and already-visited targets, reordered indices and exact budgets; both corpus files cover null references and pointer/flag mutations in `blendScene.ir` | Phase 2 |
-| recursive instance graph validation and native local/world transform construction | — | | Phase 2 |
+| recursive instance graph validation | supported | four synthetic layouts cover nested missing/interior/wrong-type/linked targets, self/ancestor cycles through CollectionObject membership, shared targets, preserved membership and generic selection, and 256-child instance subgraphs with exact/one-smaller visit/depth budgets; both corpus files reject self-instancing master Collections in `blendScene.ir` | Phase 2 |
+| native local/world transform construction | — | | Phase 2 |
 | parent-relative transforms, topology validation, normals and UV decoding | — | | Phase 2 |
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
