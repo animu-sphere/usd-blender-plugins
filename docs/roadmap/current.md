@@ -6,15 +6,6 @@ when it lands; a Phase leaves it when every task has. Scope is
 Phase lands in and its status are in the
 [status table](README.md#status-at-a-glance).
 
-## Phase 1 — container and SDNA
-
-Goal: `.blend` binary structure is read by independent C++, stably, and can be
-looked at.
-
-| # | Task | Done when | Status |
-| --- | --- | --- | --- |
-| 1.1 | Resolve BLEND-O5 | the owning document records the answer | 🚧 |
-
 ## Phase 2 — objects and meshes
 
 Goal: a `.blend` containing a cube opens directly in `usdview` as a
@@ -53,5 +44,6 @@ domains and exact indexed MLoopUVs. Unverified versions and legacy normal
 modes retain contextual fatal diagnostics. Auto-smooth/angle-dependent and
 packed custom normals in older storage, and other 3.x–4.4 version evidence,
 remain incomplete; the existing modern decoding boundary is unchanged.
-Phase 1's open compression decision remains open; compressed importer inputs
-must not acquire arbitrary production defaults to reach this milestone.
+The accepted [full-stream limit policy](../design/BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
+does not broaden the importer's uncompressed-only boundary; compressed scene
+importing still requires separate implementation and evidence.

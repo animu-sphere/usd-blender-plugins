@@ -56,7 +56,11 @@ blocks, `ENDB` or SDNA. The importer composes those separate boundaries for
 uncompressed inputs only.
 Caller-supplied limits and their semantics are defined in the
 [blend contract](../design/BLEND_CONTRACT.md#41-full-stream-byte-reading);
-production defaults remain the open BLEND-O5 decision in that document.
+the accepted [standard full-stream policy](../design/BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
+is opt-in, not an implicit API or CLI fallback. Larger generated-input
+measurements are recorded in the
+[dated report](../reports/2026-10-05-compression-policy.md); those files are
+not committed fixtures and add no scene-compatibility claim.
 
 `ReadBlocks` separately enumerates an uncompressed source, including `ENDB`,
 under an explicit block-count limit. Its
@@ -140,7 +144,8 @@ The registered importer now reads complete uncompressed containers through
 native decoding and authoring. Structural byte/block/graph bounds are derived
 from the stored size and block count under the
 [importer contract](../design/DESIGN_POLICY.md#532-uncompressed-importer-boundary).
-Compression is rejected with `BLEND_BLOCK_COMPRESSED`; BLEND-O5 remains open.
+Compression is rejected with `BLEND_BLOCK_COMPRESSED`; the accepted
+full-stream policy does not add compressed scene importing.
 Header-only fixtures fail with `BLEND_BLOCK_MISSING_ENDB`, and the Scene-only
 library fails with `BLEND_SCENE_ACTIVE_MISSING`, without scaffold/first-Scene
 fallbacks. Tests also cover missing/duplicate/malformed DNA1, truncated/trailing

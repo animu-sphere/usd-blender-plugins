@@ -52,7 +52,7 @@ These apply to every reader in `blendFile` and `blendScene`
    length of that struct in *this* file.
 4. **Bounded allocation.** Allocation follows validated sizes. Decompressed
    output is limited by an explicit maximum, and the ratio of decompressed to
-   compressed bytes is limited, against decompression bombs (BLEND-O5).
+   compressed bytes is limited, against decompression bombs (§4.2).
 5. **Validated indices.** SDNA type, struct and name indices are checked
    against their tables before use. Every array index from the file is
    checked against its array.
@@ -115,7 +115,7 @@ recognizes gzip and Zstandard magic and streams only the required 12 or 17
 output bytes, including across concatenated gzip members or Zstandard frames.
 Both read at most 1 MiB of compressed input in 4 KiB chunks. Zstandard's
 decoder window is limited to 8 MiB; gzip uses DEFLATE's fixed 32 KiB window.
-These fixed probe budgets do not resolve BLEND-O5's full-file limits. Probes
+These fixed probe budgets are separate from §4.2's full-file policy. Probes
 stop as soon as the required header bytes are available; they do not require
 or validate the remaining payload or trailing checksums. A checksum needed
 to advance past an intermediate member is still validated. Successful header
@@ -153,14 +153,57 @@ initial standard frame; skippable magic is not an initial format signature.
 The entire decoded stream must begin with a valid `.blend` header, not
 another compression envelope.
 
-This caller-specified policy deliberately has no production defaults.
+This API deliberately has no implicit defaults; callers supply every field.
 The [committed-input measurements](../../plugins/usdBlendFileFormat/tests/corpus/README.md#compression-measurements)
 pin exact byte, integer-ratio and decoder-window acceptance boundaries.
-BLEND-O5 still requires representative large and highly compressible real
-files before choosing defaults: the current small inputs contain only one
-Blender-written compressed file, and no Blender-written gzip file. The limits
-in unit tests are test budgets, not a supported file-size policy.
-The importer continues to use the separate header probe.
+The accepted standard policy is in §4.2, with separate large-input evidence.
+Existing unit-test budgets do not define that policy. Accepting it does not
+change the importer's uncompressed-only boundary.
+
+### 4.2 Standard full-stream limit policy
+
+**Accepted 2026-10-05 (BLEND-O5).** A consumer choosing standard full-stream
+budgets should supply this complete `CompressionLimits` value:
+
+| Field | Standard value | Bound |
+| --- | --- | --- |
+| `maxInputBytes` | 268,435,456 | 256 MiB stored input |
+| `maxOutputBytes` | 536,870,912 | 512 MiB decoded output |
+| `maxExpansionRatio` | 4,096 | whole-file decoded/stored ratio |
+| `maxWindowLog` | 23 | 8 MiB Zstandard decoder window |
+
+These are bounded operating defaults, not a maximum supported asset size or
+a claim that every legitimate `.blend` fits. All four fields remain
+caller-overridable with §4.1's validation. Smaller application budgets are
+valid; raising a budget is an explicit caller decision. A limit failure must
+retain its `BLEND_COMPRESSION_*` diagnostic, never retry with a larger budget
+or return partial data. All members, frames and skippable metadata share
+the same whole-file budgets. The ratio check does not apply to uncompressed
+input; both byte limits do.
+
+The [dated measurement report](../reports/2026-10-05-compression-policy.md)
+records Blender-written 4.5.13 and 5.2.2 large meshes, repetitive attributes
+and packed images, plus generated gzip encodings. Across these inputs,
+the largest stored compressed size was 67,323,617 bytes, largest decoded
+size 94,565,524 bytes, maximum minimum integer ratio 1,344, and largest
+minimum accepted window log 20. Stored and decoded budgets provide roughly
+4x and 5.7x headroom, respectively; ratio 4,096 provides roughly 3x headroom
+over the high-compressibility case. Window log 23 allows eight times the
+largest minimum accepted window. Each choice is independently bounded;
+ratio alone is not a memory budget.
+
+This deliberately bounded generated corpus is not production-scene
+certification, GiB-scale execution evidence, old Blender-written gzip
+evidence, or a measured resident-memory cap. Decoder state, vector capacity,
+SDNA, Scene IR and authoring can consume additional memory. Consumers with a
+process-memory requirement must impose their own smaller budgets and
+concurrency limits; streaming/range optimizations remain later work.
+
+The policy is opt-in at the existing explicit-limit API and CLI boundaries.
+Zero-initialized `CompressionLimits` stay invalid, the CLI still requires all
+four options for compressed input, and the importer still rejects compressed
+containers. Wiring automatic defaults or compressed scene importing requires
+its own implementation and regressions; this decision does not imply either.
 
 ## 5. File header
 
@@ -296,7 +339,8 @@ pass through `ReadFileBytes` (§4.1), then be wrapped in `MemoryByteSource`
 while the decoded bytes remain alive. No production defaults are selected
 by either API. The importer composes this boundary for uncompressed input
 under its [structural budgets](DESIGN_POLICY.md#532-uncompressed-importer-boundary);
-compressed scene imports remain rejected pending BLEND-O5.
+compressed scene imports remain outside that implemented boundary. The
+accepted full-stream policy in §4.2 does not wire compression into it.
 
 `BlendBlock` normalizes both layouts as follows:
 
@@ -590,9 +634,15 @@ with a diagnostic. Evaluated data comes only from the Blender host backend
 | Id | Question | Proposed answer | Blocks |
 | --- | --- | --- | --- |
 | BLEND-O3 | What happens to data linked from another `.blend`? | Reported in Phases 0–6. Later, possibly authored as a USD reference to the other `.blend`, which this file format then opens. | nothing (non-blocking) |
-| BLEND-O5 | The decompression size and ratio limits. | Set from a measured corpus of real files in Phase 1, overridable by the caller. | Phase 1 |
 
 ### 12.1 Resolved decisions
+
+- **BLEND-O5 (2026-10-05):** accept the caller-overridable standard
+   full-stream budgets in §4.2, based on the linked large-mesh,
+   high-compressibility and packed-asset measurements. Existing explicit-limit
+   APIs, CLI argument requirements, header probes and uncompressed importer
+   behavior remain unchanged. This resolves the policy question, not automatic
+   default selection or compressed scene importing.
 
 - **BLEND-O1 (2026-10-02):** format 1 uses the seventeen-byte file header
    in §5.2 and the 32-byte block header in §6.2. The Blender 5.0 release notes

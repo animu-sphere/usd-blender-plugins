@@ -74,5 +74,8 @@ on Windows on 2026-10-02; they do not provide Linux execution evidence.
 These are small regression inputs, with only one Blender-written compressed
 file and no Blender-written gzip file. They do not sample large scenes,
 packed assets or highly repetitive production data. The values above are
-fixture minima, not production defaults; the policy remains the owning
-[BLEND-O5 decision](../../../../docs/design/BLEND_CONTRACT.md#12-open-questions).
+fixture minima, not production defaults. The accepted
+[standard policy](../../../../docs/design/BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
+uses separate large generated-input measurements in the
+[dated report](../../../../docs/reports/2026-10-05-compression-policy.md);
+accepting it does not enable implicit defaults or compressed scene importing.

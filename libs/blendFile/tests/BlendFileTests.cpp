@@ -341,6 +341,71 @@ void CheckMalformedBlocks(std::span<const std::byte> bytes, const blend::Header&
   }
 }
 
+blend::CompressionLimits CheckCompressionLimits(blend::ByteSource& source, const std::vector<std::byte>& bytes,
+    bool compressed, const blend::CompressionLimits& limits) {
+  auto measuredLimits = limits;
+  measuredLimits.maxInputBytes = source.Size();
+  measuredLimits.maxOutputBytes = bytes.size();
+  measuredLimits.maxExpansionRatio = std::max<std::uint64_t>(1, bytes.size() / source.Size() + (bytes.size() % source.Size() != 0));
+  for (measuredLimits.maxWindowLog = 10; measuredLimits.maxWindowLog <= limits.maxWindowLog; ++measuredLimits.maxWindowLog) {
+    const auto result = blend::ReadFileBytes(source, measuredLimits);
+    if (result.HasValue()) {
+      Require(result.GetValue() == bytes, "Measured window changed decoded fixture bytes");
+      break;
+    }
+    Require(result.GetError().code == "BLEND_COMPRESSION_WINDOW_LIMIT", "Window measurement failed for another reason");
+  }
+  Require(measuredLimits.maxWindowLog <= limits.maxWindowLog, "No decoder window accepted the fixture");
+  const auto exact = blend::ReadFileBytes(source, measuredLimits);
+  Require(exact.HasValue() && exact.GetValue() == bytes, "Measured fixture limits rejected exact bytes");
+  auto smallerLimits = measuredLimits;
+  --smallerLimits.maxInputBytes;
+  const auto inputLimited = blend::ReadFileBytes(source, smallerLimits);
+  Require(!inputLimited.HasValue() && inputLimited.GetError().code == "BLEND_COMPRESSION_INPUT_LIMIT",
+      "Real-file input limit did not reject one byte less");
+  smallerLimits = measuredLimits;
+  --smallerLimits.maxOutputBytes;
+  const auto outputLimited = blend::ReadFileBytes(source, smallerLimits);
+  Require(!outputLimited.HasValue() && outputLimited.GetError().code == "BLEND_COMPRESSION_OUTPUT_LIMIT",
+      "Real-file output limit did not reject one byte less");
+  if (compressed && measuredLimits.maxExpansionRatio > 1) {
+    smallerLimits = measuredLimits;
+    --smallerLimits.maxExpansionRatio;
+    const auto ratioLimited = blend::ReadFileBytes(source, smallerLimits);
+    Require(!ratioLimited.HasValue() && ratioLimited.GetError().code == "BLEND_COMPRESSION_RATIO_LIMIT",
+        "Real-file ratio limit did not reject one integer less");
+  }
+  return measuredLimits;
+}
+
+void PrintCompressionLimits(const std::filesystem::path& path, const blend::CompressionLimits& limits) {
+  std::cout << "Compression evidence: " << path.parent_path().filename().string() << '/' << path.filename().string()
+            << " input=" << limits.maxInputBytes << " output=" << limits.maxOutputBytes
+            << " integer-ratio=" << limits.maxExpansionRatio
+            << " minimum-accepted-window-log=" << limits.maxWindowLog << '\n';
+}
+
+void MeasureCompressionFiles(int argumentCount, char** arguments) {
+  Require(argumentCount >= 3, "Usage: --measure-compression FILE...");
+  constexpr blend::CompressionLimits measurementBudgets{2ULL * 1024 * 1024 * 1024, 2ULL * 1024 * 1024 * 1024, 65536, 30};
+  for (int index = 2; index < argumentCount; ++index) {
+    const auto path = std::filesystem::u8path(arguments[index]);
+    blend::FileByteSource source(path);
+    Require(source.IsOpen(), "Measurement input could not be opened");
+    std::array<std::byte, 4> signature{};
+    constexpr std::array gzipMagic{std::byte{0x1f}, std::byte{0x8b}};
+    constexpr std::array zstdMagic{std::byte{0x28}, std::byte{0xb5}, std::byte{0x2f}, std::byte{0xfd}};
+    Require(source.Read(0, signature), "Measurement signature could not be read");
+    const bool compressed = std::equal(gzipMagic.begin(), gzipMagic.end(), signature.begin()) || signature == zstdMagic;
+    const auto decoded = blend::ReadFileBytes(source, measurementBudgets);
+    if (!decoded.HasValue()) {
+      std::cerr << decoded.GetError().code << ": " << decoded.GetError().message << '\n';
+    }
+    Require(decoded.HasValue(), "Measurement input rejected");
+    PrintCompressionLimits(path, CheckCompressionLimits(source, decoded.GetValue(), compressed, measurementBudgets));
+  }
+}
+
 void CheckFileFixture(const std::filesystem::path& path, bool compressed, const blend::CompressionLimits& expectedLimits,
     std::uint16_t version = 502, std::uint8_t headerSize = 17) {
   constexpr blend::CompressionLimits limits{64 * 1024 * 1024, 64 * 1024 * 1024, 2048, 23};
@@ -364,46 +429,13 @@ void CheckFileFixture(const std::filesystem::path& path, bool compressed, const 
     Require(source.Read(0, original) && original == decoded.GetValue(), "Uncompressed file bytes changed");
   }
   const auto& bytes = decoded.GetValue();
-  auto measuredLimits = limits;
-  measuredLimits.maxInputBytes = source.Size();
-  measuredLimits.maxOutputBytes = bytes.size();
-  measuredLimits.maxExpansionRatio = std::max<std::uint64_t>(1, bytes.size() / source.Size() + (bytes.size() % source.Size() != 0));
-  for (measuredLimits.maxWindowLog = 10; measuredLimits.maxWindowLog < limits.maxWindowLog; ++measuredLimits.maxWindowLog) {
-    const auto result = blend::ReadFileBytes(source, measuredLimits);
-    if (result.HasValue()) {
-      Require(result.GetValue() == bytes, "Measured window changed decoded fixture bytes");
-      break;
-    }
-    Require(result.GetError().code == "BLEND_COMPRESSION_WINDOW_LIMIT", "Window measurement failed for another reason");
-  }
+  const auto measuredLimits = CheckCompressionLimits(source, bytes, compressed, limits);
   Require(measuredLimits.maxInputBytes == expectedLimits.maxInputBytes &&
               measuredLimits.maxOutputBytes == expectedLimits.maxOutputBytes &&
               measuredLimits.maxExpansionRatio == expectedLimits.maxExpansionRatio &&
               measuredLimits.maxWindowLog == expectedLimits.maxWindowLog,
       "Committed fixture compression measurements changed");
-  const auto exact = blend::ReadFileBytes(source, measuredLimits);
-  Require(exact.HasValue() && exact.GetValue() == bytes, "Measured fixture limits rejected exact bytes");
-  auto smallerLimits = measuredLimits;
-  --smallerLimits.maxInputBytes;
-  const auto inputLimited = blend::ReadFileBytes(source, smallerLimits);
-  Require(!inputLimited.HasValue() && inputLimited.GetError().code == "BLEND_COMPRESSION_INPUT_LIMIT",
-      "Real-file input limit did not reject one byte less");
-  smallerLimits = measuredLimits;
-  --smallerLimits.maxOutputBytes;
-  const auto outputLimited = blend::ReadFileBytes(source, smallerLimits);
-  Require(!outputLimited.HasValue() && outputLimited.GetError().code == "BLEND_COMPRESSION_OUTPUT_LIMIT",
-      "Real-file output limit did not reject one byte less");
-  if (compressed && measuredLimits.maxExpansionRatio > 1) {
-    smallerLimits = measuredLimits;
-    --smallerLimits.maxExpansionRatio;
-    const auto ratioLimited = blend::ReadFileBytes(source, smallerLimits);
-    Require(!ratioLimited.HasValue() && ratioLimited.GetError().code == "BLEND_COMPRESSION_RATIO_LIMIT",
-        "Real-file ratio limit did not reject one integer less");
-  }
-  std::cout << "Compression evidence: " << path.parent_path().filename().string() << '/' << path.filename().string()
-            << " input=" << source.Size() << " output=" << bytes.size()
-            << " integer-ratio=" << measuredLimits.maxExpansionRatio
-            << " minimum-accepted-window-log=" << measuredLimits.maxWindowLog << '\n';
+  PrintCompressionLimits(path, measuredLimits);
   const auto blocks = blend::ReadBlocks(memory, 10000);
   Require(blocks.HasValue(), "SDNA fixture block enumeration failed");
   CheckMalformedBlocks(bytes, header.GetValue(), blocks.GetValue());
@@ -1304,6 +1336,10 @@ public:
 
 int main(int argumentCount, char** arguments) {
     try {
+      if (argumentCount > 1 && std::string_view(arguments[1]) == "--measure-compression") {
+        MeasureCompressionFiles(argumentCount, arguments);
+        return 0;
+      }
       Require(argumentCount == 5, "Expected temporary, compressed, uncompressed and legacy Blender fixture paths");
       CheckZlibDecoder();
       CheckGzipHeaders();
