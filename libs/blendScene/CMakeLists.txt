@@ -36,6 +36,11 @@ if(BUILD_TESTING)
     target_link_libraries(blendSceneTests PRIVATE blendScene::blendScene)
     add_executable(blendSceneTransformTests tests/TransformTests.cpp)
     target_link_libraries(blendSceneTransformTests PRIVATE blendScene::blendScene)
+    add_executable(blendSceneNormalTests tests/NormalTests.cpp)
+    target_link_libraries(blendSceneNormalTests PRIVATE blendScene::blendScene)
+    add_test(NAME blendScene.normals COMMAND blendSceneNormalTests
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-4.5.13
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-5.2.2)
     add_test(NAME blendScene.transforms COMMAND blendSceneTransformTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-transforms/blender-4.5.13/transforms.blend
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-transforms/blender-5.2.2/transforms.blend)

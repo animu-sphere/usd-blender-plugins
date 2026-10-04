@@ -8,6 +8,18 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Native smooth point normals and sharp-edge/flat-face split corner fans in
+    `blendScene`, using corner-angle weights and one basis rotation without
+    unit scaling. Split topology, malformed storage and degenerate/cancelling
+    normals fail explicitly. Six unchanged Blender-written 4.5.13/5.2.2
+    single-Mesh fixtures cover 15 geometry cases and 137 corners per version;
+    saved oracles and repeated/reordered reads compare in `blendScene.normals`.
+    Both storage forms across four synthetic layouts cover angle weights,
+    missing sharp-face defaults, unit independence and contextual failures.
+    Fixture generator/check regressions and both root/standalone seven-test
+    Scene suites pass. Custom normals and repeated 5.x Attribute saved addresses
+    remain outside this boundary; pointer validation and the header-only
+    importer are unchanged.
 - USD-independent `ParentRelativeTransform` in `blendScene`, constructing
     affine locals from already-normalized world matrices without a second
     basis/unit conversion or an explicit inverse. Row scaling and pivoting

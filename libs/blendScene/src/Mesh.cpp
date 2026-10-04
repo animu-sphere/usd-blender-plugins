@@ -96,7 +96,7 @@ public:
         Fail("BLEND_MESH_TOPOLOGY_INVALID", "Final face offset must equal the corner count", offsets.index);
       }
     }
-    ReadNormals(mesh, faces);
+    ReadNormals(mesh, source, faces);
     ReadUvs(mesh, source, corners);
     if (mesh.faceVertexCounts.empty()) {
       diagnostics_.push_back({"BLEND_MESH_EMPTY", Severity::Warning,
@@ -428,45 +428,168 @@ private:
     return result;
   }
 
-  void ReadNormals(Mesh& mesh, std::uint32_t faces) const {
+  Vector3 Normalize(Vector3 value) const {
+    const auto length = std::hypot(value[0], value[1], value[2]);
+    if (!std::isfinite(length) || length == 0) {
+      Fail("BLEND_MESH_NORMALS_INVALID", "Constructed normal or corner direction is degenerate or nonfinite", index_);
+    }
+    for (auto& component : value) {
+      component /= length;
+    }
+    return value;
+  }
+
+  Vector3 FaceNormal(const Mesh& mesh, std::size_t start, std::size_t count) const {
+    const auto& origin = sourcePoints_[mesh.faceVertexIndices[start]];
+    Vector3 normal{};
+    for (std::size_t corner = 1; corner + 1 < count; ++corner) {
+      Vector3 a{}, b{};
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        a[axis] = sourcePoints_[mesh.faceVertexIndices[start + corner]][axis] - origin[axis];
+        b[axis] = sourcePoints_[mesh.faceVertexIndices[start + corner + 1]][axis] - origin[axis];
+      }
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        normal[axis] += a[(axis + 1) % 3] * b[(axis + 2) % 3] -
+                        a[(axis + 2) % 3] * b[(axis + 1) % 3];
+      }
+    }
+    return Normalize(normal);
+  }
+
+  double CornerAngle(const Mesh& mesh, std::size_t corner,
+      std::size_t previous, std::size_t next) const {
+    const auto& point = sourcePoints_[mesh.faceVertexIndices[corner]];
+    Vector3 a{}, b{};
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      a[axis] = sourcePoints_[mesh.faceVertexIndices[previous]][axis] - point[axis];
+      b[axis] = sourcePoints_[mesh.faceVertexIndices[next]][axis] - point[axis];
+    }
+    a = Normalize(a);
+    b = Normalize(b);
+    return std::acos(std::clamp(a[0] * b[0] + a[1] * b[1] + a[2] * b[2], -1.0, 1.0));
+  }
+
+  void ReadNormals(Mesh& mesh, const DnaValueView& source, std::uint32_t faces) const {
     if (faces == 0) {
       return;
     }
     const auto sharp = Find("sharp_face", 2, Kind::Boolean, false);
-    if (!sharp) {
-      Fail("BLEND_MESH_NORMALS_UNSUPPORTED", "Smooth normals without sharp_face storage are not decoded", index_);
+    std::vector<bool> flat(faces, false);
+    if (sharp) {
+      const auto values = Values(*sharp, faces);
+      for (std::uint32_t face = 0; face < faces; ++face) {
+        flat[face] = Boolean(values, face);
+      }
     }
-    const auto sharpValues = Values(*sharp, faces);
-    mesh.cornerNormals.reserve(mesh.faceVertexIndices.size());
+    const auto sharpEdge = Find("sharp_edge", 1, Kind::Boolean, false);
+    std::vector<bool> sharpEdges;
+    if (sharpEdge) {
+      const auto edges = Count(source, "totedge", index_);
+      const auto values = Values(*sharpEdge, edges);
+      sharpEdges.reserve(edges);
+      for (std::uint32_t edge = 0; edge < edges; ++edge) {
+        sharpEdges.push_back(Boolean(values, edge));
+      }
+    }
+    const auto allFlat = std::all_of(flat.begin(), flat.end(), [](bool value) { return value; });
+    if (allFlat) {
+      mesh.cornerNormals.reserve(mesh.faceVertexIndices.size());
+      std::size_t start = 0;
+      for (const auto count : mesh.faceVertexCounts) {
+        const auto normal = ToUsdBasis(FaceNormal(mesh, start, count));
+        mesh.cornerNormals.insert(mesh.cornerNormals.end(), count, normal);
+        start += count;
+      }
+      return;
+    }
+    const auto split = std::any_of(flat.begin(), flat.end(), [](bool value) { return value; }) ||
+                       std::any_of(sharpEdges.begin(), sharpEdges.end(), [](bool value) { return value; });
+    const auto corners = mesh.faceVertexIndices.size();
+    std::vector<std::size_t> groups(corners), next(corners);
+    std::vector<std::uint32_t> cornerFaces(corners);
+    std::vector<Vector3> normals(faces);
+    std::vector<double> angles(corners);
     std::size_t start = 0;
     for (std::uint32_t face = 0; face < faces; ++face) {
-      if (!Boolean(sharpValues, face)) {
-        Fail("BLEND_MESH_NORMALS_UNSUPPORTED", "Smooth or split normals are not yet decoded", sharpValues.index);
-      }
       const auto count = static_cast<std::size_t>(mesh.faceVertexCounts[face]);
-      const auto& origin = sourcePoints_[mesh.faceVertexIndices[start]];
-      Vector3 normal{};
-      for (std::size_t corner = 1; corner + 1 < count; ++corner) {
-        Vector3 a{}, b{};
-        for (std::size_t axis = 0; axis < 3; ++axis) {
-          a[axis] = sourcePoints_[mesh.faceVertexIndices[start + corner]][axis] - origin[axis];
-          b[axis] = sourcePoints_[mesh.faceVertexIndices[start + corner + 1]][axis] - origin[axis];
-        }
-        for (std::size_t axis = 0; axis < 3; ++axis) {
-          normal[axis] += a[(axis + 1) % 3] * b[(axis + 2) % 3] -
-                          a[(axis + 2) % 3] * b[(axis + 1) % 3];
+      normals[face] = FaceNormal(mesh, start, count);
+      for (std::size_t offset = 0; offset < count; ++offset) {
+        const auto corner = start + offset;
+        next[corner] = start + (offset + 1) % count;
+        cornerFaces[corner] = face;
+        groups[corner] = split ? corner : static_cast<std::size_t>(mesh.faceVertexIndices[corner]);
+        if (!flat[face]) {
+          angles[corner] = CornerAngle(mesh, corner, start + (offset + count - 1) % count, next[corner]);
         }
       }
-      const auto length = std::hypot(normal[0], normal[1], normal[2]);
-      if (!std::isfinite(length) || length == 0) {
-        Fail("BLEND_MESH_NORMALS_INVALID", "Polygon normal is degenerate or nonfinite", index_);
-      }
-      for (auto& value : normal) {
-        value /= length;
-      }
-      normal = ToUsdBasis(normal);
-      mesh.cornerNormals.insert(mesh.cornerNormals.end(), count, normal);
       start += count;
+    }
+    if (split) {
+      const auto edges = Count(source, "totedge", index_);
+      const auto cornerEdge = Find(".corner_edge", 3, Kind::Integer, true);
+      const auto values = Values(*cornerEdge, static_cast<std::uint32_t>(corners));
+      struct Edge {
+        std::pair<std::int32_t, std::int32_t> vertices;
+        std::vector<std::size_t> uses;
+      };
+      std::map<std::int32_t, Edge> topology;
+      for (std::size_t corner = 0; corner < corners; ++corner) {
+        const auto edge = Integer(values, corner);
+        if (edge < 0 || static_cast<std::uint32_t>(edge) >= edges) {
+          Fail("BLEND_MESH_TOPOLOGY_INVALID", "Corner edge index is outside the source edges", values.index);
+        }
+        const auto vertices = std::minmax(mesh.faceVertexIndices[corner], mesh.faceVertexIndices[next[corner]]);
+        const std::pair<std::int32_t, std::int32_t> endpoints{vertices.first, vertices.second};
+        const auto [entry, inserted] = topology.try_emplace(edge, Edge{endpoints, {}});
+        if (!inserted && entry->second.vertices != endpoints) {
+          Fail("BLEND_MESH_TOPOLOGY_INVALID", "Shared corner edge has inconsistent vertex endpoints", values.index);
+        }
+        entry->second.uses.push_back(corner);
+      }
+      const auto root = [&](std::size_t corner) {
+        while (groups[corner] != corner) {
+          groups[corner] = groups[groups[corner]];
+          corner = groups[corner];
+        }
+        return corner;
+      };
+      const auto join = [&](std::size_t left, std::size_t right) {
+        const auto a = root(left);
+        const auto b = root(right);
+        groups[std::max(a, b)] = std::min(a, b);
+      };
+      for (const auto& [edge, topologyEdge] : topology) {
+        if (topologyEdge.uses.size() != 2 || (!sharpEdges.empty() && sharpEdges[edge])) {
+          continue;
+        }
+        const auto a = topologyEdge.uses[0], b = topologyEdge.uses[1];
+        if (cornerFaces[a] == cornerFaces[b] || flat[cornerFaces[a]] || flat[cornerFaces[b]] ||
+            mesh.faceVertexIndices[a] != mesh.faceVertexIndices[next[b]] ||
+            mesh.faceVertexIndices[next[a]] != mesh.faceVertexIndices[b]) {
+          continue;
+        }
+        join(a, next[b]);
+        join(next[a], b);
+      }
+      for (std::size_t corner = 0; corner < corners; ++corner) {
+        groups[corner] = root(corner);
+      }
+    }
+    // Blender uses point normals for an entirely smooth mesh, even across
+    // disconnected/nonmanifold fans; sharp data selects split corner fans.
+    std::vector<Vector3> sums(split ? corners : sourcePoints_.size());
+    for (std::size_t corner = 0; corner < corners; ++corner) {
+      const auto face = cornerFaces[corner];
+      if (!flat[face]) {
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+          sums[groups[corner]][axis] += normals[face][axis] * angles[corner];
+        }
+      }
+    }
+    mesh.cornerNormals.reserve(corners);
+    for (std::size_t corner = 0; corner < corners; ++corner) {
+      const auto face = cornerFaces[corner];
+      mesh.cornerNormals.push_back(ToUsdBasis(flat[face] ? normals[face] : Normalize(sums[groups[corner]])));
     }
   }
 

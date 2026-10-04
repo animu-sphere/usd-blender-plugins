@@ -80,7 +80,7 @@ public:
                                {"int8_t", "domain"}, {"int8_t", "storage_type"}, {"void", "data", true}});
     Structure("AttributeArray", {{"void", "data", true}, {"int64_t", "size"}, {"int8_t", "is_single"}});
     Structure("AttributeStorage", {{"Attribute", "dna_attributes", true}, {"int", "dna_attributes_num"}});
-    const auto meshStruct = Structure("Mesh", {{"ID", "id"}, {"int", "totvert"},
+    const auto meshStruct = Structure("Mesh", {{"ID", "id"}, {"int", "totvert"}, {"int", "totedge"},
                                                   {"int", "totpoly"}, {"int", "totloop"}, {"int", "poly_offset_indices", true},
                                                   {"AttributeStorage", "attribute_storage"}, {"CustomData", "vdata"},
                                                   {"CustomData", "edata"}, {"CustomData", "pdata"}, {"CustomData", "ldata"},
@@ -92,6 +92,7 @@ public:
     bytes.resize(bytes.size() + static_cast<std::size_t>(blocks[mesh].length));
     Name(mesh, 0, "MEShared");
     Set(mesh, "Mesh", "totvert", 4);
+    Set(mesh, "Mesh", "totedge", 5);
     Set(mesh, "Mesh", "totpoly", 2);
     Set(mesh, "Mesh", "totloop", 6);
     for (const auto object : {4, 5}) {
@@ -117,6 +118,12 @@ public:
     sharp = Data("raw_data", 1, 2);
     Bits(sharp, 0, 1, 1);
     Bits(sharp, 1, 1, 1);
+    cornerEdges = Data(modern ? "raw_data" : "MIntProperty", modern ? 1 : 6, 24);
+    constexpr std::array<int, 6> edgeIndices = {0, 1, 2, 2, 3, 4};
+    for (std::size_t corner = 0; corner < edgeIndices.size(); ++corner) {
+      Bits(cornerEdges, corner * 4, edgeIndices[corner], 4);
+    }
+    sharpEdges = Data("raw_data", 1, 5);
     uv = Data(modern ? "raw_data" : "vec2f", modern ? 1 : 6, 48);
     constexpr std::array<blend::Vector2, 6> texcoords = {{{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}}};
     for (std::size_t corner = 0; corner < texcoords.size(); ++corner) {
@@ -129,15 +136,17 @@ public:
       Float(secondUv, corner * 8, 1);
     }
     if (modern) {
-      attributeRecords = Data("Attribute", 5, 0);
+      attributeRecords = Data("Attribute", 7, 0);
       const auto storage = Member("Mesh", "attribute_storage").offset;
       Bits(mesh, storage + Member("AttributeStorage", "dna_attributes").offset, blocks[attributeRecords].oldAddress, header.pointerSize);
-      Bits(mesh, storage + Member("AttributeStorage", "dna_attributes_num").offset, 5, 4);
+      Bits(mesh, storage + Member("AttributeStorage", "dna_attributes_num").offset, 7, 4);
       Attribute(0, "position", 7, 0, points, 4);
       Attribute(1, ".corner_vert", 3, 3, corners, 6);
       Attribute(2, "sharp_face", 0, 2, sharp, 2);
       Attribute(3, "First", 6, 3, uv, 6);
       Attribute(4, "Second", 6, 3, secondUv, 6);
+      Attribute(5, ".corner_edge", 3, 3, cornerEdges, 6);
+      Attribute(6, "sharp_edge", 0, 1, sharpEdges, 5);
       Set(mesh, "Mesh", "default_uv_map_attribute", blocks[Text("Second")].oldAddress);
     } else {
       const auto vertexLayers = Data("CustomDataLayer", 1, 0);
@@ -146,11 +155,15 @@ public:
       const auto faceLayers = Data("CustomDataLayer", 1, 0);
       Domain("pdata", faceLayers, 1);
       Layer(faceLayers, 0, "sharp_face", 50, sharp);
-      attributeRecords = Data("CustomDataLayer", 3, 0);
-      Domain("ldata", attributeRecords, 3);
+      const auto edgeLayers = Data("CustomDataLayer", 1, 0);
+      Domain("edata", edgeLayers, 1);
+      Layer(edgeLayers, 0, "sharp_edge", 50, sharpEdges);
+      attributeRecords = Data("CustomDataLayer", 4, 0);
+      Domain("ldata", attributeRecords, 4);
       Layer(attributeRecords, 0, ".corner_vert", 11, corners);
       Layer(attributeRecords, 1, "First", 49, uv);
       Layer(attributeRecords, 2, "Second", 49, secondUv);
+      Layer(attributeRecords, 3, ".corner_edge", 11, cornerEdges);
       for (std::size_t layer = 1; layer < 3; ++layer) {
         Bits(attributeRecords, layer * Size("CustomDataLayer") + Member("CustomDataLayer", "active_rnd").offset, 1, 4);
       }
@@ -248,7 +261,7 @@ public:
   blend::DnaSchema schema;
   blend::Header header;
   bool modern;
-  std::uint32_t mesh, points, corners, offsets, sharp, uv, attributeRecords;
+  std::uint32_t mesh, points, corners, offsets, sharp, uv, attributeRecords, cornerEdges, sharpEdges;
   std::vector<std::uint32_t> arrays;
 
 private:
@@ -348,7 +361,7 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
                 sourceOnly.Diagnostics()[1].code == "BLEND_MESH_EVALUATION_UNAPPLIED" &&
                 SameMesh(sourceOnly.GetValue().meshes[0], mesh),
         "Modifiers and shape keys are reported but neither followed nor applied");
-    for (const auto member : {"totvert", "totpoly", "totloop"}) {
+    for (const auto member : {"totvert", "totedge", "totpoly", "totloop"}) {
       changed = fixture;
       changed.Set(changed.mesh, "Mesh", member, std::numeric_limits<std::uint32_t>::max());
       changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.mesh);
@@ -398,9 +411,92 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
     changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.offsets);
     changed = fixture;
     changed.Bits(changed.sharp, 0, 0, 1);
-    changed.Failure("BLEND_MESH_NORMALS_UNSUPPORTED", changed.sharp);
+    Require(Take(changed.Decode()).meshes[0].cornerNormals == mesh.cornerNormals,
+        "Mixed flat/smooth coplanar faces retain the same corner normals");
     changed.Bits(changed.sharp, 0, 2, 1);
     changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.sharp);
+    changed = fixture;
+    changed.Bits(changed.sharpEdges, 0, 2, 1);
+    changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.sharpEdges);
+    changed = fixture;
+    changed.Bits(changed.sharp, 0, 0, 1);
+    for (const auto invalid : {std::int32_t{-1}, std::int32_t{5}}) {
+      auto invalidEdge = changed;
+      invalidEdge.Bits(invalidEdge.cornerEdges, 0, static_cast<std::uint32_t>(invalid), 4);
+      invalidEdge.Failure("BLEND_MESH_TOPOLOGY_INVALID", invalidEdge.cornerEdges);
+    }
+    changed.Bits(changed.cornerEdges, 0, 2, 4);
+    changed.Failure("BLEND_MESH_TOPOLOGY_INVALID", changed.cornerEdges);
+    changed = fixture;
+    changed.Bits(changed.sharp, 0, 0, 1);
+    changed.Bits(changed.sharp, 1, 0, 1);
+    changed.Float(changed.points, 11 * 4, 3);
+    const auto smooth = Take(changed.Decode()).meshes[0];
+    const blend::Vector3 faceNormal = {3 / std::sqrt(17.0), 2 / std::sqrt(17.0), 2 / std::sqrt(17.0)};
+    const auto angle0 = std::atan2(3.0, 2.0);
+    const auto angle1 = std::acos(9 / std::sqrt(13.0 * 18.0));
+    blend::Vector3 expected = {faceNormal[0] * angle1, angle0 + faceNormal[1] * angle1,
+        faceNormal[2] * angle1};
+    const auto length = std::hypot(expected[0], expected[1], expected[2]);
+    for (auto& component : expected) {
+      component /= length;
+    }
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      Require(std::abs(smooth.cornerNormals[0][axis] - expected[axis]) < 1e-12 &&
+                  smooth.cornerNormals[0] == smooth.cornerNormals[3],
+          "Smooth point normals weight unit face normals by corner angle, not polygon area");
+    }
+    Require(smooth.cornerNormals[2] == smooth.cornerNormals[4],
+        "An entirely smooth mesh shares point normals across incident faces");
+    auto noSharpFace = changed;
+    if (modern) {
+      noSharpFace.Bits(noSharpFace.attributeRecords,
+          2 * noSharpFace.Size("Attribute") + noSharpFace.Member("Attribute", "name").offset,
+          noSharpFace.blocks[noSharpFace.Text("other_face")].oldAddress, header.pointerSize);
+    } else {
+      const auto domain = Take(Take(blend::ViewDnaBlock(noSharpFace.bytes, noSharpFace.blocks,
+                                        noSharpFace.schema, noSharpFace.header, noSharpFace.mesh))
+              .Member("pdata"));
+      const auto index = *Take(Take(blend::BuildPointerMap(noSharpFace.blocks))
+              .Resolve(Take(Take(domain.Member("layers")).Pointer())));
+      noSharpFace.Name(index, noSharpFace.Member("CustomDataLayer", "name").offset, "other_face");
+    }
+    Require(Take(noSharpFace.Decode()).meshes[0].cornerNormals == smooth.cornerNormals,
+        "Absent sharp_face storage means every polygon is smooth");
+    auto cancelled = changed;
+    cancelled.Float(cancelled.points, 9 * 4, 2);
+    cancelled.Float(cancelled.points, 10 * 4, 0);
+    cancelled.Float(cancelled.points, 11 * 4, 0);
+    cancelled.Failure("BLEND_MESH_NORMALS_INVALID", cancelled.mesh);
+    for (const float scale : {0.01f, 10.0f}) {
+      auto scaled = changed;
+      scaled.Float(1, scaled.Member("Scene", "unit").offset, scale);
+      Require(Take(scaled.Decode()).meshes[0].cornerNormals == smooth.cornerNormals,
+          "Smooth normals are not unit-scaled");
+    }
+    changed.Bits(changed.sharpEdges, 2, 1, 1);
+    const auto split = Take(changed.Decode()).meshes[0];
+    for (std::size_t corner = 0; corner < 6; ++corner) {
+      const auto expectedNormal = corner < 3 ? blend::Vector3{0, 1, 0} : faceNormal;
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        Require(std::abs(split.cornerNormals[corner][axis] - expectedNormal[axis]) < 1e-12,
+            "A sharp shared edge splits both endpoint corner fans");
+      }
+    }
+    changed.blocks[changed.cornerEdges].length -= 4;
+    changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.cornerEdges);
+    changed = fixture;
+    changed.Bits(changed.sharp, 0, 0, 1);
+    if (modern) {
+      changed.Bits(changed.attributeRecords,
+          5 * changed.Size("Attribute") + changed.Member("Attribute", "name").offset,
+          changed.blocks[changed.Text(".unused_edge")].oldAddress, header.pointerSize);
+    } else {
+      changed.Name(changed.attributeRecords,
+          3 * changed.Size("CustomDataLayer") + changed.Member("CustomDataLayer", "name").offset,
+          ".unused_edge");
+    }
+    changed.Failure("BLEND_MESH_STORAGE_UNSUPPORTED", changed.mesh);
     changed = fixture;
     for (std::size_t coordinate = 0; coordinate < 12; ++coordinate) {
       changed.Float(changed.points, coordinate * 4, 0);
@@ -466,13 +562,13 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
       changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.attributeRecords);
     }
     changed = fixture;
-    for (const auto member : {"totvert", "totpoly", "totloop", "poly_offset_indices", "default_uv_map_attribute"}) {
+    for (const auto member : {"totvert", "totedge", "totpoly", "totloop", "poly_offset_indices", "default_uv_map_attribute"}) {
       changed.Set(changed.mesh, "Mesh", member, 0);
     }
     const auto storageOffset = changed.Member("Mesh", "attribute_storage").offset;
     changed.Bits(changed.mesh, storageOffset + changed.Member("AttributeStorage", "dna_attributes").offset, 0, header.pointerSize);
     changed.Bits(changed.mesh, storageOffset + changed.Member("AttributeStorage", "dna_attributes_num").offset, 0, 4);
-    for (const auto domain : {"vdata", "pdata", "ldata"}) {
+    for (const auto domain : {"vdata", "edata", "pdata", "ldata"}) {
       const auto offset = changed.Member("Mesh", domain).offset;
       changed.Bits(changed.mesh, offset + changed.Member("CustomData", "layers").offset, 0, header.pointerSize);
       changed.Bits(changed.mesh, offset + changed.Member("CustomData", "totlayer").offset, 0, 4);
