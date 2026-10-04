@@ -781,15 +781,24 @@ decoding and registered-plugin reads, without rewriting its header or data.
 Blender 3.3's tested default normal mode differs from the modern split-fan
 mode: smooth corners use angle-weighted point normals including contributions
 from flat faces; flat corners retain face normals. Saved sharp-edge flags do
-not select split fans in this mode. Scalar `ushort` Mesh flags accept only
-the observed default `0xd100` and synthetic zero; other values and packed
+not select split fans in this mode. Scalar `ushort` Mesh flags accept the
+observed default `0xd100` and synthetic zero, with optional bit 5 for
+auto-smooth (saved `0xd120`, synthetic `0x20`). Other values and packed
 custom-normal layers return `BLEND_MESH_NORMALS_UNSUPPORTED`, not guessed
-normals. Auto-smooth/angle-dependent and custom-normal legacy decoding remains
-outside this evidence. This is tested 3.3 storage support, not blanket
+normals. Enabled auto-smooth requires scalar-float `smoothresh`, finite and
+between zero and the stored float32 value of pi. Its cosine is computed at
+float32 precision. It always selects connected split fans, even without
+sharp/flat flags; an otherwise joinable edge splits when the adjacent face
+normal dot product is less than this cosine. The inactive angle is not read.
+Four [3.3.21 auto-smooth fixtures](../../tests/fixtures/native-normals/README.md#legacy-auto-smooth)
+pin 0/60/90/180-degree thresholds, coplanar and right-angle boundaries,
+sharp edges, mixed faces and disconnected/nonmanifold fans through native
+and registered-plugin oracle comparisons. Legacy custom-normal decoding
+remains outside this evidence. This is tested 3.3 storage support, not blanket
 compatibility for Blender 3.x–4.4.
 
 Polygon normals are constructed from source positions and normalized.
-Outside the legacy flag path, missing `sharp_face` or `sharp_edge` attributes
+In modern versions, missing `sharp_face` or `sharp_edge` attributes
 mean false, not an unsupported normal mode. All-flat polygons copy their face normal to each corner. An
 entirely smooth Mesh without sharp edges uses angle-weighted point normals,
 including across disconnected or nonmanifold incident faces. Otherwise,

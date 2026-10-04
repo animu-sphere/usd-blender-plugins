@@ -49,7 +49,7 @@ runs `test_stage.py`. The hand-maintained companion workflow
 the existing bundle cells with `ost ci matrix`, without copying their SDK
 digests, runners or host Python/package requirements. It builds the standalone
 bundle on both hosts, runs explicit `ost plugin doctor` diagnostics and all
-eight stage-contract tests plus the standalone `usdBlend.authoring` and
+nine stage-contract tests plus the standalone `usdBlend.authoring` and
 `usdBlend.units` CTests, and
 uploads their reports and logs. These additional
 build jobs also use billed hosted infrastructure; they do not publish anything
@@ -486,8 +486,8 @@ ost plugin test plugins\usdBlendFileFormat --target cy2026 --profile usd --from-
 
 The manifest declares the `blendFile` and `blendScene` edges; `ost` builds and
 installs both libraries into its workspace prefix before configuring the standalone bundle.
-The eight stage tests assert the registered cube, integrated Scene and
-Mesh-domain oracles, multi-scale imports, metadata-only hierarchy, contextual fatal/recoverable
+The nine stage tests assert the registered cube, integrated Scene,
+Mesh-domain and legacy auto-smooth oracles, multi-scale imports, metadata-only hierarchy, contextual fatal/recoverable
 diagnostics, repeat-read determinism and referenced geometry.
 Compressed input is rejected; the accepted full-stream policy does not add
 compressed scene importing.
@@ -728,6 +728,34 @@ The following additional checks were exercised on Windows on 2026-10-05:
 ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir build\usd-vs18 -C Release --output-on-failure -R '^usdBlend\.(authoring|units)$'
 ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd --no-inject --plugin-path "$PWD\plugins\usdBlendFileFormat" -- python plugins\usdBlendFileFormat\tests\test_stage.py
 ```
+
+### Legacy auto-smooth oracles
+
+Use the same verified external Blender 3.3.21 portable installation above.
+The following commands were exercised on Windows on 2026-10-05:
+
+```powershell
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_legacy_normals.py
+
+cmake --preset reader
+cmake --build --preset reader
+ctest --preset reader -R '^blendScene\.(legacyNormals|normals|legacyMeshStorage|ir|meshBoundaries|meshFixture)$'
+ost library test libs\blendScene --target cy2026 --profile usd --filter 'blendScene\.(legacyNormals|normals|legacyMeshStorage|meshBoundaries|ir|meshFixture|boundary|link)'
+ost plugin build plugins\usdBlendFileFormat --target cy2026 --profile usd
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(authoring|units)$'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- python plugins\usdBlendFileFormat\tests\test_stage.py
+```
+
+On 3.3.21 the normal generator defaults to `auto_smooth`, `auto_angle`,
+`auto_zero` and `auto_boundary`, not the modern fixture groups. Their saved
+0/60/90/180-degree thresholds, sharp/flat boundaries and connected-fan cases
+compare to Blender's split-normal oracle without evaluation. `--check` never
+rewrites committed fixtures; regressions also reject saved mode/angle/flag
+mutations and changed oracles. Other Blender versions retain their existing
+generation groups. Provenance, exact storage and comparison tolerances are
+in the [fixture record](../../tests/fixtures/native-normals/README.md#legacy-auto-smooth).
 
 ### Registered cube fixture
 

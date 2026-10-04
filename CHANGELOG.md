@@ -8,6 +8,17 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Fixture-backed Blender 3.3 auto-smooth normals using four independently
+    generated 3.3.21 saved files at 0/60/90/180 degrees. Observed Mesh flag
+    `0xd120` and scalar-float `smoothresh` select angle-limited connected
+    fans through the existing sharp/flat split-normal path. Native and
+    registered-plugin oracles compare 644 corners within `2e-5`; measured
+    maximum component error is below `8.24e-8`. Four-layout regressions pin
+    invalid-angle fatal context and inactive-angle behavior; generator checks
+    reject saved mode/angle/sharp/flat mutations without rewriting fixtures.
+    Both build modes cover USD authoring, metadata, repeats and references.
+    Default legacy and modern normals are unchanged; older packed custom
+    normals and other 3.x–4.4 versions remain outside verified scope.
 - Accepted caller-overridable full-stream compression policy, resolving
     BLEND-O5 from locally generated Blender 4.5.13/5.2.2 large-mesh,
     repetitive-attribute and packed-image measurements. Standard budgets are

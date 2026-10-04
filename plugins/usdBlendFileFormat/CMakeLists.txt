@@ -86,7 +86,11 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-scene/blender-4.5.13/scene.blend"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-scene/blender-5.2.2/scene.blend"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/single_cube.blend"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-mesh/blender-3.3.21/mesh.blend")
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-mesh/blender-3.3.21/mesh.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-3.3.21/auto_smooth.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-3.3.21/auto_angle.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-3.3.21/auto_zero.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-3.3.21/auto_boundary.blend")
     add_test(NAME usdBlend.units COMMAND usdBlendAuthoringTests --units
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-units/blender-4.5.13"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-units/blender-5.2.2")

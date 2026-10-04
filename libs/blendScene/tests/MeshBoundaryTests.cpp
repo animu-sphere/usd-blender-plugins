@@ -303,7 +303,7 @@ void CheckLegacy(const std::filesystem::path& path, bool reverse = false) {
   auto changed = fixture;
   const auto meshFlags = Take(changed.View(seams).Member("flag"));
   Require(Take(meshFlags.UnsignedInteger()) == 0xd100, "Saved default legacy Mesh flags are pinned");
-  store(changed, meshFlags, 0xd120);
+  store(changed, meshFlags, 0xd140);
   Failure(decode(changed), "BLEND_MESH_NORMALS_UNSUPPORTED", changed, seams);
   for (const auto version : {302u, 304u, 404u, 600u}) {
     changed = fixture;

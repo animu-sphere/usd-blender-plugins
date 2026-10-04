@@ -7,9 +7,11 @@ from tempfile import TemporaryDirectory
 import bpy
 
 
-VERSIONS = {(4, 5, 13), (5, 2, 2)}
+VERSIONS = {(3, 3, 21), (4, 5, 13), (5, 2, 2)}
 ROOT = Path(__file__).resolve().parent / "native-normals"
 GROUPS = ("smooth", "flat", "split", "custom", "custom_fans", "custom_split_fans", "custom_angles", "multi", "constant")
+LEGACY_ANGLES = {"auto_smooth": math.pi, "auto_angle": math.pi / 3,
+                 "auto_zero": 0.0, "auto_boundary": math.pi / 2}
 
 
 def add_mesh(name, points, faces, flat=(), sharp=()):
@@ -38,7 +40,7 @@ def make_scene(group):
 
     def add_case(name, vertices, faces, flat=(), sharp=()):
         category = "flat" if len(flat) == len(faces) else "split" if flat or sharp else "smooth"
-        if category != geometry_group:
+        if group not in LEGACY_ANGLES and category != geometry_group:
             return
         vertex_offset, face_offset = len(points), len(polygons)
         points.extend(vertices)
@@ -72,6 +74,10 @@ def make_scene(group):
     add_case("MixedCube", cube, cube_faces, flat=(0, 2), sharp=((2, 6), (3, 7)))
     add_case("Concave", ((0, 0, 0), (3, 0, 0), (1, 1, 0), (3, 3, 0), (0, 3, 0)),
              ((0, 1, 2, 3, 4),))
+    if group in LEGACY_ANGLES:
+        for height in (-0.0001, 0.0, 0.0001):
+            add_case("RightAngle", ((0, 0, 0), (2, 0, 0), (0, 3, 0), (0, height, 3)), faces)
+        add_case("Coplanar", ((0, 0, 0), (2, 0, 0), (0, 3, 0), (0, -3, 0)), faces)
     if group == "custom_angles":
         for index in range(-99, 100):
             x = index / 100
@@ -79,7 +85,11 @@ def make_scene(group):
             points.extend(((0, 0, 0), (1, 0, 0), (x, math.sqrt(1 - x * x), 0)))
             polygons.append((start, start + 1, start + 2))
     add_mesh(group.capitalize(), points, polygons, flat_faces, sharp_edges)
-    if group.startswith("custom"):
+    if group in LEGACY_ANGLES:
+        mesh = bpy.data.objects[group.capitalize()].data
+        mesh.use_auto_smooth = True
+        mesh.auto_smooth_angle = LEGACY_ANGLES[group]
+    elif group.startswith("custom"):
         mesh = bpy.data.objects[group.capitalize()].data
         directions = ((0, 0, 0), (1, 2, 3), (-2, 1, -3), (0, 0, -1)) if group == "custom" else ((1, 2, 3),)
         normals = [
@@ -124,17 +134,22 @@ def oracle_text(group):
     if [obj.name for obj in objects] != expected_names:
         raise RuntimeError("Normal fixture objects differ from the selected group")
     custom = group.startswith("custom")
-    rows = [f"BLEND_NORMALS_ORACLE {2 if custom else 1}", repr(bpy.app.version_string),
+    legacy = group in LEGACY_ANGLES
+    rows = [f"BLEND_NORMALS_ORACLE {3 if legacy else 2 if custom else 1}", repr(bpy.app.version_string),
             f"{scene.unit_settings.scale_length:.17g} {len(objects)}"]
     for obj in objects:
         if obj.type != "MESH" or obj.modifiers or obj.data.has_custom_normals != custom:
             raise RuntimeError("Normal fixture requires source meshes with the selected custom-normal state")
         mesh = obj.data
         rows.append(f'"{obj.name}" {len(mesh.vertices)} {len(mesh.polygons)} {len(mesh.loops)}')
+        if legacy:
+            rows.append(f"AUTO_SMOOTH {int(mesh.use_auto_smooth)} {mesh.auto_smooth_angle:.17g}")
+            mesh.calc_normals_split()
         rows.extend(" ".join(f"{value:.17g}" for value in vertex.co) for vertex in mesh.vertices)
         rows.append(" ".join(str(polygon.loop_total) for polygon in mesh.polygons))
         rows.append(" ".join(str(loop.vertex_index) for loop in mesh.loops))
-        rows.extend(" ".join(f"{value:.17g}" for value in normal.vector) for normal in mesh.corner_normals)
+        normals = (loop.normal for loop in mesh.loops) if legacy else (normal.vector for normal in mesh.corner_normals)
+        rows.extend(" ".join(f"{value:.17g}" for value in normal) for normal in normals)
         if custom:
             attribute = mesh.attributes["custom_normal"]
             if attribute.data_type != "INT16_2D" or attribute.domain != "CORNER":
@@ -150,7 +165,7 @@ def compare_oracle(expected, actual):
     if len(left) != len(right):
         raise RuntimeError("Normal oracle record count differs")
     for index, (reference, value) in enumerate(zip(left, right)):
-        if index < 3 or reference.startswith(('"', "PACKED_CUSTOM_NORMALS ")):
+        if index < 3 or reference.startswith(('"', "PACKED_CUSTOM_NORMALS ", "AUTO_SMOOTH ")):
             if reference != value:
                 raise RuntimeError(f"Normal oracle metadata differs at line {index + 1}")
         else:
@@ -174,7 +189,8 @@ def main():
     version = ".".join(map(str, bpy.app.version))
     parser.add_argument("--output", type=Path, default=ROOT / f"blender-{version}")
     parser.add_argument("--check", action="store_true")
-    parser.add_argument("--groups", nargs="+", choices=GROUPS, default=GROUPS)
+    groups = tuple(LEGACY_ANGLES) if bpy.app.version == (3, 3, 21) else GROUPS
+    parser.add_argument("--groups", nargs="+", choices=groups, default=groups)
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     options = parser.parse_args(arguments)
     if bpy.app.version not in VERSIONS:
