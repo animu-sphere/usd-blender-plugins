@@ -54,8 +54,9 @@ void CheckFixture(const std::filesystem::path& path) {
       header));
   const auto decoded = blend::DecodeScene(bytes, blocks, schema, header, {10000, 64});
   const auto scene = Take(decoded);
-  Require(scene.metadata.sourceScene == "Normals" && scene.objects.size() == 1 &&
-              scene.meshes.size() == 1 && decoded.Diagnostics().empty(),
+  const std::size_t expectedCount = path.stem() == "multi" ? 2 : 1;
+  Require(scene.metadata.sourceScene == "Normals" && scene.objects.size() == expectedCount &&
+              scene.meshes.size() == expectedCount && decoded.Diagnostics().empty(),
       "Normal fixture has only source Mesh objects without evaluation diagnostics");
   auto oraclePath = path;
   oraclePath.replace_extension(".oracle.txt");
@@ -124,6 +125,7 @@ int main(int argc, char** argv) {
         CheckFixture(std::filesystem::path(directory) / name);
       }
     }
+    CheckFixture(std::filesystem::path(argv[1]) / "multi.blend");
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
