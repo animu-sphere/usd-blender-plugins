@@ -8,6 +8,20 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Internal Scene IR-to-USD authoring in `usdBlendFileFormat`, with Object
+    Xforms, preserved parenting/render visibility, transposed parent-relative
+    matrix ops, duplicated polygon Meshes, extent, face-varying normals and
+    indexed texCoord2f UVs. Shared Object/UV naming logic reserves render `st`,
+    retains source provenance/display names and orders output by unsigned
+    source bytes. Invalid IR and float-range values fail without a partial
+    layer; singular parents remain explicit errors. Synthetic regressions and
+    unchanged Blender-written transform/two-Mesh fixtures cover native-to-USD
+    values, oracle matrices, references and repeat/reordered determinism.
+    The allowed Scene library edge is wired through both build modes and the
+    bundle manifest, with root and standalone CTests and companion CI coverage.
+    The shared metadata scaffold preserves existing header-stage goldens.
+    The importer remains header-only; production input budgets, STAGE-O1,
+    NAME-O1 and end-to-end cube integration remain open.
 - Native legacy type-16 `MLoopUV` UV decoding in `blendScene`, using complete
     SDNA record validation and embedded float-pair coordinates rather than
     a packed float2 or host-structure assumption. The existing owning indexed

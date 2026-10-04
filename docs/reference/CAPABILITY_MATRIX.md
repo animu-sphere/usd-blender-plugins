@@ -132,6 +132,20 @@ codes remain recoverable stderr diagnostics. Its
 | modifiers, Geometry Nodes | — | | Phase 7 (host backend only) |
 | `metadataOnly` fast path | — | | Phase 8 |
 
+### 3.1 Scene IR USD authoring
+
+These capabilities are the bundle's separately tested `AuthorScene` boundary,
+not the importer's `.blend` read path. The Stage rows above remain header-only;
+no native backend or production input budgets are implied.
+
+| Capability | Status | Fixture | Intended in |
+| --- | --- | --- | --- |
+| Mesh/Empty Xforms, parenting, local matrices and render visibility | supported | asymmetric synthetic affine/shear/nonuniform/negative-scale hierarchy; unchanged Blender-written 4.5.13/5.2.2 transform fixtures compare all 27 Object worlds and locals per version to their oracle within `2e-5` in `usdBlend.authoring` | Phase 2 |
+| polygon Meshes, extent, face-varying normals and indexed UVs | supported | synthetic asymmetric points, two triangles, corner normals and four indexed maps pin exact schema types, values and bounds; unchanged independent two-Mesh 4.5.13/5.2.2 fixtures decode and author exact IR arrays in `usdBlend.authoring` | Phase 2 |
+| one normalization and duplicated shared Meshes | supported | synthetic source-scale provenance `0.001` leaves already-normalized points/translations untouched; independently editable duplicated Mesh attributes, no USD instancing, explicit empty topology/extent and one shared empty-Mesh warning in `usdBlend.authoring` | Phase 2 |
+| deterministic names, ordering and provenance | supported | fixed `st` reservation, UV source-name collisions, malformed UTF-8 display repair, Object/UV permutations, repeated native reads and reversed native blocks produce identical layer text; root metadata and geometry survive references in `usdBlend.authoring`; fallback/no-active-map UV cases in `blendScene.naming` | Phase 2 |
+| no-partial-layer input diagnostics | supported | invalid graph indices/cycles/identifiers, projective/nonfinite/singular-parent transforms, topology/normal/UV shape/index errors, multiple render maps and exact/one-above float maximum checks in `usdBlend.authoring`; singular roots without children and zero-scale leaves succeed | Phase 2 |
+
 ## 4. Backends
 
 | Backend | Status | Intended in |
@@ -141,8 +155,10 @@ codes remain recoverable stderr diagnostics. Its
 
 ## 5. Scene IR
 
-These are library-only capabilities, not `.blend` scene compatibility or
-authored-stage support. The importer remains header-only.
+These are native library capabilities, not `.blend` scene compatibility.
+The importer remains header-only; the separate
+[Scene IR USD authoring boundary](#31-scene-ir-usd-authoring) now consumes
+normalized IR without changing the native libraries' dependency gates.
 
 | Capability | Status | Fixture | Intended in |
 | --- | --- | --- | --- |

@@ -18,6 +18,16 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/BlendOpenUSD.cmake")
 if(NOT TARGET blendFile::blendFile)
     find_package(blendFile CONFIG REQUIRED)
 endif()
+if(NOT TARGET blendScene::blendScene)
+    find_package(blendScene CONFIG REQUIRED)
+endif()
+
+add_library(usdBlendAuthoring OBJECT src/AuthorScene.cpp)
+target_compile_features(usdBlendAuthoring PUBLIC cxx_std_20)
+set_target_properties(usdBlendAuthoring PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_EXTENSIONS OFF)
+target_include_directories(usdBlendAuthoring PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src" ${PXR_INCLUDE_DIRS})
+target_link_libraries(usdBlendAuthoring PUBLIC blendScene::blendScene)
+openstrata_link_openusd(TARGET usdBlendAuthoring VISIBILITY PUBLIC COMPONENTS tf gf vt sdf usd usdGeom)
 
 set(PLUGIN_NAME UsdBlendFileFormatFileFormat)
 
@@ -27,7 +37,7 @@ add_library(${PLUGIN_NAME} SHARED
 
 set_target_properties(${PLUGIN_NAME} PROPERTIES CXX_EXTENSIONS OFF)
 target_compile_features(${PLUGIN_NAME} PRIVATE cxx_std_20)
-target_link_libraries(${PLUGIN_NAME} PRIVATE blendFile::blendFile)
+target_link_libraries(${PLUGIN_NAME} PRIVATE blendFile::blendFile usdBlendAuthoring)
 target_include_directories(${PLUGIN_NAME} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     ${PXR_INCLUDE_DIRS})
@@ -61,3 +71,16 @@ openstrata_install_plugin_bundle(
         "${CMAKE_CURRENT_SOURCE_DIR}/openstrata.plugin.yaml"
         "${CMAKE_CURRENT_SOURCE_DIR}/openstrata.scaffold.yaml"
     FIXTURE_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    include(CTest)
+endif()
+if(BUILD_TESTING)
+    add_executable(usdBlendAuthoringTests tests/AuthorSceneTests.cpp)
+    target_link_libraries(usdBlendAuthoringTests PRIVATE usdBlendAuthoring)
+    add_test(NAME usdBlend.authoring COMMAND usdBlendAuthoringTests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-transforms/blender-4.5.13/transforms.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-transforms/blender-5.2.2/transforms.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-4.5.13/multi.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-5.2.2/multi.blend")
+endif()

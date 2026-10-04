@@ -14,7 +14,7 @@ Diagnostic AllocationFailure() {
       "Unable to allocate scene names", {}, {}, {}, false};
 }
 
-std::string Identifier(std::string_view name) {
+std::string Identifier(std::string_view name, std::string_view fallback) {
   std::string result;
   bool produced = false;
   for (const auto character : name) {
@@ -34,7 +34,7 @@ std::string Identifier(std::string_view name) {
     result.pop_back();
   }
   if (result.empty()) {
-    return "Object";
+    return std::string(fallback);
   }
   if (result.front() >= '0' && result.front() <= '9') {
     result.insert(result.begin(), '_');
@@ -42,14 +42,59 @@ std::string Identifier(std::string_view name) {
   return result;
 }
 
-bool ByteLess(std::string_view left, std::string_view right) {
+Result<std::vector<std::string>> AssignIdentifiers(
+    const std::vector<std::string_view>& names, std::string_view fallback,
+    std::set<std::string> used, std::optional<std::size_t> renderMap = {}) {
+  std::vector<std::size_t> order;
+  for (std::size_t index = 0; index < names.size(); ++index) {
+    order.push_back(index);
+  }
+  std::sort(order.begin(), order.end(), [&](auto left, auto right) {
+    return SourceNameLess(names[left], names[right]);
+  });
+  std::vector<std::string> identifiers(names.size());
+  std::vector<Diagnostic> diagnostics;
+  std::map<std::string, std::size_t> nextSuffix;
+  std::optional<std::size_t> previous;
+  for (const auto index : order) {
+    const auto name = names[index];
+    if (previous && names[*previous] == name) {
+      return Result<std::vector<std::string>>(Diagnostic{"BLEND_NAME_DUPLICATE", Severity::Fatal,
+          "Sibling source names must be unique; no enumeration-based tie-break is used",
+          {}, {}, std::string(name), false});
+    }
+    previous = index;
+    const auto display = NameForDisplay(name);
+    if (!display.HasValue()) {
+      return Result<std::vector<std::string>>(display.GetError());
+    }
+    diagnostics.insert(diagnostics.end(), display.Diagnostics().begin(), display.Diagnostics().end());
+    if (renderMap == index) {
+      identifiers[index] = "st";
+      continue;
+    }
+    const auto base = Identifier(name, fallback);
+    auto candidate = base;
+    if (used.contains(candidate)) {
+      auto& suffix = nextSuffix[base];
+      do {
+        candidate = base + "_" + std::to_string(++suffix);
+      } while (used.contains(candidate));
+    }
+    used.insert(candidate);
+    identifiers[index] = std::move(candidate);
+  }
+  return Result<std::vector<std::string>>(std::move(identifiers), std::move(diagnostics));
+}
+
+} // namespace
+
+bool SourceNameLess(std::string_view left, std::string_view right) {
   return std::lexicographical_compare(left.begin(), left.end(), right.begin(), right.end(),
       [](char first, char second) {
         return static_cast<unsigned char>(first) < static_cast<unsigned char>(second);
       });
 }
-
-} // namespace
 
 Result<std::string> NameForDisplay(std::string_view sourceName) {
   try {
@@ -115,41 +160,47 @@ Result<std::vector<std::string>> ObjectIdentifiers(const Scene& scene) {
     std::vector<std::string> identifiers(scene.objects.size());
     std::vector<Diagnostic> diagnostics;
     for (auto& [parent, children] : siblings) {
-      std::sort(children.begin(), children.end(), [&](std::size_t left, std::size_t right) {
-        return ByteLess(scene.objects[left].sourceName, scene.objects[right].sourceName);
-      });
+      std::vector<std::string_view> names;
+      for (const auto index : children) {
+        names.push_back(scene.objects[index].sourceName);
+      }
       std::set<std::string> used;
       if (parent && scene.objects[*parent].mesh) {
         used.insert("mesh");
       }
-      std::map<std::string, std::size_t> nextSuffix;
-      std::optional<std::size_t> previous;
-      for (const auto index : children) {
-        const auto& name = scene.objects[index].sourceName;
-        if (previous && scene.objects[*previous].sourceName == name) {
-          return Result<std::vector<std::string>>(Diagnostic{"BLEND_NAME_DUPLICATE", Severity::Fatal,
-              "Sibling Object source names must be unique; no enumeration-based tie-break is used",
-              {}, {}, name, false});
-        }
-        previous = index;
-        const auto display = NameForDisplay(name);
-        if (!display.HasValue()) {
-          return Result<std::vector<std::string>>(display.GetError());
-        }
-        diagnostics.insert(diagnostics.end(), display.Diagnostics().begin(), display.Diagnostics().end());
-        const auto base = Identifier(name);
-        auto candidate = base;
-        if (used.contains(candidate)) {
-          auto& suffix = nextSuffix[base];
-          do {
-            candidate = base + "_" + std::to_string(++suffix);
-          } while (used.contains(candidate));
-        }
-        used.insert(candidate);
-        identifiers[index] = std::move(candidate);
+      const auto assigned = AssignIdentifiers(names, "Object", std::move(used));
+      if (!assigned.HasValue()) {
+        return assigned;
+      }
+      diagnostics.insert(diagnostics.end(), assigned.Diagnostics().begin(), assigned.Diagnostics().end());
+      for (std::size_t index = 0; index < children.size(); ++index) {
+        identifiers[children[index]] = assigned.GetValue()[index];
       }
     }
     return Result<std::vector<std::string>>(std::move(identifiers), std::move(diagnostics));
+  } catch (const std::bad_alloc&) {
+    return Result<std::vector<std::string>>(AllocationFailure());
+  } catch (const std::length_error&) {
+    return Result<std::vector<std::string>>(AllocationFailure());
+  }
+}
+
+Result<std::vector<std::string>> UvIdentifiers(const Mesh& mesh) {
+  try {
+    std::vector<std::string_view> names;
+    std::optional<std::size_t> renderMap;
+    for (std::size_t index = 0; index < mesh.uvMaps.size(); ++index) {
+      const auto& map = mesh.uvMaps[index];
+      names.push_back(map.sourceName);
+      if (map.activeRender) {
+        if (renderMap) {
+          return Result<std::vector<std::string>>(Diagnostic{"BLEND_NAME_RENDER_UV_INVALID", Severity::Fatal,
+              "A Mesh may have at most one active render UV map", {}, {}, mesh.sourceName, false});
+        }
+        renderMap = index;
+      }
+    }
+    return AssignIdentifiers(names, "UVMap", {"st"}, renderMap);
   } catch (const std::bad_alloc&) {
     return Result<std::vector<std::string>>(AllocationFailure());
   } catch (const std::length_error&) {
