@@ -569,21 +569,33 @@ instance graph before any Scene is published. Selection/reader failures retain
 their codes and context; fatal decoding errors likewise return no partial IR.
 The decoder neither opens files nor supplies compression or traversal defaults.
 
-The initial object scope is data-less Empty (`Object.type == 0`) and Mesh
-(`Object.type == 1`), XYZ Euler
-(`rotmode == 1`), zero `transflag`, and ordinary Object parenting
+The object scope is data-less Empty (`Object.type == 0`) and Mesh
+(`Object.type == 1`), all six Euler orders (`rotmode == 1..6`), Quaternion
+(`rotmode == 0`) and Axis-Angle (`rotmode == -1`), zero `transflag`, and ordinary Object parenting
 (`partype == 0` when a parent exists). Other mapped kinds fail with
 `BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED`; Image Empty data fails with
 `BLEND_SCENE_OBJECT_DATA_UNSUPPORTED`. Enabled Collection instancing fails with
 `BLEND_SCENE_INSTANCE_UNSUPPORTED` after graph validation, not by replacing the
-instance with an ordinary Empty. Other transform flags, rotation modes and
+instance with an ordinary Empty. Other transform flags, unknown rotation modes and
 parenting modes fail with `BLEND_SCENE_TRANSFORM_UNSUPPORTED`.
 
 Modern saved Objects carry source transform channels, not an authoritative
-saved world matrix. Read finite `float[3]` values from `loc`, `dloc`, `size`,
-`dscale`, `rot` and `drot`. In column-vector mathematics the source local
-matrix is `T(loc + dloc) * R_XYZ(drot) * R_XYZ(rot) * S(size * dscale)`,
-where `R_XYZ = Rz * Ry * Rx` and angles are radians. A parented world matrix is
+saved world matrix. Read finite `float[3]` values from `loc`, `dloc`, `size`
+and `dscale`. In column-vector mathematics the source local
+matrix is `T(loc + dloc) * R * S(size * dscale)`, where the active rotation
+mode determines `R`:
+
+- Euler reads finite `float[3]` `rot` and `drot` in radians. For the chosen
+  axis order, apply the first axis first (`R_XYZ = Rz * Ry * Rx`).
+  `R = R_order(drot) * R_order(rot)`.
+- Quaternion reads finite `float[4]` `quat` and `dquat` in `(w, x, y, z)`
+  order, normalizes each, and uses `R = R(dquat) * R(quat)`. A zero-length
+  quaternion denotes identity, matching Blender's source transform behavior.
+- Axis-Angle reads finite `float[3]` `rotAxis` and scalar `float` `rotAngle`
+  in radians. Normalize the axis; a zero-length axis denotes identity.
+  Blender does not apply delta rotation in this mode.
+
+Inactive rotation channels are not interpreted. A parented world matrix is
 `parentWorld * parentinv * local`; the saved `float[4][4]` parent inverse
 stores columns first and is transposed into the IR's row-major representation.
 Root Objects do not use `parentinv`. Parent inverse and constructed matrices
@@ -615,9 +627,10 @@ channels still define the result, including for parent-only Objects.
 An active Scene with empty Collections produces owning metadata and empty
 object/mesh vectors; the Scene-only library's null `curscene` remains an error.
 This is a library decoding boundary, not an `IBlendBackend`,
-identifier pass or USD/importer connection. Synthetic arithmetic and mutated
-corpus layouts do not substitute for Blender-written Empty/parenting oracle
-fixtures or STAGE-O1's multi-scale end-to-end evidence. Fixture-backed scope is
+identifier pass or USD/importer connection. Transform oracle fixtures compare
+native world matrices and converted parent/local composition against saved
+Blender values; that does not establish USD local-transform authoring or
+STAGE-O1's multi-scale end-to-end evidence. Fixture-backed scope is
 in the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 
 ### 5.2.8 Native Mesh storage boundary

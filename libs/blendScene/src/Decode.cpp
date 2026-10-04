@@ -25,9 +25,10 @@ Matrix4 Multiply(const Matrix4& left, const Matrix4& right) {
   return result;
 }
 
-Matrix4 EulerXyz(const Vector3& angles) {
+Matrix4 Euler(const Vector3& angles, std::int64_t mode) {
+  constexpr std::array<std::array<std::size_t, 3>, 6> orders = {{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}}};
   Matrix4 result = IdentityMatrix;
-  for (std::size_t axis = 0; axis < 3; ++axis) {
+  for (const auto axis : orders[static_cast<std::size_t>(mode - 1)]) {
     const auto first = (axis + 1) % 3;
     const auto second = (axis + 2) % 3;
     Matrix4 rotation = IdentityMatrix;
@@ -37,6 +38,42 @@ Matrix4 EulerXyz(const Vector3& angles) {
     result = Multiply(rotation, result);
   }
   return result;
+}
+
+Matrix4 Quaternion(const std::array<double, 4>& value) {
+  double squaredLength = 0;
+  for (const auto component : value) {
+    squaredLength += component * component;
+  }
+  if (squaredLength == 0) {
+    return IdentityMatrix;
+  }
+  const auto length = std::sqrt(squaredLength);
+  const auto w = value[0] / length;
+  const auto x = value[1] / length;
+  const auto y = value[2] / length;
+  const auto z = value[3] / length;
+  return {{{1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y), 0},
+      {2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x), 0},
+      {2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y), 0},
+      {0, 0, 0, 1}}};
+}
+
+Matrix4 AxisAngle(const Vector3& axis, double angle) {
+  const auto length = std::hypot(axis[0], axis[1], axis[2]);
+  if (length == 0) {
+    return IdentityMatrix;
+  }
+  const auto x = axis[0] / length;
+  const auto y = axis[1] / length;
+  const auto z = axis[2] / length;
+  const auto c = std::cos(angle);
+  const auto s = std::sin(angle);
+  const auto t = 1 - c;
+  return {{{c + x * x * t, x * y * t - z * s, x * z * t + y * s, 0},
+      {y * x * t + z * s, c + y * y * t, y * z * t - x * s, 0},
+      {z * x * t - y * s, z * y * t + x * s, c + z * z * t, 0},
+      {0, 0, 0, 1}}};
 }
 
 class SceneDecoder {
@@ -134,18 +171,46 @@ private:
     return value;
   }
 
-  Vector3 Vector(const DnaValueView& object, std::string_view member,
+  template <std::size_t Size>
+  std::array<double, Size> Floats(const DnaValueView& object, std::string_view member,
       std::uint32_t index) const {
-    constexpr std::array<std::uint64_t, 1> dimensions = {3};
+    constexpr std::array<std::uint64_t, 1> dimensions = {Size};
     const auto value = FloatArray(object, member, dimensions, index);
-    Vector3 result{};
-    for (std::size_t axis = 0; axis < 3; ++axis) {
+    std::array<double, Size> result{};
+    for (std::size_t axis = 0; axis < Size; ++axis) {
       result[axis] = Take(Take(value.Element(axis)).FloatingPoint());
       if (!std::isfinite(result[axis])) {
         Fail("BLEND_SCENE_TRANSFORM_INVALID", "Source transform values must be finite", index);
       }
     }
     return result;
+  }
+
+  double Float(const DnaValueView& object, std::string_view member,
+      std::uint32_t index) const {
+    const auto value = FloatArray(object, member, {}, index);
+    const auto result = Take(value.FloatingPoint());
+    if (!std::isfinite(result)) {
+      Fail("BLEND_SCENE_TRANSFORM_INVALID", "Source transform values must be finite", index);
+    }
+    return result;
+  }
+
+  Matrix4 Rotation(const DnaValueView& object, std::uint32_t index) const {
+    const auto mode = Short(object, "rotmode", index);
+    if (mode >= 1 && mode <= 6) {
+      return Multiply(Euler(Floats<3>(object, "drot", index), mode),
+          Euler(Floats<3>(object, "rot", index), mode));
+    }
+    if (mode == 0) {
+      return Multiply(Quaternion(Floats<4>(object, "dquat", index)),
+          Quaternion(Floats<4>(object, "quat", index)));
+    }
+    if (mode == -1) {
+      // Blender does not apply delta rotation in axis-angle mode.
+      return AxisAngle(Floats<3>(object, "rotAxis", index), Float(object, "rotAngle", index));
+    }
+    Fail("BLEND_SCENE_TRANSFORM_UNSUPPORTED", "Unknown Object rotation mode", index);
   }
 
   Matrix4 ParentInverse(const DnaValueView& object, std::uint32_t index) const {
@@ -221,8 +286,8 @@ private:
     if ((flags & (1 << 8)) != 0) {
       Fail("BLEND_SCENE_INSTANCE_UNSUPPORTED", "Collection instances are validated, not expanded into the IR", index);
     }
-    if (flags != 0 || Short(object, "rotmode", index) != 1) {
-      Fail("BLEND_SCENE_TRANSFORM_UNSUPPORTED", "Only XYZ Euler objects without transform flags are decoded", index);
+    if (flags != 0) {
+      Fail("BLEND_SCENE_TRANSFORM_UNSUPPORTED", "Object transform flags are not decoded", index);
     }
     const auto parentAddress = Pointer(object, "parent", "Object", index);
     std::optional<std::uint32_t> parent;
@@ -235,12 +300,11 @@ private:
         Fail("BLEND_SCENE_TRANSFORM_UNSUPPORTED", "Only ordinary Object parenting is decoded", index);
       }
     }
-    const auto location = Vector(object, "loc", index);
-    const auto deltaLocation = Vector(object, "dloc", index);
-    const auto scale = Vector(object, "size", index);
-    const auto deltaScale = Vector(object, "dscale", index);
-    auto local = Multiply(EulerXyz(Vector(object, "drot", index)),
-        EulerXyz(Vector(object, "rot", index)));
+    const auto location = Floats<3>(object, "loc", index);
+    const auto deltaLocation = Floats<3>(object, "dloc", index);
+    const auto scale = Floats<3>(object, "size", index);
+    const auto deltaScale = Floats<3>(object, "dscale", index);
+    auto local = Rotation(object, index);
     for (std::size_t axis = 0; axis < 3; ++axis) {
       local[axis][3] = location[axis] + deltaLocation[axis];
       for (std::size_t row = 0; row < 3; ++row) {

@@ -262,18 +262,30 @@ Transform construction, geometry and USD authoring remain separate boundaries.
 The same test exercises library-only `DecodeScene` under the
 [native decoding boundary](../design/DESIGN_POLICY.md#527-native-scene-decoding-boundary).
 Four synthetic layouts cover owning empty/parented IR, selected and parent-only
-parent mapping, render visibility, block reordering, XYZ Euler and delta
+parent mapping, render visibility, block reordering, Euler/Quaternion/Axis-Angle and delta
 channels, nonuniform/negative scales, column-first parent inverses and
 single-pass normalization at four unit scales. Deep 256-parent chains succeed
 at exact visit/depth budgets and fail at one smaller; source-matrix and
 meter-conversion overflow return fatal context. Unsupported kinds, Image
-Empty data, enabled instances, other rotation/parenting modes, malformed
+Empty data, enabled instances, unknown rotation/non-ordinary parenting modes, malformed
 storage and nonfinite inputs fail without a partial Scene. Animation and
 constraint presence emit recoverable source-only diagnostics. Both real corpus
 SDNA layouts are exercised through in-memory Empty-kind/data mutations;
 the original files retain unsupported Camera/Light objects, and the
-Scene-only library retains its missing-active-Scene error. These tests do not
-prove Blender-written parenting/transform equivalence or author USD.
+Scene-only library retains its missing-active-Scene error.
+
+`blendScene.transforms` reads separate unmodified Blender-written 4.5.13 and
+5.2.2 fixtures and their saved matrix oracles. It compares 27 Empty objects per
+file, covering all six Euler orders, nonunit and zero Quaternion/Axis-Angle
+channels, applicable delta transforms, nonuniform/negative/zero scale,
+render visibility, parent inverses and three-level parent/local composition
+after one meter/basis conversion. Repeated reads with reversed block records
+must produce identical object order, parent indices and world matrices.
+Native/oracle matrix components use `2e-5 * (1 + abs(expected))` tolerance.
+Only oracle-local homogeneous-row rounding is accepted within `1e-6`; the
+decoder's own affine validation remains exact. Neither test authors USD or
+closes STAGE-O1's multi-scale evidence. Fixture provenance and regeneration
+are in the [transform fixture README](../../tests/fixtures/native-transforms/README.md).
 
 The same `blendScene.ir` executable includes `MeshTests.cpp`, exercising the
 [native Mesh storage boundary](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary).
@@ -418,3 +430,31 @@ The regression suite checks independent-process and different-path
 reproduction, non-destructive checks and modified-byte rejection, stored Scene
 validation, and synthetic-header rejection. Generation evidence and its
 platform scope belong to the fixture provenance linked above.
+
+### Saved transform oracles
+
+Run with each pinned Blender installation (4.5.13 or 5.2.2). The default output
+is `tests/fixtures/native-transforms/blender-<version>/transforms.blend` and its
+adjacent `transforms.oracle.txt`:
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 4.5\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_transforms.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_transforms.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_transforms.py
+
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_transforms.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_transforms.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_transforms.py
+```
+
+The full-file writer saves an active Scene, unlike the Scene-only library
+fixture. File-browser directories are normalized to `//` before saving to
+avoid machine-local UI paths. `--check` regenerates only into a temporary
+directory, compares the semantic oracle, then opens and checks the stored
+fixture without rewriting it. `--output <path.blend>` redirects either mode.
+The regression suite checks cross-process/path oracle reproduction,
+non-destructive checks, absence of the user's home path, modified-oracle
+rejection and validation of changed saved transforms. Full-file saved addresses
+and UI state are not byte-reproducible; no `--check-bytes` claim is made.
