@@ -15,7 +15,8 @@ enum class Kind { Other,
   Boolean,
   Float2,
   Float3,
-  Short2 };
+  Short2,
+  LoopUv };
 
 struct Attribute {
   std::string name;
@@ -276,10 +277,11 @@ private:
         for (std::uint32_t element = 0; element < layers; ++element) {
           const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, index, element));
           const auto type = Scalar(source, "type", "int", 4, index);
-          if (type == 16) {
-            Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "Legacy MLoopUV layers are not decoded", index);
+          if (type == 16 && domain != 3) {
+            Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "MLoopUV layers require the corner domain", index);
           }
-          const auto kind = type == 11 ? Kind::Integer : type == 41 ? Kind::Short2
+          const auto kind = type == 11 ? Kind::Integer : type == 16 ? Kind::LoopUv
+                                                     : type == 41   ? Kind::Short2
                                                      : type == 48   ? Kind::Float3
                                                      : type == 49   ? Kind::Float2
                                                      : type == 50   ? Kind::Boolean
@@ -329,6 +331,16 @@ private:
       Kind kind, std::uint32_t referrer) const {
     const auto index = Resolve(address, referrer);
     const auto bytes = Payload(index);
+    if (kind == Kind::LoopUv) {
+      const auto source = Records(address, count, "MLoopUV", referrer);
+      const auto uv = Take(source.Member("uv"));
+      if (uv.Type().name != "float" || uv.Type().length != 4 ||
+          uv.PointerLevel() != 0 || uv.ArrayDimensions().size() != 1 ||
+          uv.ArrayDimensions()[0] != 2) {
+        Fail("BLEND_MESH_STORAGE_INVALID", "MLoopUV coordinates must be an embedded float[2]", index);
+      }
+      return {bytes, index, kind, false};
+    }
     const std::uint64_t stride = kind == Kind::Float3 ? 12 : kind == Kind::Float2                        ? 8
                                                          : kind == Kind::Integer || kind == Kind::Short2 ? 4
                                                                                                          : 1;
@@ -458,7 +470,9 @@ private:
         result[axis] = std::bit_cast<float>(Bits(values.bytes.subspan((static_cast<std::size_t>(element) * Size + axis) * 4, 4)));
       } else {
         const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, values.index, element));
-        const auto member = Take(source.Member(members[axis]));
+        const auto member = values.kind == Kind::LoopUv
+                                ? Take(Take(source.Member("uv")).Element(axis))
+                                : Take(source.Member(members[axis]));
         if (member.Type().name != "float" || member.Type().length != 4 ||
             member.PointerLevel() != 0 || !member.ArrayDimensions().empty()) {
           Fail("BLEND_MESH_STORAGE_INVALID", "Vector Mesh data must contain scalar floats", values.index);
@@ -785,7 +799,8 @@ private:
   void ReadUvs(Mesh& mesh, const DnaValueView& source, std::uint32_t corners) const {
     std::optional<std::int64_t> legacyActive;
     for (const auto& attribute : attributes_) {
-      if (attribute.domain != 3 || attribute.kind != Kind::Float2) {
+      if (attribute.domain != 3 ||
+          (attribute.kind != Kind::Float2 && attribute.kind != Kind::LoopUv)) {
         continue;
       }
       const auto values = Values(attribute, corners);

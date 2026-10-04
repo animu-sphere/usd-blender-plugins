@@ -73,6 +73,7 @@ public:
     Type("Key", 0);
     Structure("vec3f", {{"float", "x"}, {"float", "y"}, {"float", "z"}});
     Structure("vec2f", {{"float", "x"}, {"float", "y"}});
+    Structure("MLoopUV", {{"float", "uv", false, 2}, {"int", "flag"}});
     Structure("vec2s", {{"short", "x"}, {"short", "y"}});
     Structure("MIntProperty", {{"int", "i"}});
     Structure("MBoolProperty", {{"uchar", "b"}});
@@ -310,6 +311,27 @@ public:
     return data;
   }
 
+  std::uint32_t LegacyUv(std::uint32_t element) {
+    const auto source = Take(blend::ViewDnaBlock(bytes, blocks, schema, header, attributeRecords, element));
+    const auto address = Take(Take(source.Member("data")).Pointer());
+    const auto old = *Take(Take(blend::BuildPointerMap(blocks)).Resolve(address));
+    const auto values = Data("MLoopUV", 6, 0);
+    for (std::size_t corner = 0; corner < 6; ++corner) {
+      const auto offset = corner * Size("MLoopUV");
+      for (std::size_t axis = 0; axis < 2; ++axis) {
+        const auto value = Take(Take(Take(blend::ViewDnaBlock(bytes, blocks, schema, header, old, corner))
+                                         .Member(axis == 0 ? "x" : "y"))
+                .FloatingPoint());
+        Float(values, offset + Member("MLoopUV", "uv").offset + axis * 4, static_cast<float>(value));
+      }
+      Bits(values, offset + Member("MLoopUV", "flag").offset, corner % 2 == 0 ? 0 : 0xffffffffu, 4);
+    }
+    const auto offset = element * Size("CustomDataLayer");
+    Bits(attributeRecords, offset + Member("CustomDataLayer", "type").offset, 16, 4);
+    Bits(attributeRecords, offset + Member("CustomDataLayer", "data").offset, blocks[values].oldAddress, header.pointerSize);
+    return values;
+  }
+
   void EmptyPolygons() {
     for (const auto member : {"totpoly", "totloop", "poly_offset_indices"}) {
       Set(mesh, "Mesh", member, 0);
@@ -364,6 +386,166 @@ private:
     return static_cast<std::uint32_t>(schema.structs.size() - 1);
   }
 };
+
+void CheckLegacyUvs(const Fixture& fixture) {
+  const auto expected = Take(fixture.Decode()).meshes[0];
+  for (const auto maps : {1, 2, 3}) {
+    auto changed = fixture;
+    for (std::uint32_t element = 1; element <= 2; ++element) {
+      if ((maps & (1 << (element - 1))) != 0) {
+        changed.LegacyUv(element);
+      }
+    }
+    const auto decoded = Take(changed.Decode());
+    Require(decoded.meshes.size() == 1 && decoded.objects[0].mesh == decoded.objects[1].mesh &&
+                SameMesh(expected, decoded.meshes[0]) &&
+                SameMesh(decoded.meshes[0], Take(changed.Decode()).meshes[0]),
+        "MLoopUV and float2 maps share indexed UV semantics, render selection and owning shared geometry");
+    for (const float scale : {0.01f, 10.0f}) {
+      auto scaled = changed;
+      scaled.Float(1, scaled.Member("Scene", "unit").offset, scale);
+      const auto mesh = Take(scaled.Decode()).meshes[0];
+      for (std::size_t uv = 0; uv < mesh.uvMaps.size(); ++uv) {
+        Require(mesh.uvMaps[uv].values == expected.uvMaps[uv].values &&
+                    mesh.uvMaps[uv].indices == expected.uvMaps[uv].indices &&
+                    mesh.uvMaps[uv].activeRender == expected.uvMaps[uv].activeRender,
+            "Legacy UV coordinates and selection are independent of distance units");
+      }
+    }
+    std::reverse(changed.blocks.begin(), changed.blocks.end());
+    Require(SameMesh(expected, Take(changed.Decode()).meshes[0]),
+        "Legacy UV values do not depend on block enumeration");
+  }
+  auto legacy = fixture;
+  const auto values = legacy.LegacyUv(1);
+  legacy.LegacyUv(2);
+  auto changed = legacy;
+  changed.Set(changed.mesh, "Mesh", "default_uv_map_attribute", changed.blocks[changed.Text("First")].oldAddress);
+  const auto selected = Take(changed.Decode()).meshes[0];
+  Require(selected.uvMaps[0].activeRender && !selected.uvMaps[1].activeRender,
+      "A saved render-map name overrides the legacy active render index");
+  changed = legacy;
+  constexpr std::array<blend::Vector2, 6> coordinates = {{{0, -0.0}, {-0.0, 0}, {-0.25, 1.5},
+      {2, -2}, {-0.25, 1.5}, {2, -2}}};
+  for (std::size_t corner = 0; corner < coordinates.size(); ++corner) {
+    for (std::size_t axis = 0; axis < 2; ++axis) {
+      changed.Float(values, corner * changed.Size("MLoopUV") + axis * 4, static_cast<float>(coordinates[corner][axis]));
+    }
+  }
+  const auto indexed = Take(changed.Decode()).meshes[0].uvMaps[0];
+  Require(indexed.values == std::vector<blend::Vector2>{{0, 0}, {-0.25, 1.5}, {2, -2}} &&
+              indexed.indices == std::vector<std::int32_t>{0, 0, 1, 2, 1, 2},
+      "Legacy UVs retain out-of-range coordinates and deduplicate equal signed-zero pairs");
+  for (const auto invalid : {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+    for (std::size_t axis = 0; axis < 2; ++axis) {
+      changed = legacy;
+      changed.Float(values, 5 * changed.Size("MLoopUV") + axis * 4, invalid);
+      changed.Failure("BLEND_MESH_VALUE_INVALID", values);
+    }
+  }
+  for (const auto count : {5u, 7u}) {
+    changed = legacy;
+    changed.blocks[values].count = count;
+    changed.Failure("BLEND_MESH_STORAGE_INVALID", values);
+  }
+  for (const auto delta : {-1, 1}) {
+    changed = legacy;
+    changed.blocks[values].length = static_cast<std::uint64_t>(static_cast<std::int64_t>(changed.blocks[values].length) + delta);
+    changed.Failure("BLEND_DNA_SIZE", values);
+  }
+  changed = legacy;
+  changed.blocks[values].sdnaIndex = changed.blocks[changed.points].sdnaIndex;
+  changed.Failure("BLEND_MESH_STORAGE_INVALID", values);
+  for (const auto invalid : {std::uint64_t{0}, std::uint64_t{999}, legacy.blocks[values].oldAddress + 1}) {
+    changed = legacy;
+    changed.Bits(changed.attributeRecords, changed.Size("CustomDataLayer") + changed.Member("CustomDataLayer", "data").offset,
+        invalid, changed.header.pointerSize);
+    changed.Failure("BLEND_MESH_REFERENCE_INVALID", changed.attributeRecords);
+  }
+  changed = legacy;
+  changed.blocks[values].offset = changed.bytes.size();
+  changed.Failure("BLEND_BLOCK_SIZE", values);
+  changed = legacy;
+  changed.blocks[values].sdnaIndex = static_cast<std::uint32_t>(changed.schema.structs.size());
+  changed.Failure("BLEND_DNA_INDEX", values);
+  for (const auto shape : {0, 1, 2, 3}) {
+    changed = legacy;
+    auto& members = changed.schema.structs[changed.blocks[values].sdnaIndex].members;
+    auto& member = *std::find_if(members.begin(), members.end(),
+        [](const auto& field) { return field.baseName == "uv"; });
+    if (shape == 0) {
+      member.pointerLevel = 1;
+      member.arrayDimensions.clear();
+      member.size = changed.header.pointerSize;
+    } else if (shape == 1) {
+      member.arrayDimensions.clear();
+      member.size = 4;
+    } else if (shape == 2) {
+      member.arrayDimensions = {1, 2};
+    } else {
+      member.typeIndex = changed.Member("MLoopUV", "flag").typeIndex;
+    }
+    changed.Failure("BLEND_MESH_STORAGE_INVALID", values);
+  }
+  changed = fixture;
+  auto& members = changed.schema.structs[static_cast<std::size_t>(
+                                             changed.schema.FindStruct("MLoopUV") - changed.schema.structs.data())]
+                      .members;
+  members[0].offset = 4;
+  members[1].offset = 0;
+  changed.LegacyUv(1);
+  changed.LegacyUv(2);
+  Require(SameMesh(expected, Take(changed.Decode()).meshes[0]),
+      "Legacy UV decoding follows SDNA member offsets rather than a host struct layout");
+  changed = legacy;
+  const auto layerOffset = changed.Size("CustomDataLayer");
+  changed.Bits(changed.attributeRecords, layerOffset + changed.Member("CustomDataLayer", "flag").offset, 1, 4);
+  changed.Failure("BLEND_MESH_STORAGE_UNSUPPORTED", changed.attributeRecords);
+  changed = legacy;
+  changed.Bits(changed.attributeRecords, layerOffset + changed.Member("CustomDataLayer", "active_rnd").offset, 0, 4);
+  changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.attributeRecords);
+  changed = legacy;
+  for (std::uint32_t element = 1; element <= 2; ++element) {
+    changed.Bits(changed.attributeRecords, element * changed.Size("CustomDataLayer") + changed.Member("CustomDataLayer", "active_rnd").offset,
+        2, 4);
+  }
+  changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.mesh);
+  changed = legacy;
+  const auto nameOffset = 2 * changed.Size("CustomDataLayer") + changed.Member("CustomDataLayer", "name").offset;
+  changed.Name(changed.attributeRecords, nameOffset, "First");
+  changed.Bits(changed.attributeRecords, nameOffset + 5, 0, 1);
+  changed.Failure("BLEND_MESH_STORAGE_INVALID", changed.attributeRecords);
+  changed = legacy;
+  const auto vertexData = Take(Take(blend::ViewDnaBlock(changed.bytes, changed.blocks, changed.schema, changed.header, changed.mesh)).Member("vdata"));
+  const auto vertexAddress = Take(Take(vertexData.Member("layers")).Pointer());
+  const auto vertexLayers = *Take(Take(blend::BuildPointerMap(changed.blocks)).Resolve(vertexAddress));
+  changed.Set(vertexLayers, "CustomDataLayer", "type", 16);
+  changed.Failure("BLEND_MESH_STORAGE_UNSUPPORTED", vertexLayers);
+  changed = legacy;
+  for (const auto member : {"totpoly", "totloop", "poly_offset_indices"}) {
+    changed.Set(changed.mesh, "Mesh", member, 0);
+  }
+  for (std::uint32_t element = 0; element < 4; ++element) {
+    changed.Bits(changed.attributeRecords, element * changed.Size("CustomDataLayer") + changed.Member("CustomDataLayer", "data").offset,
+        0, changed.header.pointerSize);
+  }
+  const auto empty = changed.Decode();
+  Require(empty.HasValue() && empty.Diagnostics().size() == 1 &&
+              empty.Diagnostics()[0].code == "BLEND_MESH_EMPTY" &&
+              empty.GetValue().meshes[0].uvMaps.size() == 2 &&
+              empty.GetValue().meshes[0].uvMaps[0].values.empty() &&
+              empty.GetValue().meshes[0].uvMaps[0].indices.empty() &&
+              empty.GetValue().meshes[0].uvMaps[1].activeRender,
+      "Empty corner domains retain named legacy UV maps and the render selector without dereferencing null data");
+  changed.Bits(changed.attributeRecords, layerOffset + changed.Member("CustomDataLayer", "data").offset,
+      changed.blocks[values].oldAddress, changed.header.pointerSize);
+  changed.Failure("BLEND_MESH_STORAGE_INVALID", values);
+  auto owned = Take(legacy.Decode());
+  legacy.bytes.clear();
+  legacy.blocks.clear();
+  legacy.schema = {};
+  Require(SameMesh(expected, owned.meshes[0]), "Legacy UV results own their names, values and indices");
+}
 
 void CheckConstantMeshes(const Fixture& fixture) {
   for (const bool separate : {false, true}) {
@@ -517,6 +699,8 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
     const auto& mesh = decoded.meshes[0];
     if (modern) {
       CheckConstantMeshes(fixture);
+    } else {
+      CheckLegacyUvs(fixture);
     }
     const std::vector<blend::Vector3> expectedPoints = {{0, 0, 0}, {2, 0, 0}, {2, 0, -3}, {0, 0, -3}};
     Require(mesh.sourceName == "Shared" && mesh.points == expectedPoints &&

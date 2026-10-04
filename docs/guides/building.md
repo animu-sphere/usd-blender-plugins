@@ -325,6 +325,14 @@ all four layouts, including empty domains, face/edge booleans, UV indexing and
 packed normals. Invalid sizes, single flags, lengths and references retain
 exact fatal context. Empty, malformed, nonfinite, invalid-index and unsupported
 named-normal/storage cases require no partial Scene.
+Legacy type-16 `MLoopUV` layers also run across all four synthetic layouts,
+including two maps and mixed float2/MLoopUV maps, SDNA-defined offsets/strides,
+ignored record flags, indexed signed-zero/out-of-range coordinates, render
+selectors, unit independence, empty domains and owning/repeated/reordered
+reads. Invalid SDNA/value shapes, counts, lengths, pointers, layer domains,
+names and flags require contextual fatal failures without a partial Scene.
+These legacy UV cases have no Blender-written fixture; the corpus UV evidence
+still covers float2 layers and AttributeArrays only.
 Modifier and shape-key presence reports source-only data without evaluation.
 The root reader build and standalone OpenStrata library build both run these
 tests and the existing four scene dependency-boundary gates. Blender-written Mesh transform/unit oracle fixtures
