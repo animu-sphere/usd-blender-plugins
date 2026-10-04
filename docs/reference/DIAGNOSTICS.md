@@ -118,6 +118,9 @@ Fixture paths are relative to
 | `BLEND_SCENE_TRANSFORM_INVALID` | Fatal | no | native source transform storage has an incompatible scalar/array shape, nonfinite active channels, non-affine parent inverse or construction overflow; parent-relative construction receives nonfinite/non-affine worlds or overflows | malformed shapes, NaN/infinity in Euler/Quaternion/Axis-Angle channels, projective parent inverse and overflowing source parent matrices across four synthetic layouts; helper input and initial/elimination/translation overflow cases in `blendScene.ir`; inactive rotation channels are not interpreted |
 | `BLEND_SCENE_TRANSFORM_SINGULAR` | Fatal | no | parent-relative construction finds a zero parent linear row or a row-scaled pivot at most eight double-precision epsilons | zero-scale parents, dependent nontrivial rows and numerically singular parents in `blendScene.ir`; singular roots/children with invertible parents remain valid |
 | `BLEND_SCENE_EVALUATION_UNAPPLIED` | Unsupported | yes | native decoding uses source transform/geometry values with nonnull animation, constraint or Mesh modifier endpoints; evaluation contents are not followed | independent animation, constraint endpoints and modifier presence with contextual diagnostics across four synthetic layouts in `blendScene.ir` |
+| `BLEND_NAME_INVALID_UTF8` | Warning | yes | display-name validation finds an ill-formed UTF-8 subpart; raw source bytes are retained and display uses U+FFFD | valid scalar boundaries and overlong/surrogate/out-of-range/truncated sequences in `blendScene.naming`; native Object warnings with exact offsets/indices across four layouts in `blendScene.ir` |
+| `BLEND_NAME_DUPLICATE` | Fatal | no | sibling Objects have identical raw source names, so a total source-byte ordering is impossible | standalone duplicate rejection in `blendScene.naming` and contextual native rejection across four layouts in `blendScene.ir` |
+| `BLEND_NAME_ALLOCATION` | Fatal | no | Object identifier or display-text allocation fails or exceeds container capacity | implemented; allocation failure injection unverified |
 | `BLEND_MESH_REFERENCE_INVALID` | Fatal | no | a required Mesh storage pointer is null, absent, interior or resolves to a non-DATA block | offset/name/value pointers and non-DATA arrays in both synthetic storage forms across four layouts in `blendScene.ir` |
 | `BLEND_MESH_STORAGE_INVALID` | Fatal | no | Mesh counts, member shapes, record/array lengths/counts, attribute names, boolean values, AttributeArray single flags or UV selectors are invalid | negative/excessive counts, logical AttributeArray sizes, exact one-value constant payload lengths, single flags other than zero/one, SDNA record counts, unterminated/duplicate names, boolean and UV selection mutations in `blendScene.ir` |
 | `BLEND_MESH_STORAGE_UNSUPPORTED` | Fatal | no | version/core attribute type/domain, missing required storage, mixed/external CustomData, flagged layers, special Attribute storage other than Array/Single or legacy UV storage is outside the decoder | version/type/domain, flagged/special Attribute storage and legacy MLoopUV mutations in `blendScene.ir`; mixed/external rejection implemented but unverified |
@@ -183,6 +186,16 @@ parents, cycles, parent-depth failures and parent-only visit failures use the
 referring Object's context; invalid parent targets use target context. Null
 parents are valid roots. Reader failures retain their codes and offsets. See
 the [parent-reference boundary](../design/DESIGN_POLICY.md#524-saved-object-parent-reference-boundary).
+
+`ObjectIdentifiers` returns names aligned with the input Scene IR and no partial
+identifier vector on fatal errors. `NameForDisplay` and identifier warnings have
+raw name context but no source offsets; `DecodeScene` attaches each affected
+selected Object's payload offset and block index. Duplicate sibling names fail
+with selected Object context rather than an enumeration-based identifier
+tie-break. Allocation failures have no source context. Invalid immediate IR
+parent/Mesh indices use `BLEND_SCENE_REFERENCE_INVALID`; parent-chain validation
+remains the decoder's prerequisite. See the
+[naming boundary](../design/NAMING_POLICY.md#41-native-object-naming-boundary).
 
 Data validation returns no partial selection. Unresolved nonzero data pointers,
 invalid pointer shapes and new-data visit exhaustion use referring Object

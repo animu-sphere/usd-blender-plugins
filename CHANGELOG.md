@@ -8,6 +8,19 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Deterministic Mesh/Empty Object identifiers in `blendScene`, connected to
+    native `DecodeScene` before publication. ASCII sanitization preserves
+    literal underscores, compares raw source bytes independently of locale
+    and enumeration, resolves sibling and natural-suffix collisions, and
+    reserves `mesh` only under Mesh parents. Raw source names, graph/discovery
+    order, shared geometry and normalized transforms remain unchanged.
+    Separate UTF-8 display repair reports malformed names without changing
+    source bytes; duplicate sibling names and invalid immediate IR references
+    fail explicitly. All 40,320 permutations of an eight-Object Scene,
+    contextual four-layout native regressions and unchanged Blender-written
+    transform fixtures pass, as do all nine Scene CTests in root and standalone
+    builds. NAME-O1 remains open; USD name authoring and the header-only
+    importer are unchanged.
 - Native constant Mesh attributes in `blendScene`: logical single-value
     AttributeArrays and Blender 5.x AttributeSingles expand positions,
     integers, face/edge booleans, indexed UVs and packed custom normals through

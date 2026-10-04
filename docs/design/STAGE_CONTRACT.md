@@ -59,7 +59,7 @@ contract version are independent
 - Every authored value is in the USD basis and meters (§6).
 - Specifiers are `def`. Nothing is authored as `over` or `class`.
 - Prims and properties are authored in a deterministic order: scopes in the
-  order of §4, children in identifier order
+  order of §4, derived children in source-name byte order
   ([NAMING_POLICY.md §4](NAMING_POLICY.md#4-collisions-and-order)).
 
 ## 4. Prim hierarchy
