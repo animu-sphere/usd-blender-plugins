@@ -510,6 +510,50 @@ populated Scene IR and USD authoring remain separate work. The importer and
 inspection tool do not consume this selection API. Fixture-backed scope is in
 the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 
+### 5.2.6 Saved Object value boundary
+
+`SelectSceneObjectValues(bytes, blocks, schema, header, limits)` shares the
+selection and traversal above, then validates values for every selected and
+parent-only Object. It returns the same `SelectedSceneObjects`, with an owning
+`SavedObjectValues` in each selected record's optional `values`. The generic
+`SelectSceneObjects` leaves `values` absent and retains its nullable,
+type-independent data policy. Parent-only values are checked but not published.
+
+`Object.type` and `transflag` must be scalar two-byte `short` values. Visibility
+uses the saved `visibility_flag` or `restrictflag` member, a scalar two-byte
+`short` or four-byte `int`. Only bit 2 controls `hiddenForRender`; viewport,
+selection, ray and Collection visibility are not evaluated. Transform flags
+are retained as source facts, not interpreted as transforms.
+
+Known Object kinds require the corresponding data block code and SDNA type:
+Mesh (`ME`/`Mesh`), legacy curve/surface/text (`CU`/`Curve`), metaball
+(`MB`/`MetaBall`), light (`LA`/`Lamp`), camera (`CA`/`Camera`), speaker
+(`SK`/`Speaker`), probe (`LP`/`LightProbe`), lattice (`LT`/`Lattice`), armature
+(`AR`/`bArmature`), legacy grease pencil (`GD`/`bGPdata`), curves
+(`CV`/`Curves`), point cloud (`PT`/`PointCloud`), volume (`VO`/`Volume`) and
+grease pencil (`GP`/`GreasePencil`). Empty permits null data or `IM`/`Image`.
+These are source-ID shape requirements, not geometry compatibility claims.
+Missing required data or mismatched code/type fails with
+`BLEND_SCENE_REFERENCE_INVALID`. An unmapped type fails explicitly with
+`BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED`; it is not silently treated as an Empty.
+
+The scalar `Collection *instance_collection`, stored as `dup_group` in the
+current corpus SDNA, is checked even when collection instancing is inactive.
+Every nonnull value must resolve exactly to one local `Collection` with
+`GR` or `DATA` code and a valid GR-prefixed ID. Bit 8 of `transflag` requires
+a nonnull target. The optional `instanceCollectionBlockIndex` refers to the
+caller's block sequence. Each distinct instance target outside already visited
+Collections/Object/data IDs consumes one visit; shared targets count once.
+Instance targets do not extend depth or membership. Their internal lists and
+recursive instance edges are not expanded, evaluated or cycle-checked here.
+
+All failures are fatal with source context and no partial result. Existing
+reader, linked-ID, name and budget diagnostics retain their behavior. No
+production budgets, local/world transform construction, normalized geometry,
+unsupported-kind USD fallback, populated Scene IR or importer integration
+are introduced. Fixture-backed scope belongs in the
+[capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
+
 ### 5.3 `usdBlendFileFormat` — the importer
 
 The OpenUSD `SdfFileFormat` bundle, scaffolded from OpenStrata's

@@ -803,6 +803,193 @@ void CheckCollectionLayouts() {
                   dataRecords[*reorderedData.GetValue().objects[0].dataBlockIndex].oldAddress == blocks[meshIndex].oldAddress &&
                   dataRecords[*reorderedData.GetValue().objects[1].dataBlockIndex].oldAddress == blocks[meshIndex].oldAddress,
           "Data indices follow reordered caller block sequences");
+      auto valueBytes = membershipBytes;
+      auto valueBlocks = membershipBlocks;
+      auto valueDna = schema;
+      const auto shortType = static_cast<std::uint16_t>(valueDna.types.size());
+      valueDna.types.push_back({"short", 2});
+      const auto intType = static_cast<std::uint16_t>(valueDna.types.size());
+      valueDna.types.push_back({"int", 4});
+      const std::uint64_t visibilitySize = order == blend::ByteOrder::Big ? 4 : 2;
+      const auto typeOffset = static_cast<std::uint64_t>(objectSize);
+      const auto visibilityOffset = typeOffset + 2;
+      const auto flagsOffset = visibilityOffset + visibilitySize;
+      const auto instanceOffset = flagsOffset + 2;
+      const auto valueSize = static_cast<std::uint16_t>(instanceOffset + width);
+      valueDna.types[10].length = valueSize;
+      valueDna.structs[6].members.insert(valueDna.structs[6].members.end(),
+          {{shortType, 0, "type", 0, {}, typeOffset, 2},
+              {visibilitySize == 2 ? shortType : intType, 0,
+                  width == 4 ? "visibility_flag" : "restrictflag", 0, {}, visibilityOffset, visibilitySize},
+              {shortType, 0, "transflag", 0, {}, flagsOffset, 2},
+              {9, 0, width == 4 ? "instance_collection" : "dup_group", 1, {}, instanceOffset, width}});
+      for (const auto index : {4, 5, 10}) {
+        const auto offset = valueBytes.size();
+        std::vector<std::byte> payload(valueSize);
+        std::copy_n(valueBytes.begin() + static_cast<std::ptrdiff_t>(valueBlocks[index].offset),
+            objectSize, payload.begin());
+        valueBytes.insert(valueBytes.end(), payload.begin(), payload.end());
+        valueBlocks[index].offset = offset;
+        valueBlocks[index].length = valueSize;
+      }
+      const auto valueMesh = static_cast<std::uint32_t>(valueBlocks.size());
+      valueBlocks.push_back({{'M', 'E', 0, 0}, idSize, 3000, 9, 1, valueBytes.size()});
+      valueBytes.resize(valueBytes.size() + idSize);
+      valueBytes[static_cast<std::size_t>(valueBlocks.back().offset)] = std::byte{'M'};
+      valueBytes[static_cast<std::size_t>(valueBlocks.back().offset) + 1] = std::byte{'E'};
+      auto setValue = [&](auto& input, std::uint32_t index, std::uint64_t offset,
+                          std::uint64_t value, std::size_t size) {
+        StoreBits(input, static_cast<std::size_t>(valueBlocks[index].offset + offset), value, size, order);
+      };
+      for (const auto index : {4, 5}) {
+        setValue(valueBytes, index, typeOffset, 1, 2);
+        setValue(valueBytes, index, idSize + width, 3000, width);
+      }
+      setValue(valueBytes, 4, visibilityOffset, 4, visibilitySize);
+      setValue(valueBytes, 4, flagsOffset, 256, 2);
+      setValue(valueBytes, 4, instanceOffset, valueBlocks[3].oldAddress, width);
+      auto readValues = [&](const auto& input, const auto& records, const auto& dna,
+                            blend::SceneTraversalLimits limits = {9, 2}) {
+        return blend::SelectSceneObjectValues(input, records, dna, header, limits);
+      };
+      auto valueFailure = [&](const auto& input, const auto& records, const auto& dna,
+                              std::string_view code, std::uint32_t index,
+                              blend::SceneTraversalLimits limits = {32, 8}) {
+        const auto failed = readValues(input, records, dna, limits);
+        if (failed.HasValue()) {
+          throw std::runtime_error("Expected Object value failure " + std::string(code));
+        }
+        if (failed.GetError().code != code || failed.GetError().blockIndex != index) {
+          throw std::runtime_error("Expected " + std::string(code) + " at " + std::to_string(index) +
+                                   ", got " + failed.GetError().code + " at " +
+                                   (failed.GetError().blockIndex ? std::to_string(*failed.GetError().blockIndex) : "none"));
+        }
+        Require(!failed.HasValue() && failed.GetError().code == code &&
+                    failed.GetError().severity == blend::Severity::Fatal && !failed.GetError().recoverable &&
+                    failed.GetError().blockIndex == index && failed.GetError().byteOffset == records[index].offset,
+            "Object value failure has exact fatal code and block context");
+      };
+      const auto values = readValues(valueBytes, valueBlocks, valueDna);
+      Require(values.HasValue() && values.GetValue().objects.size() == 2 &&
+                  values.GetValue().objects[0].values && values.GetValue().objects[0].values->type == 1 &&
+                  values.GetValue().objects[0].values->hiddenForRender &&
+                  values.GetValue().objects[0].values->transformFlags == 256 &&
+                  values.GetValue().objects[0].values->instanceCollectionBlockIndex == 3 &&
+                  !values.GetValue().objects[1].values->hiddenForRender &&
+                  !values.GetValue().objects[1].values->instanceCollectionBlockIndex &&
+                  !result.GetValue().objects[0].values,
+          "Opt-in Object values retain saved flags and references without changing generic selection");
+      valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_VISIT_LIMIT", 4, {8, 2});
+      auto changedValues = valueBytes;
+      setValue(changedValues, 4, idSize + width, 0, width);
+      valueFailure(changedValues, valueBlocks, valueDna, "BLEND_SCENE_REFERENCE_INVALID", 4);
+      setValue(changedValues, 4, typeOffset, 0, 2);
+      Require(readValues(changedValues, valueBlocks, valueDna).HasValue(),
+          "An Empty permits null data");
+      valueFailure(valueBytes, valueBlocks, [&] {
+        auto dna = valueDna;
+        dna.structs[6].members.back().typeIndex = 10;
+        return dna; }(), "BLEND_SCENE_REFERENCE_INVALID", 4);
+      for (const auto badType : {6, 65535}) {
+        changedValues = valueBytes;
+        setValue(changedValues, 4, typeOffset, badType, 2);
+        valueFailure(changedValues, valueBlocks, valueDna, "BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED", 4);
+        Require(select(changedValues, valueBlocks, valueDna, {9, 2}).HasValue(),
+            "Generic selection does not impose the opt-in Object type policy");
+      }
+      for (std::size_t member = 3; member < 6; ++member) {
+        auto dna = valueDna;
+        dna.structs[6].members[member].arrayDimensions = {1};
+        valueFailure(valueBytes, valueBlocks, dna, "BLEND_SCENE_REFERENCE_INVALID", 4);
+        dna = valueDna;
+        dna.structs[6].members[member].typeIndex = 1;
+        valueFailure(valueBytes, valueBlocks, dna,
+            member == 4 && visibilitySize == 4 ? "BLEND_SCENE_REFERENCE_INVALID" : "BLEND_DNA_SIZE", 4);
+      }
+      auto missingValue = valueDna;
+      missingValue.structs[6].members.pop_back();
+      valueFailure(valueBytes, valueBlocks, missingValue, "BLEND_DNA_MEMBER", 4);
+      for (const auto address : {std::uint64_t{0}, valueBlocks[3].oldAddress + 1,
+               std::uint64_t{999}, valueBlocks[valueMesh].oldAddress}) {
+        changedValues = valueBytes;
+        setValue(changedValues, 4, instanceOffset, address, width);
+        valueFailure(changedValues, valueBlocks, valueDna, "BLEND_SCENE_REFERENCE_INVALID",
+            address == valueBlocks[valueMesh].oldAddress ? valueMesh : 4);
+      }
+      changedValues = valueBytes;
+      setValue(changedValues, 4, flagsOffset, 0, 2);
+      Require(readValues(changedValues, valueBlocks, valueDna).HasValue(),
+          "Inactive nonnull instance references are still validated");
+      setValue(changedValues, 4, instanceOffset, 999, width);
+      valueFailure(changedValues, valueBlocks, valueDna, "BLEND_SCENE_REFERENCE_INVALID", 4);
+      changedValues = valueBytes;
+      setValue(changedValues, 4, idSize, valueBlocks[10].oldAddress, width);
+      setValue(changedValues, 10, 16, 0, width);
+      setValue(changedValues, 10, typeOffset, 1, 2);
+      valueFailure(changedValues, valueBlocks, valueDna, "BLEND_SCENE_REFERENCE_INVALID", 10);
+      setValue(changedValues, 10, idSize + width, 3000, width);
+      Require(readValues(changedValues, valueBlocks, valueDna, {10, 2}).HasValue(),
+          "Parent-only Object values are validated but do not expand membership");
+      const auto instanceIndex = static_cast<std::uint32_t>(valueBlocks.size());
+      valueBlocks.push_back({{'G', 'R', 0, 0}, collectionSize, 3100, 5, 1, valueBytes.size()});
+      valueBytes.resize(valueBytes.size() + collectionSize);
+      valueBytes[static_cast<std::size_t>(valueBlocks.back().offset)] = std::byte{'G'};
+      valueBytes[static_cast<std::size_t>(valueBlocks.back().offset) + 1] = std::byte{'R'};
+      for (const auto index : {4, 5}) {
+        setValue(valueBytes, index, instanceOffset, 3100, width);
+      }
+      Require(readValues(valueBytes, valueBlocks, valueDna, {10, 2}).HasValue(),
+          "Shared instance targets consume one additional visit without traversal");
+      valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_VISIT_LIMIT", 4, {9, 2});
+      changedValues = valueBytes;
+      setValue(changedValues, instanceIndex, 16, 999, width);
+      valueFailure(changedValues, valueBlocks, valueDna, "BLEND_SCENE_LINKED_UNSUPPORTED", instanceIndex);
+      changedValues = valueBytes;
+      changedValues[static_cast<std::size_t>(valueBlocks[instanceIndex].offset)] = std::byte{'X'};
+      valueFailure(changedValues, valueBlocks, valueDna, "BLEND_SCENE_NAME_INVALID", instanceIndex);
+      auto badInstance = valueBlocks;
+      badInstance[instanceIndex].count = 2;
+      valueFailure(valueBytes, badInstance, valueDna, "BLEND_SCENE_REFERENCE_INVALID", instanceIndex);
+      std::reverse(badInstance.begin(), badInstance.end());
+      badInstance.front().count = 1;
+      const auto reorderedValues = readValues(valueBytes, badInstance, valueDna, {10, 2});
+      Require(reorderedValues.HasValue() &&
+                  badInstance[*reorderedValues.GetValue().objects[0].values->instanceCollectionBlockIndex].oldAddress == 3100,
+          "Instance indices refer to the caller's reordered blocks");
+      struct Mapping {
+        std::uint16_t type;
+        std::string_view code;
+        std::string_view dnaType;
+      };
+      for (const auto mapping : {Mapping{0, "IM", "Image"}, {1, "ME", "Mesh"},
+               {2, "CU", "Curve"}, {3, "CU", "Curve"}, {4, "CU", "Curve"},
+               {5, "MB", "MetaBall"}, {10, "LA", "Lamp"}, {11, "CA", "Camera"},
+               {12, "SK", "Speaker"}, {13, "LP", "LightProbe"}, {22, "LT", "Lattice"},
+               {25, "AR", "bArmature"}, {26, "GD", "bGPdata"}, {27, "CV", "Curves"},
+               {28, "PT", "PointCloud"}, {29, "VO", "Volume"}, {30, "GP", "GreasePencil"}}) {
+        auto dna = valueDna;
+        auto records = valueBlocks;
+        changedValues = valueBytes;
+        for (const auto index : {4, 5}) {
+          setValue(changedValues, index, typeOffset, mapping.type, 2);
+        }
+        records[valueMesh].code = {mapping.code[0], mapping.code[1], 0, 0};
+        changedValues[static_cast<std::size_t>(records[valueMesh].offset)] = static_cast<std::byte>(mapping.code[0]);
+        changedValues[static_cast<std::size_t>(records[valueMesh].offset) + 1] = static_cast<std::byte>(mapping.code[1]);
+        dna.types[13].name = mapping.dnaType;
+        Require(readValues(changedValues, records, dna, {10, 2}).HasValue(),
+            "Each verified Object type requires the corresponding code and SDNA data type");
+        dna.types[13].name = "Wrong";
+        valueFailure(changedValues, records, dna, "BLEND_SCENE_REFERENCE_INVALID", valueMesh);
+        setValue(changedValues, 4, idSize + width, 0, width);
+        if (mapping.type != 0) {
+          valueFailure(changedValues, records, valueDna, "BLEND_SCENE_REFERENCE_INVALID", 4);
+        }
+      }
+      valueBytes.clear();
+      Require(values.GetValue().objects[0].values->hiddenForRender &&
+                  values.GetValue().objects[0].values->instanceCollectionBlockIndex == 3,
+          "Saved Object values own their output after inputs are released");
       name(4, "OBChanged");
       schema.types[10].name = "Changed";
       Require(result.GetValue().objects[0].sourceName == "One" &&
@@ -878,6 +1065,13 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
     throw std::runtime_error(objects.GetError().code + ": " + objects.GetError().message);
   }
   std::vector<std::string> names;
+  const auto objectValues = blend::SelectSceneObjectValues(decoded.GetValue(), blocks.GetValue(),
+      schema.GetValue(), header.GetValue(), {10000, 64});
+  if (!objectValues.HasValue()) {
+    throw std::runtime_error(objectValues.GetError().code + ": " + objectValues.GetError().message);
+  }
+  Require(objectValues.GetValue().objects.size() == objects.GetValue().objects.size(),
+      "Object value reading preserves corpus membership");
   for (const auto& object : objects.GetValue().objects) {
     names.push_back(object.sourceName);
     const auto view = blend::ViewDnaBlock(decoded.GetValue(), blocks.GetValue(),
@@ -907,6 +1101,63 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
     Require(targetData.HasValue() && targetData.GetValue().Type().name == expectedType &&
                 blocks.GetValue()[*object.dataBlockIndex].code == expectedCode,
         "Corpus Camera/Cube/Light data resolves to Camera/Mesh/Lamp ID records");
+    const auto& savedValues = *std::find_if(objectValues.GetValue().objects.begin(), objectValues.GetValue().objects.end(),
+        [&](const auto& candidate) { return candidate.blockIndex == object.blockIndex; })
+                                   ->values;
+    Require(savedValues.type == (object.sourceName == "Camera" ? 11 : object.sourceName == "Cube" ? 1
+                                                                                                  : 10) &&
+                !savedValues.hiddenForRender && !savedValues.instanceCollectionBlockIndex,
+        "Both Blender-written corpus files decode type, render visibility and null instance targets");
+    const auto visibility = view.GetValue().Member("restrictflag");
+    Require(visibility.HasValue() &&
+                visibility.GetValue().Type().name == (header.GetValue().version == 405 ? "short" : "int"),
+        "Corpus visibility retains the verified short/int version difference");
+    for (const auto flags : {1, 2, 4, 5, 8}) {
+      auto changed = decoded.GetValue();
+      StoreBits(changed, static_cast<std::size_t>(visibility.GetValue().Bytes().data() - decoded.GetValue().data()),
+          flags, visibility.GetValue().Bytes().size(), header.GetValue().byteOrder);
+      const auto checked = blend::SelectSceneObjectValues(changed, blocks.GetValue(),
+          schema.GetValue(), header.GetValue(), {10000, 64});
+      Require(checked.HasValue(), "Corpus visibility mutation reads");
+      const auto found = std::find_if(checked.GetValue().objects.begin(), checked.GetValue().objects.end(),
+          [&](const auto& candidate) { return candidate.blockIndex == object.blockIndex; });
+      Require(found->values->hiddenForRender == ((flags & 4) != 0),
+          "Only the saved render bit determines hiddenForRender");
+    }
+    const auto instance = view.GetValue().Member("dup_group");
+    const auto transformFlags = view.GetValue().Member("transflag");
+    Require(instance.HasValue() && transformFlags.HasValue(),
+        "Corpus saved instance and transform-flag members bind");
+    for (const auto instanceAddress : {blocks.GetValue()[*target.GetValue()].oldAddress,
+             blocks.GetValue()[*target.GetValue()].oldAddress + 1,
+             std::numeric_limits<std::uint64_t>::max()}) {
+      auto changed = decoded.GetValue();
+      StoreBits(changed, static_cast<std::size_t>(instance.GetValue().Bytes().data() - decoded.GetValue().data()),
+          instanceAddress, header.GetValue().pointerSize, header.GetValue().byteOrder);
+      const auto checked = blend::SelectSceneObjectValues(changed, blocks.GetValue(),
+          schema.GetValue(), header.GetValue(), {10000, 64});
+      if (instanceAddress == blocks.GetValue()[*target.GetValue()].oldAddress) {
+        Require(checked.HasValue(), "A corpus instance reference resolves to its local master Collection");
+        const auto found = std::find_if(checked.GetValue().objects.begin(), checked.GetValue().objects.end(),
+            [&](const auto& candidate) { return candidate.blockIndex == object.blockIndex; });
+        Require(found->values->instanceCollectionBlockIndex == *target.GetValue(),
+            "Corpus instance output retains the caller's exact block index without expanding membership");
+      } else {
+        Require(!checked.HasValue() && checked.GetError().code == "BLEND_SCENE_REFERENCE_INVALID" &&
+                    checked.GetError().blockIndex == object.blockIndex &&
+                    checked.GetError().byteOffset == blocks.GetValue()[object.blockIndex].offset,
+            "Invalid corpus instance references have exact referring Object context");
+      }
+    }
+    auto missingInstance = decoded.GetValue();
+    StoreBits(missingInstance, static_cast<std::size_t>(transformFlags.GetValue().Bytes().data() - decoded.GetValue().data()),
+        256, 2, header.GetValue().byteOrder);
+    const auto instancing = blend::SelectSceneObjectValues(missingInstance, blocks.GetValue(),
+        schema.GetValue(), header.GetValue(), {10000, 64});
+    Require(!instancing.HasValue() && instancing.GetError().code == "BLEND_SCENE_REFERENCE_INVALID" &&
+                instancing.GetError().blockIndex == object.blockIndex &&
+                instancing.GetError().byteOffset == blocks.GetValue()[object.blockIndex].offset,
+        "Corpus collection-instancing flags require a nonnull Collection reference");
     const auto dataOffset = static_cast<std::size_t>(data.GetValue().Bytes().data() - decoded.GetValue().data());
     for (const auto address : {std::uint64_t{0}, savedData.GetValue() + 1,
              std::numeric_limits<std::uint64_t>::max()}) {
@@ -920,6 +1171,12 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
             [&](const auto& candidate) { return candidate.blockIndex == object.blockIndex; });
         Require(found != checked.GetValue().objects.end() && !found->dataBlockIndex,
             "Null corpus data is retained as an absent target");
+        const auto strict = blend::SelectSceneObjectValues(changed, blocks.GetValue(),
+            schema.GetValue(), header.GetValue(), {10000, 64});
+        Require(!strict.HasValue() && strict.GetError().code == "BLEND_SCENE_REFERENCE_INVALID" &&
+                    strict.GetError().blockIndex == object.blockIndex &&
+                    strict.GetError().byteOffset == blocks.GetValue()[object.blockIndex].offset,
+            "Opt-in corpus Object values reject missing type-required data");
       } else {
         Require(!checked.HasValue() && checked.GetError().code == "BLEND_SCENE_REFERENCE_INVALID" &&
                     checked.GetError().severity == blend::Severity::Fatal && !checked.GetError().recoverable &&
@@ -951,7 +1208,7 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
   Require(names == std::vector<std::string>{"Camera", "Cube", "Light"},
       "Saved Collection membership selects the corpus objects");
 }
-}
+} // namespace
 
 int main(int argc, char** argv) {
   try {

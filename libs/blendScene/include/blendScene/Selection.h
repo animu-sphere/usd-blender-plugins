@@ -19,11 +19,19 @@ struct SceneTraversalLimits {
   std::uint32_t maxDepth = 0;
 };
 
+struct SavedObjectValues {
+  std::int16_t type;
+  bool hiddenForRender;
+  std::int16_t transformFlags;
+  std::optional<std::uint32_t> instanceCollectionBlockIndex;
+};
+
 struct SelectedObject {
   std::uint32_t blockIndex;
   std::string sourceName;
   std::optional<std::uint32_t> parentBlockIndex;
   std::optional<std::uint32_t> dataBlockIndex;
+  std::optional<SavedObjectValues> values;
 };
 
 struct SelectedSceneObjects {
@@ -34,4 +42,8 @@ struct SelectedSceneObjects {
 Result<SelectedSceneObjects> SelectSceneObjects(std::span<const std::byte> bytes,
     std::span<const BlendBlock> blocks, const DnaSchema& schema,
     const Header& header, const SceneTraversalLimits& limits);
-}
+
+Result<SelectedSceneObjects> SelectSceneObjectValues(std::span<const std::byte> bytes,
+    std::span<const BlendBlock> blocks, const DnaSchema& schema,
+    const Header& header, const SceneTraversalLimits& limits);
+} // namespace blend
