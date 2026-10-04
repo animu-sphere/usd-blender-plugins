@@ -383,7 +383,8 @@ private:
         single = flag != 0;
       }
       address = Pointer(array, "data", "void", index);
-      if (!single && count == 0 && address == 0) {
+      // Blender can retain a data key without writing a DATA block for an empty dense array.
+      if (!single && count == 0) {
         return {{}, index, attribute.kind, true};
       }
       auto values = Array(address, single ? 1 : count, attribute.kind, index);

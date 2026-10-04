@@ -70,9 +70,10 @@ of native matrix construction. No evaluated modifier geometry is used.
 Generation checks the oracle again after reopening the saved file.
 `--check` regenerates only into temporary storage, compares semantic oracles,
 then checks the stored file without rewriting it. Saved addresses and UI state
-are not byte-reproducible. Numeric oracle records use
-`math.isclose(rel_tol=2e-6, abs_tol=2e-6)`; names, references, flags, counts and
-topology are exact. [test_generate_units.py](../test_generate_units.py) covers
+are not byte-reproducible. Matrices, points and normals use
+`math.isclose(rel_tol=2e-6, abs_tol=2e-6)`; UV coordinates are exact, including
+zero signs, as are names, references, flags, counts and topology.
+[test_generate_units.py](../test_generate_units.py) covers
 different-process/path reproduction, non-destructive success and failure,
 home-path exclusion, changed-oracle rejection, and saved unit, transform,
 geometry, name and UV mutations. The existing integrated Scene generator

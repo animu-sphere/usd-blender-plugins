@@ -8,6 +8,18 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Blender-written 4.5.13/5.2.2 Mesh-domain oracles and `blendScene.meshFixture`,
+    covering empty Meshes, loose points, UV-free polygons, corner seams,
+    out-of-range and signed-zero UVs, constant coordinates and distinct
+    editing/render maps. Owning native reads pin exact UV indexing, empty
+    warnings and repeated/reversed-block determinism; registered-plugin
+    tests cover geometry, extent, metadata-only reads and references.
+    Blender 5.2 zero-domain dense AttributeArrays now accept unused nonzero
+    data keys without serialized DATA blocks, while nonempty and constant
+    payload/reference validation remains strict. Four-layout regressions
+    retain exact fatal size/flag/reference context. Generator checks reject
+    saved UV sign, render-map, loose-point and sharing mutations without
+    rewriting fixtures; Scene-oracle UV comparisons now preserve signed zeros.
 - Uncompressed registered-plugin native decoding and Scene IR authoring,
     preserving Mesh/Empty hierarchy, local transforms, render visibility,
     polygon geometry, normals and indexed UVs without a second normalization.

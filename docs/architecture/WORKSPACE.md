@@ -74,6 +74,9 @@ builds and installs the descriptor's reader prerequisite automatically.
 Both build modes run the IR and forbidden-include tests, generated link
 metadata and link-boundary checks, and rejection tests. The generated-link
 test helpers are shared with `blendFile`, keeping the existing reader defaults.
+The shared Scene-oracle executable also supplies `blendScene.meshFixture`
+for Blender-written Mesh-domain and indexed-UV evidence, without adding a
+library dependency or requiring Blender at test time.
 The scene gate additionally allows `blendFile` and rejects OpenUSD, Blender,
 host-backend and unknown libraries; the reader gate still rejects scene links.
 The plugin now consumes the allowed `blendScene` edge for its internal
