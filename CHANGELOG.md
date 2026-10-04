@@ -8,6 +8,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Opt-in saved Object value validation in `blendScene`, retaining source type,
+    render visibility, transform flags and immediate instance Collection block
+    indices while preserving generic Object selection. Type-specific data
+    code/SDNA requirements and instance references fail with bounded contextual
+    diagnostics. Four synthetic layouts cover mappings, parent-only values,
+    shared targets and exact budgets; both Blender-written corpus files cover
+    saved visibility storage differences and data/instance/flag mutations.
+    No transform construction, recursive instance expansion, populated Scene IR,
+    USD authoring or fixture bytes are changed.
 - Bounded saved Object data ID-reference validation in `blendScene` selection,
     accepting stored `void *` and `ID *` declarations and returning optional
     caller-sequence data block indices. Selected and parent-only Objects share

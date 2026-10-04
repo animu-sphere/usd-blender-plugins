@@ -22,9 +22,9 @@ public:
   CollectionWalk(std::span<const std::byte> bytes,
       std::span<const BlendBlock> blocks, const DnaSchema& schema,
       const Header& header, const PointerMap& pointers,
-      const SceneTraversalLimits& limits)
+      const SceneTraversalLimits& limits, bool readValues)
       : bytes_(bytes), blocks_(blocks), schema_(schema), header_(header),
-        pointers_(pointers), limits_(limits) {
+        pointers_(pointers), limits_(limits), readValues_(readValues) {
   }
 
   std::vector<SelectedObject> Run(std::uint32_t sceneIndex) {
@@ -75,6 +75,7 @@ private:
   void ValidateObjects() {
     std::unordered_map<std::uint32_t, std::optional<std::uint32_t>> parents;
     std::unordered_map<std::uint32_t, std::optional<std::uint32_t>> data;
+    std::unordered_map<std::uint32_t, SavedObjectValues> values;
     std::unordered_set<std::uint32_t> completed;
     for (auto& selected : objects_) {
       std::vector<std::uint32_t> chain;
@@ -94,6 +95,9 @@ private:
         const auto object = Bind(current, "Object", {'O', 'B', 0, 0});
         Name(object, "OB", current);
         data.emplace(current, ValidateData(object, current));
+        if (readValues_) {
+          values.emplace(current, ReadValues(object, current, data.at(current)));
+        }
         chain.push_back(current);
         const auto address = Pointer(object, "parent", "Object", current);
         const auto parent = address == 0 ? std::optional<std::uint32_t>{} : Resolve(address, current);
@@ -107,7 +111,124 @@ private:
       completed.insert(chain.begin(), chain.end());
       selected.parentBlockIndex = parents.at(selected.blockIndex);
       selected.dataBlockIndex = data.at(selected.blockIndex);
+      if (readValues_) {
+        selected.values = values.at(selected.blockIndex);
+      }
     }
+  }
+
+  std::int16_t Short(const DnaValueView& object, std::string_view member,
+      std::uint32_t index) const {
+    const auto value = Take(object.Member(member));
+    if (value.Type().name != "short" || value.Type().length != 2 ||
+        value.PointerLevel() != 0 || !value.ArrayDimensions().empty()) {
+      Fail("BLEND_SCENE_REFERENCE_INVALID", "Object value must be a scalar two-byte short", index);
+    }
+    return static_cast<std::int16_t>(Take(value.SignedInteger()));
+  }
+
+  SavedObjectValues ReadValues(const DnaValueView& object, std::uint32_t index,
+      std::optional<std::uint32_t> data) {
+    const auto type = Short(object, "type", index);
+    std::string_view code;
+    std::string_view dnaType;
+    switch (type) {
+    case 0:
+      code = "IM";
+      dnaType = "Image";
+      break;
+    case 1:
+      code = "ME";
+      dnaType = "Mesh";
+      break;
+    case 2:
+    case 3:
+    case 4:
+      code = "CU";
+      dnaType = "Curve";
+      break;
+    case 5:
+      code = "MB";
+      dnaType = "MetaBall";
+      break;
+    case 10:
+      code = "LA";
+      dnaType = "Lamp";
+      break;
+    case 11:
+      code = "CA";
+      dnaType = "Camera";
+      break;
+    case 12:
+      code = "SK";
+      dnaType = "Speaker";
+      break;
+    case 13:
+      code = "LP";
+      dnaType = "LightProbe";
+      break;
+    case 22:
+      code = "LT";
+      dnaType = "Lattice";
+      break;
+    case 25:
+      code = "AR";
+      dnaType = "bArmature";
+      break;
+    case 26:
+      code = "GD";
+      dnaType = "bGPdata";
+      break;
+    case 27:
+      code = "CV";
+      dnaType = "Curves";
+      break;
+    case 28:
+      code = "PT";
+      dnaType = "PointCloud";
+      break;
+    case 29:
+      code = "VO";
+      dnaType = "Volume";
+      break;
+    case 30:
+      code = "GP";
+      dnaType = "GreasePencil";
+      break;
+    default:
+      Fail("BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED", "Saved Object type has no verified data mapping", index);
+    }
+    if (!data && type != 0) {
+      Fail("BLEND_SCENE_REFERENCE_INVALID", "This Object type requires a data ID", index);
+    }
+    if (data) {
+      Bind(*data, dnaType, {code[0], code[1], 0, 0});
+    }
+    const auto* structure = schema_.FindStruct("Object");
+    const auto visibility = Take(object.Member(
+        structure->FindMember("visibility_flag") ? "visibility_flag" : "restrictflag"));
+    if (((visibility.Type().name != "short" || visibility.Type().length != 2) &&
+            (visibility.Type().name != "int" || visibility.Type().length != 4)) ||
+        visibility.PointerLevel() != 0 || !visibility.ArrayDimensions().empty()) {
+      Fail("BLEND_SCENE_REFERENCE_INVALID", "Object visibility must be a scalar short or int", index);
+    }
+    const auto visibilityFlags = Take(visibility.SignedInteger());
+    const auto flags = Short(object, "transflag", index);
+    const auto address = Pointer(object,
+        structure->FindMember("instance_collection") ? "instance_collection" : "dup_group", "Collection", index);
+    std::optional<std::uint32_t> collection;
+    if (address != 0) {
+      collection = Resolve(address, index);
+      if (instanceIndices_.insert(*collection).second && !active_.contains(*collection) &&
+          !dataIndices_.contains(*collection) && !objectIndices_.contains(*collection)) {
+        Visit(index);
+      }
+      const auto target = Bind(*collection, "Collection", {'G', 'R', 0, 0}, true);
+      Name(target, "GR", *collection);
+    } else if ((flags & (1 << 8)) != 0) {
+      Fail("BLEND_SCENE_REFERENCE_INVALID", "Collection instancing requires a saved Collection", index);
+    }
+    return {type, (visibilityFlags & (1 << 2)) != 0, flags, collection};
   }
 
   std::optional<std::uint32_t> ValidateData(const DnaValueView& object,
@@ -247,7 +368,7 @@ private:
         if (objectIndices_.insert(target).second) {
           Visit(index);
           const auto object = Bind(target, "Object", {'O', 'B', 0, 0});
-          objects_.push_back({target, Name(object, "OB", target), {}, {}});
+          objects_.push_back({target, Name(object, "OB", target), {}, {}, {}});
         }
       } else {
         targets.push_back(target);
@@ -265,19 +386,19 @@ private:
   const Header& header_;
   const PointerMap& pointers_;
   const SceneTraversalLimits& limits_;
+  bool readValues_;
   std::uint32_t visited_ = 0;
   std::unordered_map<std::uint32_t, bool> active_;
   std::unordered_set<std::uint32_t> listNodes_;
   std::unordered_set<std::uint32_t> objectIndices_;
   std::unordered_set<std::uint32_t> dataIndices_;
+  std::unordered_set<std::uint32_t> instanceIndices_;
   std::vector<SelectedObject> objects_;
 };
 
-} // namespace
-
-Result<SelectedSceneObjects> SelectSceneObjects(std::span<const std::byte> bytes,
+Result<SelectedSceneObjects> SelectObjects(std::span<const std::byte> bytes,
     std::span<const BlendBlock> blocks, const DnaSchema& schema,
-    const Header& header, const SceneTraversalLimits& limits) {
+    const Header& header, const SceneTraversalLimits& limits, bool readValues) {
   try {
     if (limits.maxVisited == 0 || limits.maxDepth == 0) {
       return Result<SelectedSceneObjects>(Diagnostic{"BLEND_SCENE_LIMITS", Severity::Fatal,
@@ -291,7 +412,7 @@ Result<SelectedSceneObjects> SelectSceneObjects(std::span<const std::byte> bytes
     if (!pointers.HasValue()) {
       return Result<SelectedSceneObjects>(pointers.GetError());
     }
-    CollectionWalk walk(bytes, blocks, schema, header, pointers.GetValue(), limits);
+    CollectionWalk walk(bytes, blocks, schema, header, pointers.GetValue(), limits, readValues);
     return Result<SelectedSceneObjects>(SelectedSceneObjects{
         scene.GetValue(), walk.Run(scene.GetValue().blockIndex)});
   } catch (const Diagnostic& error) {
@@ -303,6 +424,20 @@ Result<SelectedSceneObjects> SelectSceneObjects(std::span<const std::byte> bytes
     return Result<SelectedSceneObjects>(Diagnostic{"BLEND_SCENE_ALLOCATION", Severity::Fatal,
         "Scene traversal exceeds allocation limits", {}, {}, {}, false});
   }
+}
+
+} // namespace
+
+Result<SelectedSceneObjects> SelectSceneObjects(std::span<const std::byte> bytes,
+    std::span<const BlendBlock> blocks, const DnaSchema& schema,
+    const Header& header, const SceneTraversalLimits& limits) {
+  return SelectObjects(bytes, blocks, schema, header, limits, false);
+}
+
+Result<SelectedSceneObjects> SelectSceneObjectValues(std::span<const std::byte> bytes,
+    std::span<const BlendBlock> blocks, const DnaSchema& schema,
+    const Header& header, const SceneTraversalLimits& limits) {
+  return SelectObjects(bytes, blocks, schema, header, limits, true);
 }
 
 } // namespace blend
