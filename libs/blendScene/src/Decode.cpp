@@ -1,5 +1,7 @@
 #include <blendScene/Decode.h>
 
+#include "DecodeInternal.h"
+
 #include <algorithm>
 #include <cmath>
 #include <new>
@@ -9,13 +11,7 @@
 namespace blend {
 namespace {
 
-template <class Value>
-Value Take(const Result<Value>& result) {
-  if (!result.HasValue()) {
-    throw result.GetError();
-  }
-  return result.GetValue();
-}
+using detail::Take;
 
 Matrix4 Multiply(const Matrix4& left, const Matrix4& right) {
   Matrix4 result{};
@@ -61,11 +57,21 @@ public:
       indices.emplace(object.blockIndex, indices.size());
     }
     scene.objects.reserve(selected.objects.size());
+    std::unordered_map<std::uint32_t, std::size_t> meshIndices;
     for (const auto& selectedObject : selected.objects) {
       const auto sourceWorld = World(selectedObject.blockIndex);
       Object object;
       object.sourceName = selectedObject.sourceName;
       object.hiddenForRender = selectedObject.values->hiddenForRender;
+      if (selectedObject.values->type == 1) {
+        const auto meshIndex = *selectedObject.dataBlockIndex;
+        const auto [entry, inserted] = meshIndices.emplace(meshIndex, scene.meshes.size());
+        if (inserted) {
+          scene.meshes.push_back(detail::DecodeMesh(bytes_, blocks_, schema_, header_,
+              pointers_, meshIndex, units, diagnostics_));
+        }
+        object.mesh = entry->second;
+      }
       if (selectedObject.parentBlockIndex) {
         const auto parent = indices.find(*selectedObject.parentBlockIndex);
         if (parent != indices.end()) {
@@ -178,9 +184,19 @@ private:
     }
     const auto first = Pointer(constraints, "first", "void", index);
     const auto last = Pointer(constraints, "last", "void", index);
-    if (animation != 0 || first != 0 || last != 0) {
+    bool modifiersPresent = false;
+    if (Short(object, "type", index) == 1) {
+      const auto modifiers = Take(object.Member("modifiers"));
+      if (modifiers.Type().name != "ListBase" || modifiers.PointerLevel() != 0 ||
+          !modifiers.ArrayDimensions().empty()) {
+        Fail("BLEND_SCENE_REFERENCE_INVALID", "Object modifiers must be an embedded ListBase", index);
+      }
+      modifiersPresent = Pointer(modifiers, "first", "void", index) != 0;
+      modifiersPresent = Pointer(modifiers, "last", "void", index) != 0 || modifiersPresent;
+    }
+    if (animation != 0 || first != 0 || last != 0 || modifiersPresent) {
       diagnostics_.push_back({"BLEND_SCENE_EVALUATION_UNAPPLIED", Severity::Unsupported,
-          "Saved source transforms are used; animation, drivers and constraints are not evaluated",
+          "Saved source transforms and geometry are used; animation, drivers, constraints and modifiers are not evaluated",
           blocks_[index].offset, index, {}, true});
     }
   }
@@ -193,11 +209,12 @@ private:
 
   SourceObject ReadObject(std::uint32_t index) {
     const auto object = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, index));
-    if (Short(object, "type", index) != 0) {
-      Fail("BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED", "Native Scene decoding currently supports only Empty objects", index);
+    const auto type = Short(object, "type", index);
+    if (type != 0 && type != 1) {
+      Fail("BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED", "Native Scene decoding currently supports Mesh and Empty objects", index);
     }
     const auto data = Take(Take(object.Member("data")).Pointer());
-    if (data != 0) {
+    if (type == 0 && data != 0) {
       Fail("BLEND_SCENE_OBJECT_DATA_UNSUPPORTED", "Image Empty data is not decoded", index);
     }
     const auto flags = Short(object, "transflag", index);

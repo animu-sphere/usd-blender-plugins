@@ -260,7 +260,7 @@ validated but do not expand selected-scene membership.
 Transform construction, geometry and USD authoring remain separate boundaries.
 
 The same test exercises library-only `DecodeScene` under the
-[native Empty decoding boundary](../design/DESIGN_POLICY.md#527-native-empty-scene-decoding-boundary).
+[native decoding boundary](../design/DESIGN_POLICY.md#527-native-scene-decoding-boundary).
 Four synthetic layouts cover owning empty/parented IR, selected and parent-only
 parent mapping, render visibility, block reordering, XYZ Euler and delta
 channels, nonuniform/negative scales, column-first parent inverses and
@@ -271,9 +271,26 @@ Empty data, enabled instances, other rotation/parenting modes, malformed
 storage and nonfinite inputs fail without a partial Scene. Animation and
 constraint presence emit recoverable source-only diagnostics. Both real corpus
 SDNA layouts are exercised through in-memory Empty-kind/data mutations;
-the original files remain unsupported by this initial object scope, and the
+the original files retain unsupported Camera/Light objects, and the
 Scene-only library retains its missing-active-Scene error. These tests do not
 prove Blender-written parenting/transform equivalence or author USD.
+
+The same `blendScene.ir` executable includes `MeshTests.cpp`, exercising the
+[native Mesh storage boundary](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary).
+The real 4.5.13 CustomData and 5.2.2 AttributeArray Cube Mesh payloads retain
+their original bytes; non-Mesh Objects are mutated to Empty only in memory.
+Tests pin all source points, face indices and 24 outward corner normals,
+named indexed `UVMap` coordinates and repeated-read equality. Both storage
+forms also run across four synthetic layouts, covering mixed Mesh/Empty
+objects, shared Mesh indices, two indexed UV maps with a non-first render map,
+block reordering, ownership and four unit scales without scaling normals/UVs.
+Empty, malformed, nonfinite, invalid-index and unsupported smooth/custom/constant
+storage cases require exact contextual diagnostics and no partial Scene.
+Modifier and shape-key presence reports source-only data without evaluation.
+The root reader build and standalone OpenStrata library build both run these
+tests and the existing four scene dependency-boundary gates. Smooth/custom
+normals, Blender transform/unit oracle fixtures and USD geometry remain
+unproven; no Blender executable is required by these CTests.
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines matrix storage and ownership; supported scope is in the

@@ -8,6 +8,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Native Mesh/Empty Scene IR decoding in `blendScene`, with source points,
+    polygon topology, flat face-varying corner normals and named indexed UVs.
+    The real 4.5.13 CustomData and 5.2.2 AttributeArray Cube Mesh payloads and
+    both storage forms across four synthetic layouts cover shared Mesh indices,
+    ownership, render UV selection, repeated/reordered reads, meter normalization
+    and contextual empty/invalid/unsupported storage diagnostics. Mesh modifiers
+    and shape keys report unapplied evaluation without changing source geometry.
+    Smooth/custom split normals and constant/legacy storage remain explicitly
+    unsupported. No committed fixture bytes, identifiers, backend or USD/header-only
+    importer behavior are changed; both root and standalone library checks pass.
 - Library-only native `DecodeScene` in `blendScene`, composing saved Object-value
     and recursive graph validation into owning Empty Scene IR with source names,
     render visibility and selected parent indices. XYZ Euler and delta channels,
