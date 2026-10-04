@@ -303,13 +303,35 @@ this initial scope. Source names and assigned identifiers remain separate.
 column-vector mathematics: translation occupies `[0][3]`, `[1][3]`, `[2][3]`,
 and a child world matrix is `parentWorld * childLocal`. Object matrices default
 to identity. Objects carry world matrices in the USD basis; authoring must
-derive parent-relative matrices and transpose for USD's row-vector convention,
+derive parent-relative matrices with the helper below and transpose for USD's row-vector convention,
 not reinterpret the stored elements as an OpenUSD matrix.
 
 `ToUsdBasis(Vector3)` performs `(x, y, z) -> (x, z, -y)` without unit scaling.
 Use it for directions and normals; it does not normalize normal lengths.
 `ToUsdBasis(Matrix4)` performs `C * W * inverse(C)` without unit scaling.
 These low-level basis helpers preserve lengths and right-handed winding.
+
+`ParentRelativeTransform(world, parentWorld)` constructs the column-vector
+local matrix satisfying `parentWorld * local = world`, from already-normalized
+IR matrices. Omitting `parentWorld` uses identity for an IR root, including an
+Object whose saved parent is outside selected membership. It applies no basis
+or unit conversion, decomposition, visibility inheritance or graph changes.
+Rotation, shear, nonuniform and negative scale are retained. The Scene IR still
+stores world matrices only; this helper neither traverses Object indices nor
+authors USD.
+
+Both inputs must be finite and exactly affine. The helper solves the affine
+system with row scaling and partial pivoting rather than forming an explicit
+inverse. A zero linear row or a scaled pivot at most
+`8 * std::numeric_limits<double>::epsilon()` rejects a singular or numerically
+singular parent with `BLEND_SCENE_TRANSFORM_SINGULAR`; there is no absolute
+scale cutoff. Singular roots and children remain valid when their authored
+parent is invertible. Invalid inputs use `std::invalid_argument` with
+`BLEND_SCENE_TRANSFORM_INVALID`, as does singular-parent rejection with its
+own code; nonfinite arithmetic throws `std::overflow_error` with
+`BLEND_SCENE_TRANSFORM_INVALID`. No identity fallback, pseudoinverse or parent
+detachment is used. Codes prefix `what()` as for the unit helper below;
+authoring must add affected Object context when translating an exception.
 
 `UnitConversion` is explicitly constructed from a finite, strictly positive
 source `scale_length`, with no default or corrupt-value fallback. Its private
@@ -628,8 +650,8 @@ An active Scene with empty Collections produces owning metadata and empty
 object/mesh vectors; the Scene-only library's null `curscene` remains an error.
 This is a library decoding boundary, not an `IBlendBackend`,
 identifier pass or USD/importer connection. Transform oracle fixtures compare
-native world matrices and converted parent/local composition against saved
-Blender values; that does not establish USD local-transform authoring or
+native world matrices, constructed parent-relative local matrices and
+converted parent/local composition against saved Blender values; that does not establish USD local-transform authoring or
 STAGE-O1's multi-scale end-to-end evidence. Fixture-backed scope is
 in the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 

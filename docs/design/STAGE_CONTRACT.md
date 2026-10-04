@@ -231,6 +231,17 @@ The object's local transform is authored as one `xformOp:transform`
 (`matrix4d`), with `xformOpOrder = ["xformOp:transform"]`. Decomposition into
 translate, orient and scale is deferred until a consumer needs it.
 
+Use `blendScene`'s
+[parent-relative helper](DESIGN_POLICY.md#521-scene-ir-foundation) on the
+converted world matrices of the Object and its authored parent; an IR root
+uses identity as its parent. Transpose the resulting column-vector matrix for
+OpenUSD's row-vector convention, without a second unit or basis conversion.
+A singular or numerically singular parent fails explicitly with
+`BLEND_SCENE_TRANSFORM_SINGULAR`, not by silently detaching the child or
+substituting an identity matrix. A zero-scale root or child is not itself an
+error unless its world matrix must be inverted as a parent. The helper has
+native/oracle evidence; USD Xform authoring remains unimplemented.
+
 Objects hidden for rendering (`hide_render`) are authored with
 `visibility = "invisible"`. Objects with no data and no children are still
 authored, as empties.

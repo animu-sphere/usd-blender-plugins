@@ -43,13 +43,15 @@ the saved file. It contains:
    and 16 row-major parent-local-matrix values, both in Blender's source basis.
 
 `blendScene.transforms` independently reads the unmodified file through
-`blendFile` and `DecodeScene`, then compares the normalized world matrices and
-converted parent/local composition. The per-component tolerance is
+`blendFile` and `DecodeScene`, then compares the normalized world matrices,
+`ParentRelativeTransform` results against the saved local matrices, and
+reconstructed parent/local composition. Roots use identity as their authored
+parent, including the zero-scale root. The per-component tolerance is
 `2e-5 * (1 + abs(expected))`. Blender's floating-point `matrix_local` inversion
 can round the homogeneous row; the test requires it to be within `1e-6` of
 `(0, 0, 0, 1)` before canonicalizing that oracle row. Native decoding still
 requires exact affine matrices. Reversing the block records must leave object
-order, parent indices and matrices identical.
+order, parent indices, world and constructed local matrices identical.
 
 The generator's `--check` compares fresh and saved oracles with
 `math.isclose(rel_tol=2e-6, abs_tol=2e-6)` and never rewrites the fixture or

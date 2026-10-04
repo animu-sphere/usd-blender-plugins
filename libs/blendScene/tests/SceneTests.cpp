@@ -203,6 +203,129 @@ void CheckUnits() {
       "BLEND_SCENE_UNIT_TRANSFORM_INVALID:");
 }
 
+void CheckLocalTransforms() {
+  const auto compare = [](const blend::Matrix4& actual, const blend::Matrix4& expected) {
+    for (std::size_t row = 0; row < 4; ++row) {
+      for (std::size_t column = 0; column < 4; ++column) {
+        Require(Near(actual[row][column], expected[row][column]),
+            "Parent-relative matrix matches expected local transform");
+      }
+    }
+    Require(actual[3] == blend::IdentityMatrix[3], "Local transform remains exactly affine");
+  };
+  const blend::Matrix4 parent = {{{0, -3, 1, 7},
+      {2, 1, 0, -11},
+      {0, 0, -4, 13},
+      {0, 0, 0, 1}}};
+  const blend::Matrix4 local = {{{0, -2, 1, 3},
+      {3, 0, 0, -5},
+      {0, 1, -1, 7},
+      {0, 0, 0, 1}}};
+  const auto world = Multiply(parent, local);
+  Require(blend::ParentRelativeTransform(world) == world,
+      "Root local transform is the unchanged world transform");
+  Require(blend::ParentRelativeTransform(parent, parent) == blend::IdentityMatrix,
+      "Equal invertible world matrices produce an identity local transform");
+  compare(blend::ParentRelativeTransform(world, parent), local);
+  for (const double scale : {1.0, 0.01, 0.001, 10.0}) {
+    const blend::UnitConversion units(scale);
+    const auto convertedParent = units.WorldTransform(parent);
+    const auto convertedWorld = units.WorldTransform(world);
+    const auto actual = blend::ParentRelativeTransform(convertedWorld, convertedParent);
+    compare(actual, units.WorldTransform(local));
+    compare(Multiply(convertedParent, actual), convertedWorld);
+  }
+  auto zeroScale = local;
+  for (std::size_t row = 0; row < 3; ++row) {
+    zeroScale[row][0] = 0;
+  }
+  compare(blend::ParentRelativeTransform(Multiply(parent, zeroScale), parent), zeroScale);
+  Require(blend::ParentRelativeTransform(zeroScale) == zeroScale,
+      "Singular roots and children do not require their own inverse");
+  for (const double scale : {1e-200, 1e200, -1e-200, -1e200}) {
+    auto scaledParent = blend::IdentityMatrix;
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      scaledParent[axis][axis] = scale;
+    }
+    compare(blend::ParentRelativeTransform(Multiply(scaledParent, local), scaledParent), local);
+  }
+  auto tinyParent = blend::IdentityMatrix;
+  tinyParent[0][0] = std::numeric_limits<double>::denorm_min();
+  compare(blend::ParentRelativeTransform(tinyParent, tinyParent), blend::IdentityMatrix);
+  auto largeParent = blend::IdentityMatrix;
+  largeParent[0][0] = std::numeric_limits<double>::max();
+  largeParent[0][3] = -std::numeric_limits<double>::max();
+  auto largeWorld = largeParent;
+  largeWorld[0][3] = std::numeric_limits<double>::max();
+  auto largeLocal = blend::IdentityMatrix;
+  largeLocal[0][3] = 2;
+  compare(blend::ParentRelativeTransform(largeWorld, largeParent), largeLocal);
+  for (auto singular : {zeroScale, blend::IdentityMatrix}) {
+    if (singular == blend::IdentityMatrix) {
+      singular[1] = singular[0];
+    }
+    RequireFailure<std::invalid_argument>(
+        [&] { blend::ParentRelativeTransform(world, singular); },
+        "BLEND_SCENE_TRANSFORM_SINGULAR:");
+  }
+  auto zeroRow = blend::IdentityMatrix;
+  zeroRow[2][2] = 0;
+  RequireFailure<std::invalid_argument>(
+      [&] { blend::ParentRelativeTransform(world, zeroRow); },
+      "BLEND_SCENE_TRANSFORM_SINGULAR:");
+  const blend::Matrix4 dependentRows = {{{2, 3, 5, 7},
+      {4, 6, 10, 11},
+      {1, -1, 2, 13},
+      {0, 0, 0, 1}}};
+  RequireFailure<std::invalid_argument>(
+      [&] { blend::ParentRelativeTransform(world, dependentRows); },
+      "BLEND_SCENE_TRANSFORM_SINGULAR:");
+  auto unstableParent = blend::IdentityMatrix;
+  unstableParent[0][1] = unstableParent[1][0] = 1;
+  unstableParent[1][1] = 1 + std::numeric_limits<double>::epsilon();
+  RequireFailure<std::invalid_argument>(
+      [&] { blend::ParentRelativeTransform(world, unstableParent); },
+      "BLEND_SCENE_TRANSFORM_SINGULAR:");
+  for (const double invalid : {std::numeric_limits<double>::quiet_NaN(),
+           std::numeric_limits<double>::infinity(),
+           -std::numeric_limits<double>::infinity()}) {
+    auto matrix = parent;
+    matrix[0][1] = invalid;
+    RequireFailure<std::invalid_argument>(
+        [&] { blend::ParentRelativeTransform(matrix, parent); },
+        "BLEND_SCENE_TRANSFORM_INVALID:");
+    RequireFailure<std::invalid_argument>(
+        [&] { blend::ParentRelativeTransform(world, matrix); },
+        "BLEND_SCENE_TRANSFORM_INVALID:");
+  }
+  auto projective = parent;
+  projective[3][0] = 0.1;
+  RequireFailure<std::invalid_argument>(
+      [&] { blend::ParentRelativeTransform(projective, parent); },
+      "BLEND_SCENE_TRANSFORM_INVALID:");
+  RequireFailure<std::invalid_argument>(
+      [&] { blend::ParentRelativeTransform(world, projective); },
+      "BLEND_SCENE_TRANSFORM_INVALID:");
+  RequireFailure<std::overflow_error>(
+      [&] { blend::ParentRelativeTransform(blend::IdentityMatrix, tinyParent); },
+      "BLEND_SCENE_TRANSFORM_INVALID:");
+  auto largeTranslation = blend::IdentityMatrix;
+  largeTranslation[0][3] = std::numeric_limits<double>::max();
+  auto oppositeTranslation = largeTranslation;
+  oppositeTranslation[0][3] = -oppositeTranslation[0][3];
+  RequireFailure<std::overflow_error>(
+      [&] { blend::ParentRelativeTransform(largeTranslation, oppositeTranslation); },
+      "BLEND_SCENE_TRANSFORM_INVALID:");
+  auto eliminationParent = blend::IdentityMatrix;
+  eliminationParent[0][1] = eliminationParent[1][0] = 1;
+  eliminationParent[1][1] = 1 + 1e-8;
+  auto eliminationWorld = blend::IdentityMatrix;
+  eliminationWorld[0][0] = std::numeric_limits<double>::max();
+  RequireFailure<std::overflow_error>(
+      [&] { blend::ParentRelativeTransform(eliminationWorld, eliminationParent); },
+      "BLEND_SCENE_TRANSFORM_INVALID:");
+}
+
 void CheckScene() {
   blend::Scene scene;
   Require(scene.objects.empty() && scene.meshes.empty(), "Empty Scene IR");
@@ -1770,6 +1893,7 @@ int main(int argc, char** argv) {
   try {
     CheckBasis();
     CheckUnits();
+    CheckLocalTransforms();
     CheckScene();
     CheckSelectionLayouts();
     CheckCollectionLayouts();

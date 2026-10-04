@@ -109,10 +109,17 @@ void CheckFixture(const std::filesystem::path& path) {
     if (parent.empty()) {
       Require(!object.parent, name + " is an IR root");
       Compare(local, world, name + " root local");
+      Compare(blend::ParentRelativeTransform(object.worldTransform), local,
+          name + " constructed root local");
     } else {
       Require(indices.contains(parent) && object.parent == indices.at(parent), name + " retains its selected parent");
       Compare(Multiply(scene.objects[*object.parent].worldTransform, local), object.worldTransform,
           name + " converted parent/local composition");
+      const auto constructed = blend::ParentRelativeTransform(
+          object.worldTransform, scene.objects[*object.parent].worldTransform);
+      Compare(constructed, local, name + " constructed parent-relative local");
+      Compare(Multiply(scene.objects[*object.parent].worldTransform, constructed),
+          object.worldTransform, name + " reconstructed world");
     }
   }
   oracle >> std::ws;
@@ -127,6 +134,13 @@ void CheckFixture(const std::filesystem::path& path) {
     Require(object.sourceName == scene.objects[index].sourceName && object.parent == scene.objects[index].parent &&
                 object.worldTransform == scene.objects[index].worldTransform,
         "Repeated/reordered reads are deterministic");
+    const auto localTransform = [](const blend::Scene& value, std::size_t objectIndex) {
+      const auto& entry = value.objects[objectIndex];
+      return blend::ParentRelativeTransform(entry.worldTransform,
+          entry.parent ? value.objects[*entry.parent].worldTransform : blend::IdentityMatrix);
+    };
+    Require(localTransform(repeated.GetValue(), index) == localTransform(scene, index),
+        "Repeated/reordered parent-relative matrices are deterministic");
   }
 }
 
