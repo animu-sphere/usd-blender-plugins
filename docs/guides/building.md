@@ -305,9 +305,8 @@ Empty, malformed, nonfinite, invalid-index and unsupported custom/constant
 storage cases require exact contextual diagnostics and no partial Scene.
 Modifier and shape-key presence reports source-only data without evaluation.
 The root reader build and standalone OpenStrata library build both run these
-tests and the existing four scene dependency-boundary gates. Custom
-normals, Blender-written Mesh transform/unit oracle fixtures and USD geometry remain
-unproven; no Blender executable is required by these CTests.
+tests and the existing four scene dependency-boundary gates. Custom-normal decoding, Blender-written Mesh transform/unit oracle fixtures
+and USD geometry remain unproven; no Blender executable is required by these CTests.
 
 `blendScene.normals` compares unchanged Blender-written 4.5.13 and 5.2.2 files
 against saved point, topology and corner-normal oracles. Each version has
@@ -321,6 +320,17 @@ The synthetic IR tests also check angle weighting, missing sharp-face defaults,
 unit-scale independence, edge storage/range/endpoint errors and cancelling
 smooth normal sums. Both root and standalone Scene CTest suites include this
 oracle comparison, without requiring Blender at test time.
+
+The same normal test also compares two independently constructed Meshes in
+the 4.5.13 `multi.blend` fixture, using different points but the same normal
+directions. `blendScene.meshBoundaries` checks unchanged 4.5.13/5.2.2 packed
+custom-normal fixtures against saved short-pair RNA oracles, then requires
+fatal `BLEND_MESH_NORMALS_UNSUPPORTED` without a partial Scene. Its 5.2.2
+multi-Mesh case proves repeated Attribute/AttributeArray addresses have
+non-identical payloads and requires `BLEND_POINTER_DUPLICATE` through mapping,
+selection and decoding. Both errors retain exact source context under reversed
+enumeration. These are rejection tests, not new production decoding support;
+the reader and Mesh decoder are unchanged.
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines matrix storage and ownership; supported scope is in the
@@ -480,9 +490,9 @@ and UI state are not byte-reproducible; no `--check-bytes` claim is made.
 ### Saved normal oracles
 
 Run with each pinned Blender installation (4.5.13 or 5.2.2). The default
-output directory holds `smooth.blend`, `flat.blend`, `split.blend` and their
-adjacent `.oracle.txt` files. Provenance, cases, comparison thresholds and the
-single-Mesh constraint are in the
+output directory holds `smooth.blend`, `flat.blend`, `split.blend`,
+`custom.blend`, `multi.blend` and their adjacent `.oracle.txt` files.
+Provenance, cases, comparison thresholds and explicit rejection evidence are in the
 [normal fixture record](../../tests/fixtures/native-normals/README.md).
 
 ```powershell
@@ -497,11 +507,27 @@ $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.e
 & $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_normals.py
 ```
 
-The generator constructs source geometry without modifiers or custom normals.
+To generate only the new boundary files without touching the three original
+fixtures, use `--groups custom multi`:
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 4.5\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --groups custom multi
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --groups custom multi
+```
+
+The generator constructs source geometry without modifiers. Only `custom`
+sets custom normals, recording Blender's resulting corner normals and packed
+short pairs. `multi` creates separate Mesh datablocks, not copies or shared
+Object data, with uniform scaling and translation of the second Mesh's points.
 `--check` regenerates into temporary files, compares the semantic oracles,
 then reopens and verifies each stored fixture without rewriting any fixture
-or oracle. `--output <directory>` redirects all three files in either mode.
+or oracle. `--output <directory>` redirects all selected files in either mode;
+`--groups` applies equally to generation and checks.
 The regression suite checks every oracle's cross-process/path reproduction,
 non-destructive checks of all files, absence of Windows absolute UI/home paths,
-modified-oracle rejection and validation of changed saved smoothing flags.
+modified-oracle rejection, unchanged unselected files, validation of changed
+saved smoothing flags/custom normals/second-Mesh geometry, and same-shape,
+non-identical 5.2.2 address collisions across independent processes.
 Saved addresses and UI state are not byte-reproducible.

@@ -8,6 +8,17 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Blender-written 4.5.13/5.2.2 packed custom-normal and independent two-Mesh
+    boundary fixtures, with saved corner-normal and signed-short RNA oracles.
+    `blendScene.meshBoundaries` pins exact packed storage and explicit
+    no-partial-Scene rejection, and proves 5.2.2 Attribute/AttributeArray
+    address collisions have different payloads even when their shapes match.
+    Mapping, selection and decoding retain fatal context under reversed
+    enumeration. The 4.5.13 two-Mesh control compares native arrays at the
+    existing normal threshold. Generator checks cover cross-process/path
+    reproduction, saved-content changes and selected-group isolation without
+    rewriting existing fixtures. No production pointer-map or decoder behavior
+    is changed.
 - Native smooth point normals and sharp-edge/flat-face split corner fans in
     `blendScene`, using corner-angle weights and one basis rotation without
     unit scaling. Split topology, malformed storage and degenerate/cancelling

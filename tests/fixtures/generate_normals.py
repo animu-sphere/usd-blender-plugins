@@ -9,7 +9,7 @@ import bpy
 
 VERSIONS = {(4, 5, 13), (5, 2, 2)}
 ROOT = Path(__file__).resolve().parent / "native-normals"
-GROUPS = ("smooth", "flat", "split")
+GROUPS = ("smooth", "flat", "split", "custom", "multi")
 
 
 def add_mesh(name, points, faces, flat=(), sharp=()):
@@ -34,10 +34,11 @@ def make_scene(group):
     bpy.context.scene.name = "Normals"
     bpy.context.scene.unit_settings.scale_length = 0.01
     points, polygons, flat_faces, sharp_edges = [], [], [], []
+    geometry_group = "split" if group == "custom" else "smooth" if group == "multi" else group
 
     def add_case(name, vertices, faces, flat=(), sharp=()):
         category = "flat" if len(flat) == len(faces) else "split" if flat or sharp else "smooth"
-        if category != group:
+        if category != geometry_group:
             return
         vertex_offset, face_offset = len(points), len(polygons)
         points.extend(vertices)
@@ -72,25 +73,45 @@ def make_scene(group):
     add_case("Concave", ((0, 0, 0), (3, 0, 0), (1, 1, 0), (3, 3, 0), (0, 3, 0)),
              ((0, 1, 2, 3, 4),))
     add_mesh(group.capitalize(), points, polygons, flat_faces, sharp_edges)
+    if group == "custom":
+        mesh = bpy.data.objects["Custom"].data
+        directions = ((0, 0, 0), (1, 2, 3), (-2, 1, -3), (0, 0, -1))
+        normals = [
+            tuple(value / math.hypot(*direction) for value in direction) if any(direction) else direction
+            for direction in (directions[index % len(directions)] for index in range(len(mesh.loops)))
+        ]
+        mesh.normals_split_custom_set(normals)
+    elif group == "multi":
+        other_points = [(x * 2 + 7, y * 2 - 5, z * 2 + 2) for x, y, z in points]
+        add_mesh("Other", other_points, polygons, flat_faces, sharp_edges)
     bpy.context.view_layer.update()
 
 
-def oracle_text():
+def oracle_text(group):
     scene = bpy.context.scene
     if scene.name != "Normals" or len(bpy.data.scenes) != 1:
         raise RuntimeError("Normal fixture must contain one active Scene named Normals")
     objects = sorted(scene.objects, key=lambda obj: obj.name)
-    rows = ["BLEND_NORMALS_ORACLE 1", repr(bpy.app.version_string),
+    expected_names = ["Multi", "Other"] if group == "multi" else [group.capitalize()]
+    if [obj.name for obj in objects] != expected_names:
+        raise RuntimeError("Normal fixture objects differ from the selected group")
+    rows = [f"BLEND_NORMALS_ORACLE {2 if group == 'custom' else 1}", repr(bpy.app.version_string),
             f"{scene.unit_settings.scale_length:.17g} {len(objects)}"]
     for obj in objects:
-        if obj.type != "MESH" or obj.modifiers or obj.data.has_custom_normals:
-            raise RuntimeError("Normal fixture requires source meshes without evaluation or custom normals")
+        if obj.type != "MESH" or obj.modifiers or obj.data.has_custom_normals != (group == "custom"):
+            raise RuntimeError("Normal fixture requires source meshes with the selected custom-normal state")
         mesh = obj.data
         rows.append(f'"{obj.name}" {len(mesh.vertices)} {len(mesh.polygons)} {len(mesh.loops)}')
         rows.extend(" ".join(f"{value:.17g}" for value in vertex.co) for vertex in mesh.vertices)
         rows.append(" ".join(str(polygon.loop_total) for polygon in mesh.polygons))
         rows.append(" ".join(str(loop.vertex_index) for loop in mesh.loops))
         rows.extend(" ".join(f"{value:.17g}" for value in normal.vector) for normal in mesh.corner_normals)
+        if group == "custom":
+            attribute = mesh.attributes["custom_normal"]
+            if attribute.data_type != "INT16_2D" or attribute.domain != "CORNER":
+                raise RuntimeError("Custom normal fixture requires packed corner short pairs")
+            rows.append(f"PACKED_CUSTOM_NORMALS {len(attribute.data)}")
+            rows.extend(" ".join(str(value) for value in element.value) for element in attribute.data)
     return "\n".join(rows) + "\n"
 
 
@@ -100,7 +121,7 @@ def compare_oracle(expected, actual):
     if len(left) != len(right):
         raise RuntimeError("Normal oracle record count differs")
     for index, (reference, value) in enumerate(zip(left, right)):
-        if index < 3 or reference.startswith('"'):
+        if index < 3 or reference.startswith(('"', "PACKED_CUSTOM_NORMALS ")):
             if reference != value:
                 raise RuntimeError(f"Normal oracle metadata differs at line {index + 1}")
         else:
@@ -124,24 +145,25 @@ def main():
     version = ".".join(map(str, bpy.app.version))
     parser.add_argument("--output", type=Path, default=ROOT / f"blender-{version}")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--groups", nargs="+", choices=GROUPS, default=GROUPS)
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     options = parser.parse_args(arguments)
     if bpy.app.version not in VERSIONS:
         raise RuntimeError(f"Unsupported fixture Blender version: {bpy.app.version_string}")
-    for group in GROUPS:
+    for group in options.groups:
         output = options.output.resolve() / f"{group}.blend"
         oracle = output.with_suffix(".oracle.txt")
         if options.check:
             expected = oracle.read_text(encoding="ascii")
             with TemporaryDirectory(prefix="blend-normals-") as directory:
                 save_scene(Path(directory) / f"{group}.blend", group)
-                compare_oracle(expected, oracle_text())
+                compare_oracle(expected, oracle_text(group))
         else:
             save_scene(output, group)
-            expected = oracle_text()
+            expected = oracle_text(group)
             oracle.write_text(expected, encoding="ascii")
         bpy.ops.wm.open_mainfile(filepath=str(output), load_ui=False, use_scripts=False)
-        compare_oracle(expected, oracle_text())
+        compare_oracle(expected, oracle_text(group))
         print(f"Verified saved normal oracle with Blender {bpy.app.version_string}: {output}")
 
 
