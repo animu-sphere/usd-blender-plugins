@@ -3,6 +3,8 @@
 #include <blendScene/Decode.h>
 #include <blendScene/Naming.h>
 #include <pxr/base/gf/matrix4d.h>
+#include <pxr/base/gf/vec3d.h>
+#include <pxr/usd/usd/primRange.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/metrics.h>
 #include <pxr/usd/usdGeom/primvarsAPI.h>
@@ -16,8 +18,11 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <numeric>
+#include <sstream>
 #include <stdexcept>
+#include <tuple>
 
 namespace {
 
@@ -364,7 +369,7 @@ void CheckFailures() {
       "Malformed raw names retain provenance and emit repaired display warnings");
 }
 
-blend::Scene Decode(const std::filesystem::path& path, bool reverseBlocks = false) {
+blend::Scene Decode(const std::filesystem::path& path, bool reverseBlocks = false, bool unitFixture = false) {
   blend::FileByteSource source(path);
   const auto bytes = Take(blend::ReadFileBytes(source, {4 * 1024 * 1024, 4 * 1024 * 1024, 16, 23}));
   blend::MemoryByteSource memory(bytes);
@@ -379,7 +384,19 @@ blend::Scene Decode(const std::filesystem::path& path, bool reverseBlocks = fals
   const auto schema = Take(blend::ReadDna(std::span<const std::byte>(bytes).subspan(
                                               static_cast<std::size_t>(dna->offset), static_cast<std::size_t>(dna->length)),
       header));
-  return Take(blend::DecodeScene(bytes, blocks, schema, header, {10000, 64}));
+  if (unitFixture) {
+    const auto selected = Take(blend::SelectSceneObjectValues(bytes, blocks, schema, header, {10000, 64}));
+    for (const auto& object : selected.objects) {
+      const bool negative = object.sourceName == "Parent" || object.sourceName == "mesh.1" || object.sourceName == "mesh_1";
+      Require(object.values && object.values->transformFlags == (negative ? 4 : 0),
+          "Blender saves bit 2 only for negative world handedness, including inherited negative scale");
+    }
+  }
+  const auto decoded = blend::DecodeScene(bytes, blocks, schema, header, {10000, 64});
+  if (unitFixture) {
+    Require(decoded.Diagnostics().empty(), "Unit fixture needs no native evaluation or repair");
+  }
+  return Take(decoded);
 }
 
 void CheckFixture(const std::filesystem::path& path) {
@@ -429,10 +446,275 @@ void CheckFixture(const std::filesystem::path& path) {
   }
 }
 
+void Marker(std::istream& input, const std::string& expected) {
+  std::string marker;
+  Require(static_cast<bool>(input >> marker) && marker == expected, "Expected unit oracle record " + expected);
+}
+
+template <std::size_t Size>
+std::array<double, Size> ReadVector(std::istream& input, const std::string& marker) {
+  Marker(input, marker);
+  std::array<double, Size> result{};
+  for (auto& value : result) {
+    Require(static_cast<bool>(input >> value) && std::isfinite(value), "Finite unit oracle vector");
+  }
+  return result;
+}
+
+GfVec3d MeterPoint(const blend::Vector3& source, double scale) {
+  return {source[0] * scale, source[2] * scale, -source[1] * scale};
+}
+
+GfMatrix4d MeterMatrix(std::istream& input, const std::string& marker, double scale) {
+  const auto values = ReadVector<16>(input, marker);
+  for (std::size_t column = 0; column < 4; ++column) {
+    Require(std::abs(values[12 + column] - blend::IdentityMatrix[3][column]) <= 1e-6,
+        "Blender oracle matrix is affine");
+  }
+  // Independent oracle mapping: USD rows transpose Blender columns after (x,z,-y).
+  constexpr std::array<std::size_t, 3> axes{0, 2, 1};
+  constexpr std::array<double, 3> signs{1, 1, -1};
+  GfMatrix4d result(1);
+  for (std::size_t row = 0; row < 3; ++row) {
+    for (std::size_t column = 0; column < 3; ++column) {
+      result[column][row] = values[axes[row] * 4 + axes[column]] * signs[row] * signs[column];
+    }
+    result[3][row] = values[axes[row] * 4 + 3] * signs[row] * scale;
+  }
+  return result;
+}
+
+template <class Left, class Right>
+void CompareVector(const Left& actual, const Right& expected, double tolerance = 2e-5) {
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    if (!(std::abs(actual[axis] - expected[axis]) <= tolerance * (1 + std::abs(expected[axis])))) {
+      std::ostringstream message;
+      message << std::setprecision(17) << "Unit fixture vector differs at axis " << axis << ": got "
+              << actual[axis] << ", expected " << expected[axis] << ", tolerance " << tolerance;
+      throw std::runtime_error(message.str());
+    }
+  }
+}
+
+UsdStageRefPtr CheckUnitFixture(const std::filesystem::path& path, double expectedScale,
+    const std::string& expectedSystem) {
+  const auto scene = Decode(path, false, true);
+  const auto authored = blend::AuthorScene(scene);
+  const auto layer = Take(authored);
+  Require(authored.Diagnostics().empty(), "Unit fixture needs no authoring repair");
+  const auto stage = UsdStage::Open(layer);
+  CheckScene(scene, stage);
+  Require(scene.metadata.sourceScene == "Units" && scene.objects.size() == 16 && scene.meshes.size() == 1,
+      "Active Scene selection excludes the unselected Scene and retains one shared cube");
+  std::map<std::string, std::size_t> objects;
+  for (std::size_t index = 0; index < scene.objects.size(); ++index) {
+    Require(objects.emplace(scene.objects[index].sourceName, index).second, "Unique saved Object names");
+  }
+  const auto paths = Paths(scene);
+  const std::string japanese = "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e";
+  const std::map<std::string, std::string> identifiers{
+      {"3D Text", "_3D_Text"}, {"A B", "A_B"}, {"A/B", "A_B_1"}, {"A_B", "A_B_2"},
+      {"A_B_1", "A_B_1_1"}, {"Cube", "Cube"}, {"Cube.001", "Cube_001"},
+      {"Cube_001", "Cube_001_1"}, {"Object", "Object"}, {"Parent", "Parent"},
+      {"Translated", "Translated"}, {"mesh", "mesh_1"}, {"mesh.1", "mesh_1_1"},
+      {"mesh_1", "mesh_1_2"}, {japanese, "Object_1"}, {japanese + "2", "_2"}};
+  for (const auto& [name, identifier] : identifiers) {
+    const auto index = objects.at(name);
+    const auto prim = stage->GetPrimAtPath(paths[index]);
+    Require(scene.objects[index].identifier == identifier && prim.GetName().GetString() == identifier &&
+                prim.GetDisplayName() == (name == identifier ? "" : name),
+        "Blender-written names freeze ASCII identifiers and exact UTF-8 display names");
+  }
+  Require(Children(stage->GetPrimAtPath(SdfPath("/Asset/geo"))) ==
+                  std::vector<std::string>{"_3D_Text", "A_B", "A_B_1", "A_B_2", "A_B_1_1",
+                      "Cube", "Cube_001", "Cube_001_1", "Object", "Parent", "Translated", "Object_1", "_2"} &&
+              Children(stage->GetPrimAtPath(SdfPath("/Asset/geo/Parent"))) ==
+                  std::vector<std::string>{"mesh", "mesh_1", "mesh_1_1", "mesh_1_2"},
+      "Unsigned source-byte ordering and Mesh fixed-child reservation survive USD authoring");
+  auto oraclePath = path;
+  oraclePath.replace_extension(".oracle.txt");
+  std::ifstream oracle(oraclePath);
+  std::string line;
+  Require(static_cast<bool>(std::getline(oracle, line)) && line == "BLEND_SCENE_ORACLE 1", "Unit oracle header");
+  Require(static_cast<bool>(std::getline(oracle, line)), "Unit oracle Blender version");
+  double scale = 0;
+  std::size_t objectCount = 0, meshCount = 0;
+  Require(static_cast<bool>(oracle >> scale >> objectCount >> meshCount) &&
+              std::abs(scale - expectedScale) <= expectedScale * 1e-7 &&
+              scale == scene.metadata.sourceUnitScale && objectCount == scene.objects.size() && meshCount == 1,
+      "Saved active Scene scale, not a label or unselected Scene, supplies normalization");
+  UsdGeomXformCache cache;
+  for (std::size_t record = 0; record < objectCount; ++record) {
+    Marker(oracle, "OBJECT");
+    std::string name, parent, data;
+    bool hidden = false;
+    Require(static_cast<bool>(oracle >> std::quoted(name) >> std::quoted(parent) >> std::quoted(data) >> hidden),
+        "Unit oracle Object");
+    const auto index = objects.at(name);
+    const auto& object = scene.objects[index];
+    Require(object.hiddenForRender == hidden &&
+                object.parent == (parent.empty() ? std::optional<std::size_t>{} : objects.at(parent)) &&
+                object.mesh == (data.empty() ? std::optional<std::size_t>{} : 0) &&
+                (data.empty() || data == "UnitCube"),
+        "Native parent, shared Mesh and visibility edges match Blender");
+    const auto world = MeterMatrix(oracle, "WORLD", scale);
+    const auto local = MeterMatrix(oracle, "LOCAL", scale);
+    Compare(Transpose(object.worldTransform), world, 2e-5);
+    const auto prim = stage->GetPrimAtPath(paths[index]);
+    Compare(cache.GetLocalToWorldTransform(prim), world, 2e-5);
+    Compare(Get<GfMatrix4d>(prim.GetAttribute(TfToken("xformOp:transform"))), local, 2e-5);
+  }
+  Marker(oracle, "MESH");
+  std::string meshName;
+  std::size_t points = 0, faces = 0, corners = 0, uvs = 0;
+  Require(static_cast<bool>(oracle >> std::quoted(meshName) >> points >> faces >> corners >> uvs) &&
+              meshName == "UnitCube" && points == 8 && faces == 6 && corners == 24 && uvs == 5,
+      "Oracle cube domains");
+  const auto& mesh = scene.meshes[0];
+  Require(mesh.sourceName == meshName && mesh.points.size() == points &&
+              mesh.faceVertexCounts.size() == faces && mesh.faceVertexIndices.size() == corners &&
+              mesh.cornerNormals.size() == corners && mesh.uvMaps.size() == uvs,
+      "Native cube domain shapes match Blender");
+  for (const auto& point : mesh.points) {
+    const auto expected = MeterPoint(ReadVector<3>(oracle, "POINT"), scale);
+    CompareVector(point, expected);
+    for (const auto value : point) {
+      Require(std::abs(std::abs(value) - 0.5) <= 1e-7, "Every scale yields a one-meter centered cube");
+    }
+  }
+  Marker(oracle, "COUNTS");
+  for (const auto count : mesh.faceVertexCounts) {
+    std::int32_t expected = 0;
+    Require(static_cast<bool>(oracle >> expected) && count == expected, "Blender polygon counts");
+  }
+  Marker(oracle, "INDICES");
+  for (const auto index : mesh.faceVertexIndices) {
+    std::int32_t expected = 0;
+    Require(static_cast<bool>(oracle >> expected) && index == expected, "Blender right-handed winding");
+  }
+  for (const auto& normal : mesh.cornerNormals) {
+    CompareVector(normal, MeterPoint(ReadVector<3>(oracle, "NORMAL"), 1), 2e-5);
+  }
+  const std::map<std::string, std::string> uvIdentifiers{
+      {"A/B", "A_B"}, {"A_B", "A_B_1"}, {"st", "st_1"}, {"Render Map", "st"}, {japanese, "UVMap"}};
+  const auto cube = UsdGeomMesh(stage->GetPrimAtPath(SdfPath("/Asset/geo/Cube/mesh")));
+  for (std::size_t uv = 0; uv < uvs; ++uv) {
+    Marker(oracle, "UV");
+    std::string name;
+    bool active = false;
+    Require(static_cast<bool>(oracle >> std::quoted(name) >> active), "Unit oracle UV");
+    const auto& map = mesh.uvMaps[uv];
+    Require(map.sourceName == name && map.activeRender == active && map.indices.size() == corners,
+        "Saved UV names and active-render selection");
+    const auto primvar = UsdGeomPrimvarsAPI(cube).GetPrimvar(TfToken(uvIdentifiers.at(name)));
+    Require(primvar && primvar.GetAttr().GetDisplayName() == (name == uvIdentifiers.at(name) ? "" : name),
+        "Fixture-backed UV collisions, fallback, st reservation and UTF-8 display");
+    for (const auto index : map.indices) {
+      Require(index >= 0 && static_cast<std::size_t>(index) < map.values.size() &&
+                  map.values[static_cast<std::size_t>(index)] == ReadVector<2>(oracle, "VALUE"),
+          "UV coordinates are independent of units and basis");
+    }
+  }
+  Marker(oracle, "UNIT_SYSTEM");
+  Require(static_cast<bool>(oracle >> line) && line == expectedSystem, "Saved presentation unit system");
+  for (std::size_t record = 0; record < 4; ++record) {
+    Marker(oracle, "WORLD_MESH");
+    std::string name;
+    std::size_t count = 0;
+    Require(static_cast<bool>(oracle >> std::quoted(name) >> count) && count == points, "World cube oracle");
+    const auto index = objects.at(name);
+    const auto usdMesh = UsdGeomMesh(stage->GetPrimAtPath(paths[index].AppendChild(TfToken("mesh"))));
+    const auto authoredPoints = Get<VtVec3fArray>(usdMesh.GetPointsAttr());
+    const auto world = cache.GetLocalToWorldTransform(usdMesh.GetPrim());
+    GfVec3d minimum, maximum, actualMinimum, actualMaximum;
+    for (std::size_t point = 0; point < count; ++point) {
+      const auto expected = MeterPoint(ReadVector<3>(oracle, "POINT"), scale);
+      const auto actual = world.Transform(GfVec3d(authoredPoints[point]));
+      CompareVector(actual, expected);
+      if (point == 0) {
+        minimum = maximum = expected;
+        actualMinimum = actualMaximum = actual;
+      } else {
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+          minimum[axis] = std::min(minimum[axis], expected[axis]);
+          maximum[axis] = std::max(maximum[axis], expected[axis]);
+          actualMinimum[axis] = std::min(actualMinimum[axis], actual[axis]);
+          actualMaximum[axis] = std::max(actualMaximum[axis], actual[axis]);
+        }
+      }
+    }
+    CompareVector(actualMaximum - actualMinimum, maximum - minimum);
+    if (name == "Cube" || name == "Translated") {
+      CompareVector(actualMaximum - actualMinimum, GfVec3d(1), 1e-7);
+    }
+    const auto extent = Get<VtVec3fArray>(usdMesh.GetExtentAttr());
+    Require(extent.size() == 2, "Authored local extent shape");
+    CompareVector(extent[0], GfVec3d(-0.5), 1e-7);
+    CompareVector(extent[1], GfVec3d(0.5), 1e-7);
+  }
+  oracle >> std::ws;
+  Require(oracle.eof(), "Unit oracle has no trailing records");
+  Require(Text(layer) == Text(Take(blend::AuthorScene(Decode(path, false, true)))) &&
+              Text(layer) == Text(Take(blend::AuthorScene(Decode(path, true, true)))),
+      "Repeated and reversed native reads retain identical geometry, names and stage text");
+  return stage;
+}
+
+void CompareUnitStages(const UsdStageRefPtr& reference, const UsdStageRefPtr& stage) {
+  UsdGeomXformCache expectedCache, actualCache;
+  for (const auto& prim : reference->Traverse()) {
+    const auto actual = stage->GetPrimAtPath(prim.GetPath());
+    Require(actual && actual.GetTypeName() == prim.GetTypeName() && Children(actual) == Children(prim),
+        "Unit scale leaves identifiers, schemas and hierarchy unchanged");
+    const auto mesh = UsdGeomMesh(prim);
+    if (mesh) {
+      const auto expectedPoints = Get<VtVec3fArray>(mesh.GetPointsAttr());
+      const auto points = Get<VtVec3fArray>(UsdGeomMesh(actual).GetPointsAttr());
+      Require(points.size() == expectedPoints.size(), "Equivalent cube point count");
+      const auto expectedWorld = expectedCache.GetLocalToWorldTransform(prim);
+      const auto actualWorld = actualCache.GetLocalToWorldTransform(actual);
+      for (std::size_t index = 0; index < points.size(); ++index) {
+        CompareVector(points[index], expectedPoints[index], 1e-7);
+        CompareVector(actualWorld.Transform(GfVec3d(points[index])),
+            expectedWorld.Transform(GfVec3d(expectedPoints[index])));
+      }
+    } else if (UsdGeomXform(prim)) {
+      Compare(actualCache.GetLocalToWorldTransform(actual), expectedCache.GetLocalToWorldTransform(prim), 2e-5);
+      if (prim.GetPath() != SdfPath("/Asset")) {
+        Compare(Get<GfMatrix4d>(actual.GetAttribute(TfToken("xformOp:transform"))),
+            Get<GfMatrix4d>(prim.GetAttribute(TfToken("xformOp:transform"))), 2e-5);
+      }
+    }
+  }
+}
+
+void CheckUnitFixtures(const std::filesystem::path& first, const std::filesystem::path& second) {
+  UsdStageRefPtr reference;
+  for (const auto& directory : {first, second}) {
+    for (const auto& [name, scale, system] :
+        std::vector<std::tuple<std::string, double, std::string>>{
+            {"unit-1m", 1, "NONE"}, {"unit-1cm", 0.01, "METRIC"},
+            {"unit-1mm", 0.001, "IMPERIAL"}, {"unit-10m", 10, "METRIC"}}) {
+      std::cout << "Checking " << directory.string() << " / " << name << '\n';
+      const auto stage = CheckUnitFixture(directory / (name + ".blend"), scale, system);
+      if (reference) {
+        CompareUnitStages(reference, stage);
+      } else {
+        reference = stage;
+      }
+    }
+  }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
   try {
+    if (argc == 4 && std::string(argv[1]) == "--units") {
+      CheckUnitFixtures(argv[2], argv[3]);
+      std::cout << "Blender-written multi-scale native-to-USD unit and ASCII naming policies passed\n";
+      return 0;
+    }
     Require(argc == 5, "Expected two transform and two independent Mesh fixtures");
     CheckSynthetic();
     CheckFailures();

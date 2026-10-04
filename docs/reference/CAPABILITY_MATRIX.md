@@ -143,6 +143,7 @@ no native backend or production input budgets are implied.
 | Mesh/Empty Xforms, parenting, local matrices and render visibility | supported | asymmetric synthetic affine/shear/nonuniform/negative-scale hierarchy; unchanged Blender-written 4.5.13/5.2.2 transform fixtures compare all 27 Object worlds and locals per version to their oracle within `2e-5` in `usdBlend.authoring` | Phase 2 |
 | polygon Meshes, extent, face-varying normals and indexed UVs | supported | synthetic asymmetric points, two triangles, corner normals and four indexed maps pin exact schema types, values and bounds; unchanged independent two-Mesh 4.5.13/5.2.2 fixtures decode and author exact IR arrays in `usdBlend.authoring` | Phase 2 |
 | one normalization and duplicated shared Meshes | supported | synthetic source-scale provenance `0.001` leaves already-normalized points/translations untouched; independently editable duplicated Mesh attributes, no USD instancing, explicit empty topology/extent and one shared empty-Mesh warning in `usdBlend.authoring` | Phase 2 |
+| Blender-written multi-scale physical equivalence and ASCII naming | supported | eight [4.5.13/5.2.2 unit fixtures](../../tests/fixtures/native-units/README.md) decode and author scales `1`, `0.01`, `0.001`, `10` with matching one-meter cubes, translated/reflected/sheared parenting, normals, indexed UVs, extent, Y-up and `metersPerUnit = 1`; explicit punctuation/natural-suffix/UTF-8 fallback identifiers, display/provenance and fixed-child/render-UV reservations in `usdBlend.units` | Phase 2 |
 | deterministic names, ordering and provenance | supported | fixed `st` reservation, UV source-name collisions, malformed UTF-8 display repair, Object/UV permutations, repeated native reads and reversed native blocks produce identical layer text; root metadata and geometry survive references in `usdBlend.authoring`; fallback/no-active-map UV cases in `blendScene.naming` | Phase 2 |
 | no-partial-layer input diagnostics | supported | invalid graph indices/cycles/identifiers, projective/nonfinite/singular-parent transforms, topology/normal/UV shape/index errors, multiple render maps and exact/one-above float maximum checks in `usdBlend.authoring`; singular roots without children and zero-scale leaves succeed | Phase 2 |
 
@@ -165,7 +166,7 @@ normalized IR without changing the native libraries' dependency gates.
 | owning object/mesh IR, optional parent and shared-mesh indices | supported | synthetic empty, parented and shared-mesh records and copy-independence checks in `blendScene.ir` | Phase 2 |
 | point/direction basis rotation and mesh/empty world-matrix conjugation | supported | synthetic asymmetric matrix, translated/rotated/scaled parent-child composition, direction-length and right-handed winding checks in `blendScene.ir` | Phase 2 |
 | validated distance/position and affine mesh/empty translation normalization to meters | supported | synthetic scales `1`, `0.01`, `0.001`, `10`, equivalent cube extents, parent-child composition, unchanged non-translation matrix entries and invalid/overflow rejection in `blendScene.ir` | Phase 2 |
-| Blender-written unit-scale equivalence through native decoding and USD authoring | — | | Phase 2 |
+| Blender-written unit-scale equivalence through native decoding and USD authoring | supported | eight [4.5.13/5.2.2 unit fixtures](../../tests/fixtures/native-units/README.md) in `usdBlend.units`; independent source-to-meter oracles, cross-scale/version world/local matrices and vertices, strict one-meter points/extents/dimensions, active versus unselected Scene scales and NONE/METRIC/IMPERIAL presentation labels | Phase 2 |
 | saved active Scene selection and owning source metadata | supported | both normal-save corpus files select `Scene`; Scene-only `empty.blend` fails without fallback; synthetic two-Scene, reordered, 32/64-bit and little/big-endian layouts in `blendScene.ir` | Phase 2 |
 | saved-scene missing/invalid/linked-reference and source-metadata diagnostics | supported | missing/duplicate/wrong GLOB, null/absent/interior/wrong-type references, duplicate addresses, linked ID, invalid names/unit scales and SDNA errors with exact fatal block context in `blendScene.ir` | Phase 2 |
 | saved Collection membership and owning Object names/indices | supported | both normal-save 4.5.13/5.2.2 corpus files select Camera/Cube/Light; synthetic nested/shared/reordered/empty Collections and Object deduplication across all four layouts in `blendScene.ir` | Phase 2 |
@@ -205,11 +206,11 @@ conversion, requiring an invertible authored parent but not an invertible
 child or root. Row-scaled double-precision rank checks reject singular or
 numerically singular parents; invalid inputs and arithmetic overflow also
 fail explicitly. It does not change Scene decoding or store local matrices.
-Source unit metadata is provenance only. STAGE-O1 remains open for
-Blender-written source-field and end-to-end evidence under the selected
-[unit policy](../design/STAGE_CONTRACT.md#61-scene-units); NAME-O1 remains open
-in its owning design document. No helper performs native decoding or USD
-authoring.
+Source unit metadata is provenance only. Separate Blender-written multi-scale
+native-to-USD evidence freezes the
+[unit policy](../design/STAGE_CONTRACT.md#61-scene-units) and
+[ASCII identifier policy](../design/NAMING_POLICY.md#71-resolved-decisions).
+No IR helper performs native decoding or USD authoring.
 
 The separate [saved-scene selection boundary](../design/DESIGN_POLICY.md#522-saved-scene-selection-boundary)
 copies prefix-stripped raw Scene names, header versions and positive finite
@@ -263,7 +264,12 @@ publishes owning Scene IR only after saved Object-value and recursive graph
 validation succeeds. It constructs source Euler, Quaternion and Axis-Angle
 transforms, including applicable delta channels and ordinary Object parent inverses, then normalizes world
 translations and the basis once. Mesh and data-less Empty objects with zero
-transform flags are accepted; other kinds, Image Empty data, active instances,
+transform flags or cached negative-world-handedness bit 2 are accepted;
+signed channels and parent composition reconstruct reflections without
+applying the bit again. The unit fixtures prove saved bit 2 in both versions;
+four-layout synthetic cases keep source channels authoritative and reject
+all other non-instance bits, alone or combined with bit 2.
+Other kinds, Image Empty data, active instances,
 unknown rotation modes and non-ordinary parenting modes fail explicitly, with no partial IR.
 Parent-only Objects affect world space but do not join membership. Immediate
 selected parents become IR indices; other parents leave an IR root with its

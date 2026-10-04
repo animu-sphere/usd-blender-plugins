@@ -316,7 +316,8 @@ private:
     if ((flags & (1 << 8)) != 0) {
       Fail("BLEND_SCENE_INSTANCE_UNSUPPORTED", "Collection instances are validated, not expanded into the IR", index);
     }
-    if (flags != 0) {
+    // Bit 2 records world handedness; signed source channels already reconstruct it.
+    if ((flags & ~(1 << 2)) != 0) {
       Fail("BLEND_SCENE_TRANSFORM_UNSUPPORTED", "Object transform flags are not decoded", index);
     }
     const auto parentAddress = Pointer(object, "parent", "Object", index);

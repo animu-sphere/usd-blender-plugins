@@ -810,8 +810,20 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
     Require(decode(changed, blocks, schema).HasValue(), "Inactive rotation channels are not interpreted");
   }
   changed = bytes;
-  bits(changed, 4, flagsOffset, 1, 2);
-  failure(changed, blocks, schema, "BLEND_SCENE_TRANSFORM_UNSUPPORTED", 4);
+  bits(changed, 4, flagsOffset, 4, 2);
+  bits(changed, 5, flagsOffset, 4, 2);
+  const auto cachedHandedness = decode(changed, blocks, schema);
+  Require(cachedHandedness.HasValue() &&
+              cachedHandedness.GetValue().objects[0].worldTransform == result.GetValue().objects[0].worldTransform &&
+              cachedHandedness.GetValue().objects[1].worldTransform == result.GetValue().objects[1].worldTransform,
+      "Cached negative-handedness bits do not reapply scale or override source channels");
+  for (const auto flag : {1, 2, 8, 16, 32, 64, 128, 512, 1024, 2048, 4096, 8192, 16384, 32768}) {
+    for (const auto handedness : {0, 4}) {
+      changed = bytes;
+      bits(changed, 4, flagsOffset, flag | handedness, 2);
+      failure(changed, blocks, schema, "BLEND_SCENE_TRANSFORM_UNSUPPORTED", 4);
+    }
+  }
   changed = bytes;
   bits(changed, 5, parentingModeOffset, 4, 2);
   failure(changed, blocks, schema, "BLEND_SCENE_TRANSFORM_UNSUPPORTED", 5);

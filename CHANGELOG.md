@@ -8,6 +8,18 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Eight Blender-written 4.5.13/5.2.2 multi-scale cube/parenting fixtures and
+    `usdBlend.units`, proving native-to-USD physical equivalence for source
+    scales 1, 0.01, 0.001 and 10. Independent saved-value and world-vertex
+    oracles pin one-meter points, extent and dimensions, normalized world/local
+    matrices, unchanged normals/UVs and fixed USD units. Fixture-backed ASCII
+    Object/UV collisions, Japanese fallbacks, exact UTF-8 provenance/display,
+    child reservations and repeated/reversed-read determinism freeze STAGE-O1
+    and NAME-O1. Both build modes include the CTest; companion CI runs it.
+    Native decoding now accepts cached negative-world-handedness bit 2 without
+    applying reflection twice; every other non-instance flag remains rejected.
+    Generator regressions verify reproduction and non-destructive saved-value
+    checks. The importer remains header-only; no production budgets are added.
 - Blender-written 4.5.13/5.2.2 integrated native Scene fixtures and
     `blendScene.sceneFixture`, combining selected Mesh/Empty membership,
     four-level parenting, shared Mesh indices, an unselected Mesh parent,

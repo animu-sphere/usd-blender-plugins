@@ -596,13 +596,17 @@ The decoder neither opens files nor supplies compression or traversal defaults.
 
 The object scope is data-less Empty (`Object.type == 0`) and Mesh
 (`Object.type == 1`), all six Euler orders (`rotmode == 1..6`), Quaternion
-(`rotmode == 0`) and Axis-Angle (`rotmode == -1`), zero `transflag`, and ordinary Object parenting
+(`rotmode == 0`) and Axis-Angle (`rotmode == -1`), `transflag` zero or bit 2 only, and ordinary Object parenting
 (`partype == 0` when a parent exists). Other mapped kinds fail with
 `BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED`; Image Empty data fails with
 `BLEND_SCENE_OBJECT_DATA_UNSUPPORTED`. Enabled Collection instancing fails with
 `BLEND_SCENE_INSTANCE_UNSUPPORTED` after graph validation, not by replacing the
 instance with an ordinary Empty. Other transform flags, unknown rotation modes and
-parenting modes fail with `BLEND_SCENE_TRANSFORM_UNSUPPORTED`.
+parenting modes fail with `BLEND_SCENE_TRANSFORM_UNSUPPORTED`. Bit 2 records
+cached negative world handedness, including inherited reflections in the
+[multi-scale fixtures](../../tests/fixtures/native-units/README.md); signed
+source channels and parent composition already reconstruct it. The decoder
+does not apply that bit as another scale or let it override channel values.
 
 Modern saved Objects carry source transform channels, not an authoritative
 saved world matrix. Read finite `float[3]` values from `loc`, `dloc`, `size`
@@ -850,10 +854,12 @@ identical. Authoring diagnostics are returned to the caller, which must compose
 decoder diagnostics and translate them at the importer boundary.
 
 This does not connect native `DecodeScene` to `SdfFileFormat::Read`, supply
-production compression/block/traversal budgets, resolve STAGE-O1/NAME-O1,
+production compression/block/traversal budgets,
 or claim `.blend` geometry opens through the plugin. Blender-written transform
 oracles and independent two-Mesh fixtures exercise native decoding through
 USD authoring, including repeated and reversed block enumeration.
+Separate [multi-scale fixtures](../../tests/fixtures/native-units/README.md)
+freeze the Mesh/Empty unit and ASCII identifier policies through this boundary.
 Fixture-backed scope belongs in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#31-scene-ir-usd-authoring).
 
