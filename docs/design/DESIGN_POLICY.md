@@ -324,8 +324,8 @@ call them on normalized values during USD authoring.
 
 Invalid scale, nonfinite distance, non-affine transform and conversion overflow
 throw standard C++ exceptions prefixed by stable `BLEND_SCENE_UNIT_*` codes
-([diagnostics](../reference/DIAGNOSTICS.md#3-implemented-codes)). A future native
-decoder must translate them into fatal scene diagnostics with source context
+([diagnostics](../reference/DIAGNOSTICS.md#3-implemented-codes)). Native
+decoders must translate them into fatal scene diagnostics with source context
 and publish no affected Scene. The helper validates unit-specific inputs, not
 all matrix or mesh data. It does not implement the separate camera/light
 matrix convention, derive local transforms, select a saved Scene or resolve
@@ -558,6 +558,61 @@ production budgets, local/world transform construction, normalized geometry,
 unsupported-kind USD fallback, populated Scene IR or importer integration
 are introduced. Fixture-backed scope belongs in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
+
+### 5.2.7 Native Empty Scene decoding boundary
+
+`DecodeScene(bytes, blocks, schema, header, limits)` in `blendScene/Decode.h`
+composes `SelectSceneObjectValues` with semantic decoding into `Result<Scene>`.
+It uses the same caller-validated uncompressed inputs and explicit traversal
+budgets. Selection validates the entire reached membership, parent and recursive
+instance graph before any Scene is published. Selection/reader failures retain
+their codes and context; fatal decoding errors likewise return no partial IR.
+The decoder neither opens files nor supplies compression or traversal defaults.
+
+The initial object scope is data-less Empty (`Object.type == 0`), XYZ Euler
+(`rotmode == 1`), zero `transflag`, and ordinary Object parenting
+(`partype == 0` when a parent exists). Other mapped kinds fail with
+`BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED`; Image Empty data fails with
+`BLEND_SCENE_OBJECT_DATA_UNSUPPORTED`. Enabled Collection instancing fails with
+`BLEND_SCENE_INSTANCE_UNSUPPORTED` after graph validation, not by replacing the
+instance with an ordinary Empty. Other transform flags, rotation modes and
+parenting modes fail with `BLEND_SCENE_TRANSFORM_UNSUPPORTED`.
+
+Modern saved Objects carry source transform channels, not an authoritative
+saved world matrix. Read finite `float[3]` values from `loc`, `dloc`, `size`,
+`dscale`, `rot` and `drot`. In column-vector mathematics the source local
+matrix is `T(loc + dloc) * R_XYZ(drot) * R_XYZ(rot) * S(size * dscale)`,
+where `R_XYZ = Rz * Ry * Rx` and angles are radians. A parented world matrix is
+`parentWorld * parentinv * local`; the saved `float[4][4]` parent inverse
+stores columns first and is transposed into the IR's row-major representation.
+Root Objects do not use `parentinv`. Parent inverse and constructed matrices
+must be finite and affine; invalid shapes, nonfinite inputs and construction
+overflow fail with `BLEND_SCENE_TRANSFORM_INVALID`.
+
+World construction is iterative and caches shared parent chains already
+validated under the caller's budgets. Parent-only Objects contribute to world
+space and obey the same decoding restrictions without joining membership.
+An IR parent index is assigned only when the immediate saved parent belongs
+to selected membership; otherwise the Object is an IR root retaining its full
+world matrix. Source names and render visibility are copied; mesh indices stay
+absent and identifiers stay empty pending the naming pass. One selected-Scene
+`UnitConversion` normalizes complete source world matrices into meters and the
+USD basis before publication. Unit-helper exceptions become contextual fatal
+diagnostics; authoring must not convert these matrices again.
+
+The decoder reads scalar `AnimData *adt` and embedded `ListBase constraints`
+only to detect source evaluation dependencies. Nonnull animation or constraint
+endpoints emit recoverable `Unsupported` `BLEND_SCENE_EVALUATION_UNAPPLIED`;
+their contents and addresses are neither followed nor evaluated. Source
+channels still define the result, including for parent-only Objects.
+
+An active Scene with empty Collections produces owning metadata and empty
+object/mesh vectors; the Scene-only library's null `curscene` remains an error.
+This is a library decoding boundary, not an `IBlendBackend`, mesh decoder,
+identifier pass or USD/importer connection. Synthetic arithmetic and mutated
+corpus layouts do not substitute for Blender-written Empty/parenting oracle
+fixtures or STAGE-O1's multi-scale end-to-end evidence. Fixture-backed scope is
+in the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 
 ### 5.3 `usdBlendFileFormat` — the importer
 

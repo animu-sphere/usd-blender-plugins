@@ -62,6 +62,11 @@ Its native saved-scene selection consumes reader syntax through the declared
 `blendFile` edge; the IR header itself still uses only standard C++ types.
 `blendScene/Selection.h` exposes the separate
 [selection boundary](../design/DESIGN_POLICY.md#522-saved-scene-selection-boundary).
+`blendScene/Decode.h` composes validated Object-value selection into owning
+Scene IR through the
+[native decoding boundary](../design/DESIGN_POLICY.md#527-native-empty-scene-decoding-boundary).
+Binary views and saved addresses stay inside the decoder; no OpenUSD or host
+backend dependency is introduced.
 The root adds the library before resolving OpenUSD. Its standalone CMake
 package exports `blendScene::blendScene` with a public `blendFile` dependency
 and resolves that installed package through `find_dependency`; OpenStrata
