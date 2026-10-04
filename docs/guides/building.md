@@ -682,6 +682,35 @@ reject saved UV-coordinate/zero-sign/render-selector/loose-point/sharing
 mutations. Normal-save bytes are not reproducible; no `--check-bytes` claim
 is made.
 
+### Legacy Mesh storage evidence
+
+Blender 3.3.21 is used only to generate and verify raw legacy storage, not to
+extend supported Scene decoding. Download the official Windows portable
+archive and verify it against
+[Blender's SHA-256 list](https://download.blender.org/release/Blender3.3/blender-3.3.21.sha256).
+Keep the executable outside the repository; no Blender binary is bundled.
+Set `$blender` to the full path of your verified portable `blender.exe`.
+The following commands were exercised on Windows on 2026-10-05:
+
+```powershell
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_mesh.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_mesh.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_mesh.py
+
+cmake --preset reader
+cmake --build --preset reader
+ctest --preset reader --output-on-failure
+ost library build libs\blendScene --target cy2026 --profile usd
+ost library test libs\blendScene --target cy2026 --profile usd --filter 'blendScene\.(legacyMeshStorage|meshBoundaries|ir|meshFixture|sceneFixture|boundary|link)'
+```
+
+The native `blendScene.legacyMeshStorage` CTest runs without Blender or OpenUSD in both
+build modes. It checks unmodified raw saved values and the existing fatal
+unsupported-version diagnostic, including repeated/reversed block reads.
+It does not compare a decoded legacy IR or authored stage; scope and
+provenance are in the
+[fixture record](../../tests/fixtures/native-mesh/README.md#legacy-storage-only-evidence).
+
 ### Registered cube fixture
 
 Generate or non-destructively check the normal-save Blender 5.2.2 cube:

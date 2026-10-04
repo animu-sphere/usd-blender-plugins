@@ -44,6 +44,11 @@ retains Object transforms and typed Mesh children without geometry attributes;
 lazy decoding remains Phase 8 scope.
 Legacy MVert/MLoop/MPoly geometry now has four-layout synthetic coverage,
 including normal flags and UV composition, without repairing modern storage.
-Blender-written legacy geometry/MLoopUV evidence remains incomplete.
+An unchanged
+[Blender 3.3.21 fixture](../../tests/fixtures/native-mesh/README.md#legacy-storage-only-evidence)
+now pins raw legacy geometry/MLoopUV storage, normal flags and the current
+unsupported-version diagnostic. Its signed MLoop indices differ from the
+synthetic decoder shape. Blender-written legacy IR decoding remains
+incomplete; the 4.5/5.x version gate has not been broadened.
 Phase 1's open compression decision remains open; compressed importer inputs
 must not acquire arbitrary production defaults to reach this milestone.

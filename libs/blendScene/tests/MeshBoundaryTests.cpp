@@ -87,6 +87,205 @@ void SkipVectors(std::istream& input, std::size_t count, bool normals) {
   }
 }
 
+void CheckLegacy(const std::filesystem::path& path, bool reverse = false) {
+  Fixture fixture(path);
+  Require(fixture.header.version == 303 && fixture.header.pointerSize == 8 &&
+              fixture.header.byteOrder == blend::ByteOrder::Little &&
+              fixture.header.containerVersion == blend::BlendContainerVersion::Legacy,
+      "Unchanged Blender 3.3 fixture retains its observed header layout");
+  if (reverse) {
+    std::reverse(fixture.blocks.begin(), fixture.blocks.end());
+  }
+  const auto map = Take(blend::BuildPointerMap(fixture.blocks));
+  const auto selected = Take(blend::SelectSceneObjectValues(
+      fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64}));
+  Require(selected.scene.metadata.sourceScene == "MeshDomains" && selected.objects.size() == 5,
+      "Legacy container selects the saved Mesh-domain membership");
+  const auto decoded = blend::DecodeScene(fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64});
+  Require(!decoded.HasValue() && decoded.GetError().blockIndex.has_value(),
+      "Legacy Mesh version gate returns no partial Scene");
+  const auto rejected = *decoded.GetError().blockIndex;
+  Failure(decoded, "BLEND_MESH_STORAGE_UNSUPPORTED", fixture, rejected);
+  Require(std::any_of(selected.objects.begin(), selected.objects.end(),
+              [&](const auto& object) { return object.dataBlockIndex == rejected; }),
+      "Unsupported version diagnostic identifies a selected Mesh");
+
+  std::map<std::string, std::uint32_t> meshes;
+  for (const auto& id : Take(blend::ListDatablocks(fixture.bytes, fixture.blocks, fixture.schema))) {
+    if (id.typeName == "Mesh") {
+      Require(meshes.emplace(id.name.substr(2), id.blockIndex).second, "Unique legacy Mesh IDs");
+    }
+  }
+  auto oraclePath = path;
+  oraclePath.replace_extension(".oracle.txt");
+  std::ifstream oracle(oraclePath);
+  std::string line;
+  Require(static_cast<bool>(std::getline(oracle, line)) && line == "BLEND_SCENE_ORACLE 1", "Legacy oracle version");
+  Require(static_cast<bool>(std::getline(oracle, line)) && line == "'3.3.21'", "Pinned Blender oracle build");
+  double scale = 0;
+  std::size_t objects = 0, meshCount = 0;
+  Require(static_cast<bool>(oracle >> scale >> objects >> meshCount) &&
+              scale == selected.scene.metadata.sourceUnitScale && objects == selected.objects.size() && meshCount == 4 &&
+              meshCount == meshes.size(),
+      "Legacy oracle metadata matches stored Scene values");
+  const auto marker = [&](std::string_view expected) {
+    std::string actual;
+    Require(static_cast<bool>(oracle >> actual) && actual == expected, "Expected legacy oracle record " + std::string(expected));
+  };
+  for (std::size_t object = 0; object < objects; ++object) {
+    marker("OBJECT");
+    std::string name, parent, data;
+    bool hidden = false;
+    Require(static_cast<bool>(oracle >> std::quoted(name) >> std::quoted(parent) >> std::quoted(data) >> hidden),
+        "Legacy oracle Object record");
+    const auto found = std::find_if(selected.objects.begin(), selected.objects.end(),
+        [&](const auto& value) { return value.sourceName == name; });
+    Require(found != selected.objects.end() && parent.empty() && !found->parentBlockIndex &&
+                meshes.contains(data) && found->dataBlockIndex == meshes.at(data) && found->values &&
+                found->values->type == 1 && found->values->hiddenForRender == hidden,
+        "Legacy Object membership retains sharing and saved render values");
+    for (const auto label : {"WORLD", "LOCAL"}) {
+      marker(label);
+      for (std::size_t component = 0; component < 16; ++component) {
+        double value = 0;
+        Require(static_cast<bool>(oracle >> value) && std::isfinite(value), "Finite legacy oracle matrix");
+      }
+    }
+  }
+  for (std::size_t record = 0; record < meshCount; ++record) {
+    marker("MESH");
+    std::string name;
+    std::size_t points = 0, faces = 0, corners = 0, uvCount = 0;
+    Require(static_cast<bool>(oracle >> std::quoted(name) >> points >> faces >> corners >> uvCount) && meshes.contains(name),
+        "Legacy oracle Mesh shape");
+    const auto mesh = fixture.View(meshes.at(name));
+    const auto count = [&](std::string_view member) { return Take(Take(mesh.Member(member)).SignedInteger()); };
+    Require(count("totvert") == static_cast<std::int64_t>(points) &&
+                count("totpoly") == static_cast<std::int64_t>(faces) &&
+                count("totloop") == static_cast<std::int64_t>(corners),
+        name + " raw Mesh domains match the saved oracle");
+    const auto array = [&](std::string_view member, std::string_view type, std::size_t elements) -> std::optional<std::uint32_t> {
+      const auto pointer = Take(mesh.Member(member));
+      if (elements == 0) {
+        Require(Take(pointer.Pointer()) == 0, name + " empty fixed array has a null saved pointer");
+        return {};
+      }
+      const auto index = fixture.Resolve(map, pointer);
+      const auto& block = fixture.blocks[index];
+      Require(block.code == std::array<char, 4>{'D', 'A', 'T', 'A'} &&
+                  fixture.Type(block) == type && block.count == elements &&
+                  block.length == elements * fixture.View(index).Type().length,
+          name + " fixed array retains exact SDNA type, count and length");
+      return index;
+    };
+    const auto vertices = array("mvert", "MVert", points);
+    const auto polygons = array("mpoly", "MPoly", faces);
+    const auto loops = array("mloop", "MLoop", corners);
+    const auto edges = array("medge", "MEdge", static_cast<std::size_t>(count("totedge")));
+    std::size_t sharpEdges = 0;
+    for (std::int64_t edge = 0; edge < count("totedge"); ++edge) {
+      const auto source = fixture.View(*edges, static_cast<std::uint64_t>(edge));
+      const auto flags = Take(Take(source.Member("flag")).SignedInteger());
+      sharpEdges += (flags & (1 << 9)) != 0;
+    }
+    Require(sharpEdges == (name == "Seams" ? 1 : 0), "Stored MEdge sharp flags match the generated case");
+    for (std::size_t point = 0; point < points; ++point) {
+      marker("POINT");
+      const auto co = Take(fixture.View(*vertices, point).Member("co"));
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        double expected = 0;
+        const auto actual = Take(Take(co.Element(axis)).FloatingPoint());
+        Require(static_cast<bool>(oracle >> expected) && std::isfinite(expected) &&
+                    std::abs(actual - expected) <= 2e-6 * (1 + std::abs(expected)),
+            name + " raw MVert coordinates match the saved oracle without conversion");
+      }
+    }
+    marker("COUNTS");
+    std::int64_t start = 0;
+    for (std::size_t face = 0; face < faces; ++face) {
+      const auto polygon = fixture.View(*polygons, face);
+      std::int64_t expected = 0;
+      Require(static_cast<bool>(oracle >> expected) &&
+                  Take(Take(polygon.Member("loopstart")).SignedInteger()) == start &&
+                  Take(Take(polygon.Member("totloop")).SignedInteger()) == expected && expected >= 3,
+          "Stored MPoly ranges match contiguous oracle polygons");
+      const auto flag = Take(polygon.Member("flag"));
+      Require(flag.Type().name == "char" && flag.PointerLevel() == 0 &&
+                  flag.ArrayDimensions().empty() && flag.Bytes().size() == 1,
+          "Observed legacy MPoly flag is one scalar char");
+      const auto flags = std::to_integer<unsigned char>(flag.Bytes()[0]);
+      Require((flags & 1) == (name == "Seams" && face == 0 ? 1 : 0), "Stored MPoly smooth flags match the generated case");
+      start += expected;
+    }
+    Require(start == static_cast<std::int64_t>(corners), "Legacy polygons cover every corner");
+    marker("INDICES");
+    for (std::size_t corner = 0; corner < corners; ++corner) {
+      std::int64_t expected = 0;
+      const auto loop = fixture.View(*loops, corner);
+      const auto edge = Take(Take(loop.Member("e")).SignedInteger());
+      Require(static_cast<bool>(oracle >> expected) && Take(Take(loop.Member("v")).SignedInteger()) == expected &&
+                  expected >= 0 && expected < static_cast<std::int64_t>(points) && edge >= 0 && edge < count("totedge"),
+          "Stored MLoop vertex order and edge domain match the oracle");
+    }
+    for (std::size_t corner = 0; corner < corners; ++corner) {
+      marker("NORMAL");
+      SkipVectors(oracle, 1, true);
+    }
+    const auto custom = Take(mesh.Member("ldata"));
+    const auto layersCount = Take(Take(custom.Member("totlayer")).SignedInteger());
+    std::vector<blend::DnaValueView> uvLayers;
+    if (layersCount != 0) {
+      const auto layers = fixture.Resolve(map, Take(custom.Member("layers")));
+      Require(fixture.Type(fixture.blocks[layers]) == "CustomDataLayer" &&
+                  fixture.blocks[layers].count == static_cast<std::uint64_t>(layersCount),
+          "Legacy corner CustomData contains the declared layer records");
+      for (std::int64_t layer = 0; layer < layersCount; ++layer) {
+        const auto source = fixture.View(layers, static_cast<std::uint64_t>(layer));
+        if (Take(Take(source.Member("type")).SignedInteger()) == 16) {
+          uvLayers.push_back(source);
+        }
+      }
+    }
+    Require(uvLayers.size() == uvCount, "Every saved UV map uses observed type-16 MLoopUV storage");
+    for (std::size_t uv = 0; uv < uvCount; ++uv) {
+      marker("UV");
+      std::string uvName;
+      bool render = false;
+      Require(static_cast<bool>(oracle >> std::quoted(uvName) >> render), "Legacy UV oracle header");
+      const auto& layer = uvLayers[uv];
+      const auto nameBytes = Take(layer.Member("name")).Bytes();
+      const auto end = std::find(nameBytes.begin(), nameBytes.end(), std::byte{0});
+      Require(end != nameBytes.end() &&
+                  std::string(reinterpret_cast<const char*>(nameBytes.data()), static_cast<std::size_t>(end - nameBytes.begin())) == uvName &&
+                  Take(Take(layer.Member("active_rnd")).SignedInteger()) == (name == "Seams" ? 1 : 0) &&
+                  render == (uv == (name == "Seams" ? 1 : 0)),
+          "Legacy UV names and non-first render selection match the oracle");
+      const auto pointer = Take(layer.Member("data"));
+      if (corners == 0) {
+        Require(Take(pointer.Pointer()) == 0, "Empty legacy UV domain has no payload");
+        continue;
+      }
+      const auto data = fixture.Resolve(map, pointer);
+      Require(fixture.Type(fixture.blocks[data]) == "MLoopUV" && fixture.blocks[data].count == corners &&
+                  fixture.blocks[data].length == corners * fixture.View(data).Type().length,
+          "Legacy UV payload has one complete MLoopUV record per corner");
+      for (std::size_t corner = 0; corner < corners; ++corner) {
+        marker("VALUE");
+        const auto coordinates = Take(fixture.View(data, corner).Member("uv"));
+        for (std::size_t axis = 0; axis < 2; ++axis) {
+          double expected = 0;
+          const auto actual = Take(Take(coordinates.Element(axis)).FloatingPoint());
+          Require(static_cast<bool>(oracle >> expected) && std::isfinite(expected) &&
+                      actual == expected && std::signbit(actual) == std::signbit(expected),
+              "Raw MLoopUV values exactly preserve corner seams and signed zeros");
+        }
+      }
+    }
+  }
+  oracle >> std::ws;
+  Require(oracle.eof(), "Legacy oracle has no trailing records");
+}
+
 void StorePointer(Fixture& fixture, const blend::DnaValueView& view, std::uint64_t address) {
   const auto offset = static_cast<std::size_t>(view.Bytes().data() - fixture.bytes.data());
   for (std::size_t byte = 0; byte < fixture.header.pointerSize; ++byte) {
@@ -278,7 +477,7 @@ void CheckRepeatedAddresses(const std::filesystem::path& path) {
         Require(name != fixture.blocks.end(), "Constant attribute has a saved name");
         const auto text = fixture.Payload(*name);
         if (text.size() != 11 || !std::equal(text.begin(), text.end(),
-                reinterpret_cast<const std::byte*>("sharp_face"))) {
+                                     reinterpret_cast<const std::byte*>("sharp_face"))) {
           continue;
         }
         Require(Take(Take(attribute.Member("storage_type")).SignedInteger()) == 1 &&
@@ -400,6 +599,12 @@ void CheckRepeatedAddresses(const std::filesystem::path& path) {
 
 int main(int argc, char** argv) {
   try {
+    if (argc == 3 && std::string(argv[1]) == "--legacy") {
+      CheckLegacy(argv[2]);
+      CheckLegacy(argv[2]);
+      CheckLegacy(argv[2], true);
+      return 0;
+    }
     Require(argc == 3, "Two Blender-written Mesh boundary fixture directories are required");
     for (const auto directory : {argv[1], argv[2]}) {
       CheckCustom(std::filesystem::path(directory) / "custom.blend");

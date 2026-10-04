@@ -11,6 +11,7 @@ from generate_scene import VERSIONS, compare_oracle, oracle_text, reset_scene
 
 
 ROOT = Path(__file__).resolve().parent / "native-mesh"
+MESH_VERSIONS = VERSIONS | {(3, 3, 21)}
 
 
 def make_scene():
@@ -38,6 +39,9 @@ def make_scene():
             entry.uv = value if name == "Seams" else (-0.25, 1.5)
         layer.active_render = name == "Constant"
     mesh.uv_layers.active_index = 0
+    if bpy.app.version == (3, 3, 21):
+        mesh.polygons[0].use_smooth = True
+        mesh.edges[0].use_edge_sharp = True
     mesh.update()
     shared = bpy.data.objects.new("SharedSeams", mesh)
     shared.location = (10, -20, 30)
@@ -68,7 +72,7 @@ def main():
     parser.add_argument("--check", action="store_true")
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     options = parser.parse_args(arguments)
-    if bpy.app.version not in VERSIONS:
+    if bpy.app.version not in MESH_VERSIONS:
         raise RuntimeError(f"Unsupported fixture Blender version: {bpy.app.version_string}")
     output = options.output.resolve()
     oracle = output.with_suffix(".oracle.txt")

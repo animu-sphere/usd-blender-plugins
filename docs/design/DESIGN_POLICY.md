@@ -759,9 +759,15 @@ fallback requires an exact `totedge`-record `MEdge` array when `totedge` is
 nonzero. Other edge fields and loose edges are not published. Absent
 `.corner_edge` uses `MLoop.e` for split fans. Present normal attributes remain
 authoritative and retain their existing validation; packed custom normals
-and float2/MLoopUV UV maps compose with legacy geometry. Evidence for this
-fixed-array path is synthetic only, across both pointer widths and byte orders;
-there is no Blender-written legacy geometry fixture yet.
+and float2/MLoopUV UV maps compose with legacy geometry. Decoding evidence for
+this fixed-array path remains synthetic only, across both pointer widths and
+byte orders. The
+[3.3.21 Mesh fixture](../../tests/fixtures/native-mesh/README.md#legacy-storage-only-evidence)
+separately establishes Blender-written raw MVert/MPoly/MLoop/MLoopUV values
+and normal flags, including signed `int` MLoop indices rather than the
+synthetic decoder's `uint` members. Its original header retains the current
+fatal unsupported-version diagnostic. Raw storage evidence does not extend
+the 4.5/5.x version gate or establish legacy IR/normal/transform decoding.
 
 Polygon normals are constructed from source positions and normalized.
 Outside the legacy flag path, missing `sharp_face` or `sharp_edge` attributes

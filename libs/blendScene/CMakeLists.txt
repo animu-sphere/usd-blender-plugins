@@ -48,6 +48,8 @@ if(BUILD_TESTING)
     add_test(NAME blendScene.meshBoundaries COMMAND blendSceneMeshBoundaryTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-4.5.13
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-5.2.2)
+    add_test(NAME blendScene.legacyMeshStorage COMMAND blendSceneMeshBoundaryTests --legacy
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-mesh/blender-3.3.21/mesh.blend)
     add_test(NAME blendScene.normals COMMAND blendSceneNormalTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-4.5.13
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-5.2.2)

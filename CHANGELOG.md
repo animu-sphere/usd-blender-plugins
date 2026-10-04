@@ -8,6 +8,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Blender-written 3.3.21 legacy Mesh storage-only fixture and saved oracle.
+    `blendScene.legacyMeshStorage` compares independent raw MVert/MPoly/MLoop
+    and MLoopUV values, normal flags, empty pointers, UV zero signs/render
+    selection, membership and sharing across repeated/reversed reads in both
+    build modes. Observed MLoop indices are signed `int`, unlike the synthetic
+    decoder's `uint` shape. The unchanged header must retain contextual fatal
+    unsupported-version rejection without partial IR; no older-version Scene
+    decoding or USD support is added. Mesh generation/check regressions now
+    admit this pinned Blender build without broadening other generators.
 - Optional direct `.blend` viewport regression using OpenUSD's `testusdview`
     harness: the registered Cube must render with Storm, converge within a
     bounded wait, remain visible against a black background and resolve a
@@ -23,8 +32,8 @@ All notable changes to this project are recorded here. The format follows
     cover owning/shared positions and topology, flat/smooth/mixed and sharp
     normals, packed automatic normals, indexed float2/MLoopUV maps, loose
     points, unit independence, determinism and contextual fatal diagnostics.
-    No Blender-written fixed-array fixture or additional Blender version
-    compatibility is claimed.
+    Blender-written fixed-array IR decoding and additional Blender version
+    compatibility remain unclaimed.
 - Blender-written 4.5.13/5.2.2 Mesh-domain oracles and `blendScene.meshFixture`,
     covering empty Meshes, loose points, UV-free polygons, corner seams,
     out-of-range and signed-zero UVs, constant coordinates and distinct

@@ -115,7 +115,12 @@ def oracle_text(scene_name="Integrated", scene_count=2):
         rows.extend("POINT " + " ".join(f"{value:.17g}" for value in vertex.co) for vertex in mesh.vertices)
         rows.append("COUNTS " + " ".join(str(face.loop_total) for face in mesh.polygons))
         rows.append("INDICES " + " ".join(str(loop.vertex_index) for loop in mesh.loops))
-        rows.extend("NORMAL " + " ".join(f"{value:.17g}" for value in normal.vector) for normal in mesh.corner_normals)
+        if bpy.app.version == (3, 3, 21):
+            mesh.calc_normals_split()
+            normals = (loop.normal for loop in mesh.loops)
+        else:
+            normals = (normal.vector for normal in mesh.corner_normals)
+        rows.extend("NORMAL " + " ".join(f"{value:.17g}" for value in normal) for normal in normals)
         for layer in mesh.uv_layers:
             rows.append(f'UV "{layer.name}" {int(layer.active_render)}')
             rows.extend("VALUE " + " ".join(f"{value:.17g}" for value in entry.uv) for entry in layer.data)

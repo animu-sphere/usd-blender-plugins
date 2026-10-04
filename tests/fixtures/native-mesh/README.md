@@ -15,7 +15,13 @@ Generated and reopened on Windows on 2026-10-04:
 | `blender-4.5.13/mesh.blend` | 4.5.13 LTS, `daeeeca98fb0` | 390353 | `e5b3447250a58bc6eda93ee33479c055d4c4fc794e6bd428fffc3496e1af42a3` |
 | `blender-5.2.2/mesh.blend` | 5.2.2 LTS, `d13f752e3b9c` | 507882 | `f709bc270bac5c6b41ffc7e763a41b3f8d722dc9b1804526ff3e3fccfd9fb297` |
 
-Both are uncompressed normal-save files with one active Scene, `MeshDomains`,
+Additional storage-only evidence generated and reopened on 2026-10-05:
+
+| File | Blender build | Bytes | SHA-256 |
+| --- | --- | --- | --- |
+| `blender-3.3.21/mesh.blend` | 3.3.21, `e016c21db151` | 446888 | `0f9622f0e716fc4b40134d66793b8a1ff9f6543ffadf1e2398c6b446ead6dcff` |
+
+All are uncompressed normal-save files with one active Scene, `MeshDomains`,
 source unit scale `0.01`, five Mesh Objects and four unique Mesh datablocks.
 There are no modifiers, shape keys, animation or linked libraries. File-browser
 directories use `//`; generator tests reject absolute Windows/home paths.
@@ -76,5 +82,40 @@ rejection and saved UV-coordinate/zero-sign/render-map/loose-point/sharing
 mutations. Full-file addresses and UI state are not byte-reproducible.
 Commands are in the [build guide](../../../docs/guides/building.md#saved-mesh-domain-oracles).
 
-These fixtures do not establish legacy fixed-array Mesh storage, Blender-written
-MLoopUV, loose-edge authoring or additional Blender version families.
+## Legacy storage-only evidence
+
+The unchanged 3.3.21 file saves positions as `MVert.co`, polygon ranges as
+`MPoly.loopstart/totloop`, corners as `MLoop.v/e` and UV maps as type-16
+CustomData with complete `MLoopUV` records. Unlike the synthetic legacy
+decoder fixtures, the observed `MLoop.v/e` members are signed `int`, not
+`uint`. `Seams` also saves one smooth polygon, one flat polygon and one
+sharp `MEdge` flag; other Meshes have no smooth/sharp flags. These changes
+are specific to the 3.3.21 generator case; the modern fixtures are unchanged.
+The older Blender oracle captures split normals with `calc_normals_split()`
+and `MeshLoop.normal`, rather than the newer `Mesh.corner_normals` API.
+
+`blendScene.legacyMeshStorage` uses the existing Mesh-boundary executable in
+root and standalone builds. Independent reader views compare raw positions,
+polygon ranges, corner vertex order, exact UV coordinates/zero signs,
+render selectors, empty-array null pointers, flags, membership and Mesh
+sharing against the saved oracle or generator case. Normal and transform
+oracle rows are checked for valid numeric records, not compared to a decoded
+Scene. Repeated and reversed-block reads retain this evidence.
+
+This is **not** legacy Scene decoding or USD authoring support. `DecodeScene`
+must reject the original 3.3 header with fatal, non-recoverable
+`BLEND_MESH_STORAGE_UNSUPPORTED`, with the exact selected Mesh block/byte
+context and no partial IR. No header or saved data is rewritten to bypass the
+gate. The 4.5/5.x decoding boundary remains unchanged; legacy IR decoding
+still has synthetic evidence only. Older member shapes and absent modern
+members require a separate version-aware implementation before compatibility
+can be claimed.
+
+The same generator `--check` and `test_generate_mesh.py` regressions run with
+3.3.21, including non-destructive checks, semantic reproduction and saved
+UV/render/loose-point/sharing mutations. Only the Mesh generator admits this
+additional Blender build; the Scene and other generator version sets are
+unchanged. The portable Blender executable is downloaded separately from
+the official release site and is not distributed with the repository.
+These fixtures do not establish loose-edge authoring or older-version
+Scene compatibility.
