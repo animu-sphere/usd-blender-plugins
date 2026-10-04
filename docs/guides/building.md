@@ -184,7 +184,10 @@ conjugation, parent-child composition and preserved right-handed winding and
 direction lengths. Unit regressions cover scales `1`, `0.01`, `0.001` and
 `10`, equivalent synthetic one-meter cubes, translation-only matrix scaling,
 parent-child composition, invalid scale/distance/affine inputs and conversion
-overflow. They do not prove Blender-written unit-field semantics; the
+overflow. `ParentRelativeTransform` regressions construct locals from normalized
+worlds, covering roots, shear, pivot swaps, nonuniform/negative/zero scales,
+the same four unit scales, extreme finite scales, singular/numerically singular
+parents, nonfinite/projective inputs and arithmetic overflow. They do not prove Blender-written unit-field semantics; the
 [unit policy](../design/STAGE_CONTRACT.md#61-scene-units) defines that separate
 fixture requirement. Four boundary CTests scan forbidden includes, regenerate
 CMake File API metadata, inspect the generated link line and reject forbidden
@@ -278,9 +281,11 @@ Scene-only library retains its missing-active-Scene error.
 5.2.2 fixtures and their saved matrix oracles. It compares 27 Empty objects per
 file, covering all six Euler orders, nonunit and zero Quaternion/Axis-Angle
 channels, applicable delta transforms, nonuniform/negative/zero scale,
-render visibility, parent inverses and three-level parent/local composition
+render visibility, parent inverses, constructed parent-relative local matrices
+and reconstructed three-level parent/local composition
 after one meter/basis conversion. Repeated reads with reversed block records
-must produce identical object order, parent indices and world matrices.
+must produce identical object order, parent indices, world and constructed
+local matrices.
 Native/oracle matrix components use `2e-5 * (1 + abs(expected))` tolerance.
 Only oracle-local homogeneous-row rounding is accepted within `1e-6`; the
 decoder's own affine validation remains exact. Neither test authors USD or
@@ -301,7 +306,7 @@ storage cases require exact contextual diagnostics and no partial Scene.
 Modifier and shape-key presence reports source-only data without evaluation.
 The root reader build and standalone OpenStrata library build both run these
 tests and the existing four scene dependency-boundary gates. Smooth/custom
-normals, Blender transform/unit oracle fixtures and USD geometry remain
+normals, Blender-written Mesh transform/unit oracle fixtures and USD geometry remain
 unproven; no Blender executable is required by these CTests.
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)

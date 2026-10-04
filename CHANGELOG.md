@@ -8,6 +8,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- USD-independent `ParentRelativeTransform` in `blendScene`, constructing
+    affine locals from already-normalized world matrices without a second
+    basis/unit conversion or an explicit inverse. Row scaling and pivoting
+    retain shear and nonuniform/negative scales; singular/numerically singular
+    parents, invalid inputs and overflow fail explicitly without hierarchy or
+    identity fallbacks. Synthetic regressions and unchanged Blender-written
+    4.5.13/5.2.2 transform oracles cover local matrices, world reconstruction,
+    singular roots/children and repeated/reordered reads. Both root and
+    standalone library builds and their six Scene CTests pass. Scene IR remains
+    world-only; USD authoring and the header-only importer are unchanged.
 - Native Mesh/Empty Scene IR decoding in `blendScene`, with source points,
     polygon topology, flat face-varying corner normals and named indexed UVs.
     The real 4.5.13 CustomData and 5.2.2 AttributeArray Cube Mesh payloads and

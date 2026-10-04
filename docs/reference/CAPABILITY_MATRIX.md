@@ -169,12 +169,17 @@ authored-stage support. The importer remains header-only.
 | native named indexed UV maps and saved render map | supported | real `UVMap` in both corpus files; two synthetic maps with exact deduplicated values/indices and non-first render map in both storage forms across four layouts in `blendScene.ir` | Phase 2 |
 | native empty/invalid/unsupported Mesh storage diagnostics | supported | empty shared Mesh, negative/excessive counts, missing/interior/non-DATA pointers, wrong array lengths/counts/SDNA, malformed names, invalid offsets/vertex indices, nonfinite values, degenerate/smooth/custom normals, flagged/constant/unsupported storage and invalid UV selectors in `blendScene.ir` | Phase 2 |
 | native smooth or custom split normals, constant attribute storage and legacy fixed Mesh/MLoopUV storage | unsupported | explicit missing-core, smooth/custom-normal, constant/flagged and legacy-UV failures in `blendScene.ir`; no Blender-written smooth/custom-normal fixture | Phase 2 |
-| parent-relative transforms | — | | Phase 2 |
+| parent-relative affine matrix construction from normalized IR worlds | supported | `ParentRelativeTransform`; synthetic roots, shear, pivot swaps, nonuniform/negative/zero scales, four unit scales, extreme finite scales and invalid/singular/overflow rejection in `blendScene.ir`; Blender-written 4.5.13/5.2.2 local matrices and reconstructed worlds, including reversed-read equality, in `blendScene.transforms` | Phase 2 |
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines row-major, column-vector matrix semantics and meter-space distances.
 Basis helpers do not scale distances; `UnitConversion` combines source-distance
 normalization with the basis rotation for positions and mesh/empty matrices.
+`ParentRelativeTransform` constructs locals from normalized IR worlds without
+conversion, requiring an invertible authored parent but not an invertible
+child or root. Row-scaled double-precision rank checks reject singular or
+numerically singular parents; invalid inputs and arithmetic overflow also
+fail explicitly. It does not change Scene decoding or store local matrices.
 Source unit metadata is provenance only. STAGE-O1 remains open for
 Blender-written source-field and end-to-end evidence under the selected
 [unit policy](../design/STAGE_CONTRACT.md#61-scene-units); NAME-O1 remains open
@@ -241,7 +246,8 @@ evaluation. The Cube's Mesh bytes in both corpus files are unchanged; non-Mesh
 Objects are mutated to Empty in memory to isolate the supported scene scope.
 Those files remain unsupported as complete Scenes because Camera/Light decoding
 is not introduced. Separate Blender-written Empty fixtures compare native
-world matrices and parent/local composition with saved transform oracles.
+world matrices, constructed parent-relative locals and reconstructed world
+composition with saved transform oracles.
 The native matrix tolerance is `2e-5 * (1 + abs(expected))` per component;
 the decoder keeps strict finite/affine validation. No backend,
 USD authoring, native-to-USD unit equivalence or importer connection is claimed.

@@ -115,7 +115,8 @@ Fixture paths are relative to
 | `BLEND_SCENE_OBJECT_DATA_UNSUPPORTED` | Fatal | no | native decoding reaches an Image Empty | Image ID target across four synthetic layouts in `blendScene.ir` |
 | `BLEND_SCENE_INSTANCE_UNSUPPORTED` | Fatal | no | native decoding reaches enabled Collection instancing after graph validation | valid instance target across four synthetic layouts in `blendScene.ir`; graph cycles retain `BLEND_SCENE_CYCLE` |
 | `BLEND_SCENE_TRANSFORM_UNSUPPORTED` | Fatal | no | native decoding reaches an unknown rotation mode, nonzero transform flags or non-ordinary parenting | unknown modes, flags and parenting mode across four synthetic layouts in `blendScene.ir` |
-| `BLEND_SCENE_TRANSFORM_INVALID` | Fatal | no | native source transform storage has an incompatible scalar/array shape, nonfinite active channels, non-affine parent inverse or construction overflow | malformed shapes, NaN/infinity in Euler/Quaternion/Axis-Angle channels, projective parent inverse and overflowing source parent matrices across four synthetic layouts in `blendScene.ir`; inactive rotation channels are not interpreted |
+| `BLEND_SCENE_TRANSFORM_INVALID` | Fatal | no | native source transform storage has an incompatible scalar/array shape, nonfinite active channels, non-affine parent inverse or construction overflow; parent-relative construction receives nonfinite/non-affine worlds or overflows | malformed shapes, NaN/infinity in Euler/Quaternion/Axis-Angle channels, projective parent inverse and overflowing source parent matrices across four synthetic layouts; helper input and initial/elimination/translation overflow cases in `blendScene.ir`; inactive rotation channels are not interpreted |
+| `BLEND_SCENE_TRANSFORM_SINGULAR` | Fatal | no | parent-relative construction finds a zero parent linear row or a row-scaled pivot at most eight double-precision epsilons | zero-scale parents, dependent nontrivial rows and numerically singular parents in `blendScene.ir`; singular roots/children with invertible parents remain valid |
 | `BLEND_SCENE_EVALUATION_UNAPPLIED` | Unsupported | yes | native decoding uses source transform/geometry values with nonnull animation, constraint or Mesh modifier endpoints; evaluation contents are not followed | independent animation, constraint endpoints and modifier presence with contextual diagnostics across four synthetic layouts in `blendScene.ir` |
 | `BLEND_MESH_REFERENCE_INVALID` | Fatal | no | a required Mesh storage pointer is null, absent, interior or resolves to a non-DATA block | offset/name/value pointers and non-DATA arrays in both synthetic storage forms across four layouts in `blendScene.ir` |
 | `BLEND_MESH_STORAGE_INVALID` | Fatal | no | Mesh counts, member shapes, record/array lengths/counts, attribute names, boolean values or UV selectors are invalid | negative/excessive counts, array/AttributeArray sizes, SDNA record counts, unterminated/duplicate names, boolean and UV selection mutations in `blendScene.ir` |
@@ -199,6 +200,15 @@ context and no fallback Scene; an overflowing native parent translation is
 tested across four synthetic layouts. Scene unit validation retains selection
 context. These failures are library-tested, not reachable through the
 header-only importer.
+
+`ParentRelativeTransform` uses the same exception/code-prefix convention:
+invalid finite/affine inputs and singular parents throw `std::invalid_argument`;
+construction overflow throws `std::overflow_error`. It knows no source
+offset, Object name or graph, and neither returns a `Diagnostic` record nor
+changes the decoder's existing world-only output. A caller authoring an Object
+must translate these failures with that Object's context and publish no partial
+stage. There is no silent identity or hierarchy fallback. These helper failures
+are library-tested, not reachable through the header-only importer.
 
 `DecodeScene` first preserves the complete Object-value selection and recursive
 graph validation boundary. Its transform failures identify the affected Object's

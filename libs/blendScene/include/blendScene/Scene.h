@@ -57,6 +57,8 @@ struct Scene {
 
 Vector3 ToUsdBasis(const Vector3& value);
 Matrix4 ToUsdBasis(const Matrix4& worldTransform);
+Matrix4 ParentRelativeTransform(const Matrix4& worldTransform,
+    const Matrix4& parentWorldTransform = IdentityMatrix);
 
 class UnitConversion {
 public:

@@ -1,6 +1,8 @@
 #include <blendScene/Scene.h>
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace blend {
@@ -17,6 +19,87 @@ Matrix4 ToUsdBasis(const Matrix4& worldTransform) {
     for (std::size_t column = 0; column < 4; ++column) {
       result[row][column] = signs[row] * signs[column] *
                             worldTransform[sourceAxes[row]][sourceAxes[column]];
+    }
+  }
+  return result;
+}
+
+Matrix4 ParentRelativeTransform(const Matrix4& worldTransform,
+    const Matrix4& parentWorldTransform) {
+  for (const auto* matrix : {&worldTransform, &parentWorldTransform}) {
+    for (const auto& row : *matrix) {
+      for (const auto value : row) {
+        if (!std::isfinite(value)) {
+          throw std::invalid_argument(
+              "BLEND_SCENE_TRANSFORM_INVALID: world transforms must be finite");
+        }
+      }
+    }
+    if ((*matrix)[3] != IdentityMatrix[3]) {
+      throw std::invalid_argument(
+          "BLEND_SCENE_TRANSFORM_INVALID: world transforms must be affine");
+    }
+  }
+  const auto finite = [](double value) {
+    if (!std::isfinite(value)) {
+      throw std::overflow_error(
+          "BLEND_SCENE_TRANSFORM_INVALID: parent-relative construction overflow");
+    }
+    return value;
+  };
+  const auto singular = [] {
+    throw std::invalid_argument(
+        "BLEND_SCENE_TRANSFORM_SINGULAR: parent world transform is not numerically invertible");
+  };
+
+  // Solve parentLinear * local = [worldLinear, worldTranslation - parentTranslation].
+  std::array<std::array<double, 7>, 3> rows{};
+  for (std::size_t row = 0; row < 3; ++row) {
+    const auto scale = std::max({std::abs(parentWorldTransform[row][0]),
+        std::abs(parentWorldTransform[row][1]), std::abs(parentWorldTransform[row][2])});
+    if (scale == 0) {
+      singular();
+    }
+    for (std::size_t column = 0; column < 3; ++column) {
+      rows[row][column] = parentWorldTransform[row][column] / scale;
+      rows[row][column + 3] = finite(worldTransform[row][column] / scale);
+    }
+    const auto translation = worldTransform[row][3] - parentWorldTransform[row][3];
+    const auto scaledTranslation = std::isfinite(translation) ? translation / scale : worldTransform[row][3] / scale - parentWorldTransform[row][3] / scale;
+    rows[row][6] = finite(scaledTranslation);
+  }
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    std::size_t pivot = axis;
+    for (std::size_t row = axis + 1; row < 3; ++row) {
+      if (std::abs(rows[row][axis]) > std::abs(rows[pivot][axis])) {
+        pivot = row;
+      }
+    }
+    // Row scaling makes this a dimensionless double-precision rank check.
+    if (std::abs(rows[pivot][axis]) <= 8 * std::numeric_limits<double>::epsilon()) {
+      singular();
+    }
+    std::swap(rows[axis], rows[pivot]);
+    const auto divisor = rows[axis][axis];
+    rows[axis][axis] = 1;
+    for (std::size_t column = axis + 1; column < 7; ++column) {
+      rows[axis][column] = finite(rows[axis][column] / divisor);
+    }
+    for (std::size_t row = 0; row < 3; ++row) {
+      if (row == axis) {
+        continue;
+      }
+      const auto factor = rows[row][axis];
+      rows[row][axis] = 0;
+      for (std::size_t column = axis + 1; column < 7; ++column) {
+        rows[row][column] = finite(std::fma(-factor, rows[axis][column], rows[row][column]));
+      }
+    }
+  }
+  Matrix4 result = IdentityMatrix;
+  for (std::size_t row = 0; row < 3; ++row) {
+    for (std::size_t column = 0; column < 4; ++column) {
+      result[row][column] = rows[row][column + 3];
     }
   }
   return result;
