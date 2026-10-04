@@ -42,8 +42,8 @@ public:
 
   Mesh Run() {
     const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, index_));
-    if (header_.version != 405 && (header_.version < 500 || header_.version >= 600)) {
-      Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "Mesh decoding targets 4.5 and 5.x storage", index_);
+    if (header_.version != 303 && header_.version != 405 && (header_.version < 500 || header_.version >= 600)) {
+      Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "Mesh decoding targets tested 3.3, 4.5 and 5.x storage", index_);
     }
     Mesh mesh;
     mesh.sourceName = String(Take(Take(source.Member("id")).Member("name")), index_).substr(2);
@@ -56,12 +56,16 @@ public:
     ReadAttributes(source);
     const auto position = Find("position", 0, Kind::Float3, false);
     const auto cornerVertices = Find(".corner_vert", 3, Kind::Integer, false);
-    const auto offsetsAddress = Pointer(source, "poly_offset_indices", "int", index_);
+    const auto offsetsAddress = StoragePointer(source, "poly_offset_indices", "int");
     // Saved legacy pointers must never rescue partial or invalid modern core storage.
     const auto legacy = !modernStorage_ && !position && !cornerVertices && offsetsAddress == 0 &&
                         (LegacyPointer(source, "mvert", "MVert") != 0 ||
                             LegacyPointer(source, "mloop", "MLoop") != 0 ||
-                            LegacyPointer(source, "mpoly", "MPoly") != 0);
+                            LegacyPointer(source, "mpoly", "MPoly") != 0 ||
+                            (header_.version == 303 && vertices == 0 && corners == 0));
+    if (header_.version == 303 && !legacy) {
+      Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "Blender 3.3 requires legacy fixed-array Mesh storage", index_);
+    }
     if (!legacy) {
       Find("position", 0, Kind::Float3, vertices != 0);
       Find(".corner_vert", 3, Kind::Integer, corners != 0);
@@ -131,8 +135,8 @@ public:
   }
 
 private:
-  [[noreturn]] void Fail(const char* code, const char* message, std::uint32_t index) const {
-    throw Diagnostic{code, Severity::Fatal, message, blocks_[index].offset, index, {}, false};
+  [[noreturn]] void Fail(const char* code, std::string message, std::uint32_t index) const {
+    throw Diagnostic{code, Severity::Fatal, std::move(message), blocks_[index].offset, index, {}, false};
   }
 
   [[noreturn]] void UnitFailure(const std::exception& error) const {
@@ -172,7 +176,15 @@ private:
 
   std::uint64_t LegacyPointer(const DnaValueView& source, std::string_view member,
       std::string_view type) const {
-    if (!schema_.FindStruct("Mesh")->FindMember(member)) {
+    if (header_.version != 303 && !schema_.FindStruct("Mesh")->FindMember(member)) {
+      return 0;
+    }
+    return Pointer(source, member, type, index_);
+  }
+
+  std::uint64_t StoragePointer(const DnaValueView& source, std::string_view member,
+      std::string_view type) const {
+    if (header_.version == 303 && !schema_.FindStruct("Mesh")->FindMember(member)) {
       return 0;
     }
     return Pointer(source, member, type, index_);
@@ -191,11 +203,16 @@ private:
       return;
     }
     legacyLoops_ = Array(LegacyPointer(source, "mloop", "MLoop"), corners, Kind::Loop, index_);
+    const auto edges = Count(source, "totedge", index_);
     mesh.faceVertexIndices.reserve(corners);
     for (std::uint32_t corner = 0; corner < corners; ++corner) {
       const auto vertex = Integer(*legacyLoops_, corner);
       if (static_cast<std::uint32_t>(vertex) >= vertices) {
         Fail("BLEND_MESH_TOPOLOGY_INVALID", "Legacy corner vertex index is outside the source points", legacyLoops_->index);
+      }
+      const auto edge = Integer(*legacyLoops_, corner, true);
+      if (edge < 0 || static_cast<std::uint32_t>(edge) >= edges) {
+        Fail("BLEND_MESH_TOPOLOGY_INVALID", "Legacy corner edge index is outside the source edges", legacyLoops_->index);
       }
       mesh.faceVertexIndices.push_back(vertex);
     }
@@ -295,31 +312,33 @@ private:
   }
 
   void ReadAttributes(const DnaValueView& mesh) {
-    const auto storage = Take(mesh.Member("attribute_storage"));
-    if (storage.Type().name != "AttributeStorage" || storage.PointerLevel() != 0 ||
-        !storage.ArrayDimensions().empty()) {
-      Fail("BLEND_MESH_STORAGE_INVALID", "Mesh attribute storage must be embedded", index_);
-    }
-    const auto count = Count(storage, "dna_attributes_num", index_);
-    modernStorage_ = count != 0;
-    const auto address = Pointer(storage, "dna_attributes", "Attribute", index_);
-    if (count != 0) {
-      Records(address, count, "Attribute", index_);
-      const auto index = Resolve(address, index_);
-      for (std::uint32_t element = 0; element < count; ++element) {
-        const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, index, element));
-        const auto type = Scalar(source, "data_type", "short", 2, index);
-        const auto domain = Scalar(source, "domain", "int8_t", 1, index);
-        const auto kind = type == 0 ? Kind::Boolean : type == 2 ? Kind::Short2
-                                                  : type == 3   ? Kind::Integer
-                                                  : type == 6   ? Kind::Float2
-                                                  : type == 7   ? Kind::Float3
-                                                                : Kind::Other;
-        Add({PointerString(Pointer(source, "name", "char", index), index),
-            domain, kind, source, index, true});
+    if (header_.version != 303 || schema_.FindStruct("Mesh")->FindMember("attribute_storage")) {
+      const auto storage = Take(mesh.Member("attribute_storage"));
+      if (storage.Type().name != "AttributeStorage" || storage.PointerLevel() != 0 ||
+          !storage.ArrayDimensions().empty()) {
+        Fail("BLEND_MESH_STORAGE_INVALID", "Mesh attribute storage must be embedded", index_);
       }
-    } else if (address != 0) {
-      Fail("BLEND_MESH_STORAGE_INVALID", "Empty attribute storage must have a null record pointer", index_);
+      const auto count = Count(storage, "dna_attributes_num", index_);
+      modernStorage_ = count != 0;
+      const auto address = Pointer(storage, "dna_attributes", "Attribute", index_);
+      if (count != 0) {
+        Records(address, count, "Attribute", index_);
+        const auto index = Resolve(address, index_);
+        for (std::uint32_t element = 0; element < count; ++element) {
+          const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, index, element));
+          const auto type = Scalar(source, "data_type", "short", 2, index);
+          const auto domain = Scalar(source, "domain", "int8_t", 1, index);
+          const auto kind = type == 0 ? Kind::Boolean : type == 2 ? Kind::Short2
+                                                    : type == 3   ? Kind::Integer
+                                                    : type == 6   ? Kind::Float2
+                                                    : type == 7   ? Kind::Float3
+                                                                  : Kind::Other;
+          Add({PointerString(Pointer(source, "name", "char", index), index),
+              domain, kind, source, index, true});
+        }
+      } else if (address != 0) {
+        Fail("BLEND_MESH_STORAGE_INVALID", "Empty attribute storage must have a null record pointer", index_);
+      }
     }
     std::int64_t domain = 0;
     for (const auto member : {"vdata", "edata", "pdata", "ldata"}) {
@@ -333,12 +352,13 @@ private:
       if (Pointer(data, "external", "CustomDataExternal", index_) != 0) {
         Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "External CustomData storage is not read", index_);
       }
-      if (count != 0 && layers != 0) {
+      if (modernStorage_ && layers != 0) {
         Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "Mixed Attribute and CustomData Mesh storage is not decoded", index_);
       }
       if (layers != 0) {
         Records(layerAddress, layers, "CustomDataLayer", index_);
         const auto index = Resolve(layerAddress, index_);
+        bool fixedLayer = false;
         for (std::uint32_t element = 0; element < layers; ++element) {
           const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, index, element));
           const auto type = Scalar(source, "type", "int", 4, index);
@@ -352,6 +372,28 @@ private:
                                                      : type == 50   ? Kind::Boolean
                                                                     : Kind::Other;
           auto name = String(Take(source.Member("name")), index);
+          if (header_.version == 303 && (type == 0 || type == 3 || type == 25 || type == 26)) {
+            const auto expectedDomain = type == 0 ? 0 : type == 3 ? 1
+                                                    : type == 25  ? 2
+                                                                  : 3;
+            const auto member = type == 0 ? "mvert" : type == 3 ? "medge"
+                                                  : type == 25  ? "mpoly"
+                                                                : "mloop";
+            const auto recordType = type == 0 ? "MVert" : type == 3 ? "MEdge"
+                                                      : type == 25  ? "MPoly"
+                                                                    : "MLoop";
+            if (domain != expectedDomain || fixedLayer) {
+              Fail("BLEND_MESH_STORAGE_INVALID", "Legacy CustomData geometry layer has an incompatible domain or duplicate type", index);
+            }
+            if (Scalar(source, "flag", "int", 4, index) != 0) {
+              Fail("BLEND_MESH_STORAGE_UNSUPPORTED", "Flagged legacy CustomData geometry layer is not decoded", index);
+            }
+            if (Pointer(source, "data", "void", index) != LegacyPointer(mesh, member, recordType)) {
+              Fail("BLEND_MESH_STORAGE_INVALID", "Legacy CustomData geometry layer must match its fixed-array pointer", index);
+            }
+            fixedLayer = true;
+            continue;
+          }
           if (type == 41) {
             if (domain != 3 || (!name.empty() && name != "custom_normal")) {
               Fail("BLEND_MESH_NORMALS_UNSUPPORTED", "Packed custom normals require the corner domain and observed layer name", index);
@@ -404,9 +446,9 @@ private:
       if (kind == Kind::Loop) {
         for (const auto name : {"v", "e"}) {
           const auto member = Take(source.Member(name));
-          if (member.Type().name != "uint" || member.Type().length != 4 ||
+          if ((member.Type().name != "uint" && member.Type().name != "int") || member.Type().length != 4 ||
               member.PointerLevel() != 0 || !member.ArrayDimensions().empty()) {
-            Fail("BLEND_MESH_STORAGE_INVALID", "Legacy corner indices must be scalar uint values", index);
+            Fail("BLEND_MESH_STORAGE_INVALID", "Legacy corner indices must be scalar int or uint values", index);
           }
         }
       } else {
@@ -496,7 +538,11 @@ private:
     }
     const auto source = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, values.index, element));
     if (values.kind == Kind::Loop) {
-      const auto value = Take(Take(source.Member(edge ? "e" : "v")).UnsignedInteger());
+      const auto member = Take(source.Member(edge ? "e" : "v"));
+      if (member.Type().name == "int") {
+        return static_cast<std::int32_t>(Take(member.SignedInteger()));
+      }
+      const auto value = Take(member.UnsignedInteger());
       if (value > std::numeric_limits<std::int32_t>::max()) {
         Fail("BLEND_MESH_TOPOLOGY_INVALID", "Legacy corner index exceeds the supported signed range", values.index);
       }
@@ -740,6 +786,19 @@ private:
 
   void ReadNormals(Mesh& mesh, const DnaValueView& source, std::uint32_t faces) const {
     const auto custom = Find("custom_normal", 3, Kind::Short2, false);
+    const bool legacyPointNormals = header_.version == 303;
+    if (legacyPointNormals) {
+      const auto flag = Take(source.Member("flag"));
+      if (flag.Type().name != "ushort" || flag.Type().length != 2 ||
+          flag.PointerLevel() != 0 || !flag.ArrayDimensions().empty()) {
+        Fail("BLEND_MESH_STORAGE_INVALID", "Blender 3.3 Mesh flags must be scalar ushorts", index_);
+      }
+      const auto flags = Take(flag.UnsignedInteger());
+      constexpr std::uint64_t observedDefaultFlags = 0xd100;
+      if ((flags != 0 && flags != observedDefaultFlags) || custom) {
+        Fail("BLEND_MESH_NORMALS_UNSUPPORTED", "Blender 3.3 Mesh flags (" + std::to_string(flags) + ") and packed custom normals are outside the tested point-normal mode", index_);
+      }
+    }
     const auto corners = mesh.faceVertexIndices.size();
     std::optional<ValuesView> packed;
     if (custom) {
@@ -799,8 +858,9 @@ private:
       }
       return;
     }
-    const auto split = custom || std::any_of(flat.begin(), flat.end(), [](bool value) { return value; }) ||
-                       std::any_of(sharpEdges.begin(), sharpEdges.end(), [](bool value) { return value; });
+    const auto split = !legacyPointNormals &&
+                       (custom || std::any_of(flat.begin(), flat.end(), [](bool value) { return value; }) ||
+                           std::any_of(sharpEdges.begin(), sharpEdges.end(), [](bool value) { return value; }));
     std::vector<std::size_t> groups(corners), next(corners), previous(corners);
     std::vector<std::optional<std::size_t>> acrossOut(corners), acrossIn(corners);
     std::vector<std::uint32_t> cornerFaces(corners);
@@ -816,7 +876,7 @@ private:
         previous[corner] = start + (offset + count - 1) % count;
         cornerFaces[corner] = face;
         groups[corner] = split ? corner : static_cast<std::size_t>(mesh.faceVertexIndices[corner]);
-        if (!flat[face]) {
+        if (legacyPointNormals || !flat[face]) {
           angles[corner] = CornerAngle(mesh, corner, start + (offset + count - 1) % count, next[corner]);
         }
       }
@@ -877,12 +937,12 @@ private:
         groups[corner] = root(corner);
       }
     }
-    // Blender uses point normals for an entirely smooth mesh, even across
-    // disconnected/nonmanifold fans; sharp data selects split corner fans.
+    // Blender 3.3's default mode includes flat faces in smooth point normals
+    // and ignores sharp edges; modern sharp data selects split corner fans.
     std::vector<Vector3> sums(split ? corners : sourcePoints_.size());
     for (std::size_t corner = 0; corner < corners; ++corner) {
       const auto face = cornerFaces[corner];
-      if (!flat[face]) {
+      if (legacyPointNormals || !flat[face]) {
         for (std::size_t axis = 0; axis < 3; ++axis) {
           sums[groups[corner]][axis] += normals[face][axis] * angles[corner];
         }
@@ -934,7 +994,7 @@ private:
       }
       mesh.uvMaps.push_back(std::move(uv));
     }
-    const auto address = Pointer(source, "default_uv_map_attribute", "char", index_);
+    const auto address = StoragePointer(source, "default_uv_map_attribute", "char");
     if (address != 0) {
       const auto name = PointerString(address, index_);
       const auto found = std::find_if(mesh.uvMaps.begin(), mesh.uvMaps.end(),

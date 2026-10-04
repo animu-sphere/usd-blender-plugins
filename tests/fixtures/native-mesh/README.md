@@ -15,7 +15,7 @@ Generated and reopened on Windows on 2026-10-04:
 | `blender-4.5.13/mesh.blend` | 4.5.13 LTS, `daeeeca98fb0` | 390353 | `e5b3447250a58bc6eda93ee33479c055d4c4fc794e6bd428fffc3496e1af42a3` |
 | `blender-5.2.2/mesh.blend` | 5.2.2 LTS, `d13f752e3b9c` | 507882 | `f709bc270bac5c6b41ffc7e763a41b3f8d722dc9b1804526ff3e3fccfd9fb297` |
 
-Additional storage-only evidence generated and reopened on 2026-10-05:
+Additional legacy evidence generated and reopened on 2026-10-05:
 
 | File | Blender build | Bytes | SHA-256 |
 | --- | --- | --- | --- |
@@ -102,14 +102,44 @@ sharing against the saved oracle or generator case. Normal and transform
 oracle rows are checked for valid numeric records, not compared to a decoded
 Scene. Repeated and reversed-block reads retain this evidence.
 
-This is **not** legacy Scene decoding or USD authoring support. `DecodeScene`
-must reject the original 3.3 header with fatal, non-recoverable
-`BLEND_MESH_STORAGE_UNSUPPORTED`, with the exact selected Mesh block/byte
-context and no partial IR. No header or saved data is rewritten to bypass the
-gate. The 4.5/5.x decoding boundary remains unchanged; legacy IR decoding
-still has synthetic evidence only. Older member shapes and absent modern
-members require a separate version-aware implementation before compatibility
-can be claimed.
+## Legacy Scene decoding
+
+The same unchanged 3.3.21 file now joins `blendScene.meshFixture`, which
+compares the complete owning Scene IR to its saved oracle: meter/basis
+converted points and Object world/local transforms, unchanged topology,
+default corner normals, exact indexed MLoopUV values/zero signs, render-map
+selection and shared Mesh indices. Empty/Loose each warn once; repeated and
+reversed-block reads retain all IR values exactly after reader inputs are
+released. The tolerances are the same as the modern Mesh-domain checks above.
+`usdBlend.authoring` checks native-to-USD composition, repeated/reordered reads
+and metadata-only authoring; registered-plugin tests compare the full saved
+oracle, extent, metadata-only reads and reference composition.
+
+Version-aware decoding admits signed `MLoop.v/e` and the absent
+`attribute_storage`, `poly_offset_indices` and `default_uv_map_attribute`
+members, without making them optional for modern versions. Geometry
+CustomData types 0/3/25/26 must alias the corresponding fixed arrays with
+zero layer flags, the correct domain and no duplicates. Their names
+(including `NGon Face`) are storage labels, not required attribute names.
+Modern attributes/offsets never fall back to legacy pointers.
+
+The saved Mesh flags are `0xd100`. With this observed default normal mode,
+smooth corners use angle-weighted point normals from all adjacent faces,
+including flat ones; flat corners use face normals, and sharp edges do not
+split smooth fans. The original Seams oracle pins this older behavior, not
+the modern sharp/flat split-fan policy. Synthetic zero flags also select this
+mode. Other flag values and packed custom-normal layers fail explicitly with
+`BLEND_MESH_NORMALS_UNSUPPORTED`; auto-smooth/angle-dependent and custom
+legacy normal modes are not supported by this evidence.
+
+`blendScene.legacyMeshStorage` retains raw storage checks and now also tests
+signed negative/overflow/out-of-domain indices, unsupported saved Mesh flags
+and unverified version mutations with exact fatal block/byte context and no
+partial IR. Four-layout synthetic cases cover signed indices, absent modern
+members, strict modern-member requirements, geometry aliases and the legacy
+default normals. No original header, geometry or oracle is rewritten.
+This establishes the tested 3.3 storage boundary only; no other 3.x–4.4
+version, broader legacy normal mode or older parenting/rotation corpus is claimed.
 
 The same generator `--check` and `test_generate_mesh.py` regressions run with
 3.3.21, including non-destructive checks, semantic reproduction and saved
@@ -117,5 +147,5 @@ UV/render/loose-point/sharing mutations. Only the Mesh generator admits this
 additional Blender build; the Scene and other generator version sets are
 unchanged. The portable Blender executable is downloaded separately from
 the official release site and is not distributed with the repository.
-These fixtures do not establish loose-edge authoring or older-version
+These fixtures do not establish loose-edge authoring or general older-version
 Scene compatibility.

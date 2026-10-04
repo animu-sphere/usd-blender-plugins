@@ -668,8 +668,9 @@ in the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 ### 5.2.8 Native Mesh storage boundary
 
 Mesh decoding is internal to `DecodeScene`, after the selected Object graph
-and local data IDs are validated. It targets the 4.5 and 5.x storage families,
-not every Mesh in those version ranges. Layouts come from SDNA, not host
+and local data IDs are validated. It targets fixture-backed 3.3 legacy arrays
+and the 4.5 and 5.x storage families, not every Mesh in those version ranges.
+Layouts come from SDNA, not host
 structures: embedded `attribute_storage` with nonzero `dna_attributes_num`
 selects `Attribute` records; otherwise embedded `vdata`, `edata`, `pdata` and
 `ldata` provide `CustomDataLayer` records. Mixed nonempty storage families and
@@ -679,8 +680,12 @@ The separate legacy fixed-array path is selected only when there are no
 Attribute records, neither `position` nor `.corner_vert` attributes, no
 `poly_offset_indices` pointer, and at least one nonnull saved `mvert`, `mloop`
 or `mpoly` pointer. Partial or invalid modern core storage never switches to
-legacy arrays. This does not broaden the decoder's 4.5/5.x version gate or
-claim older Blender compatibility.
+legacy arrays. Version 3.3 also admits entirely empty fixed-array domains with
+null pointers, and requires the fixed-array path rather than admitting modern
+core storage. Only 3.3 allows absent `attribute_storage`,
+`poly_offset_indices` and `default_uv_map_attribute` members; any present
+member retains validation, and 4.5/5.x still require their existing members.
+Other 3.x/4.x versions remain outside the Mesh version gate.
 
 The initial domain/type mapping is:
 
@@ -743,14 +748,20 @@ unchanged; these are scene-semantic ownership checks.
 Legacy fixed arrays resolve exact saved keys to `DATA` arrays with the declared
 record counts and complete SDNA lengths. `MVert.co` is embedded `float[3]`;
 stored vertex normals and other vertex fields are not interpreted. `MLoop.v`
-and `MLoop.e` are scalar `uint` values; consumed indices must fit the IR's
-signed index range and their corresponding domains. `MPoly.loopstart` and
+and `MLoop.e` are scalar `int` or `uint` values, as declared by SDNA; indices
+must be nonnegative, fit the IR's signed index range and lie within their
+corresponding vertex/edge domains. `MPoly.loopstart` and
 `MPoly.totloop` are scalar `int` values describing contiguous polygon ranges
 starting at zero, each with at least three corners and covering `totloop`
 exactly. Coordinate and topology publication reuse the modern path's owning
 IR, winding and one-time unit/basis conversion. Zero-count legacy vertex,
 polygon and corner domains require null corresponding pointers; polygon-free
 Meshes retain loose points with the existing empty-Mesh warning.
+Blender 3.3 CustomData geometry layers of types 0/3/25/26 must match
+`mvert`/`medge`/`mpoly`/`mloop` respectively, occur at most once in their
+matching domain and have zero layer flags. Their bounded names are storage
+labels, not named attributes; their data pointers must equal the fixed-array
+pointers. External, mismatched or duplicate storage is not a fallback.
 
 On the legacy path, absent `sharp_face` uses bit 0 of scalar-char `MPoly.flag`
 as the smooth-face flag; absent `sharp_edge` uses bit 9 of scalar-short
@@ -759,15 +770,23 @@ fallback requires an exact `totedge`-record `MEdge` array when `totedge` is
 nonzero. Other edge fields and loose edges are not published. Absent
 `.corner_edge` uses `MLoop.e` for split fans. Present normal attributes remain
 authoritative and retain their existing validation; packed custom normals
-and float2/MLoopUV UV maps compose with legacy geometry. Decoding evidence for
-this fixed-array path remains synthetic only, across both pointer widths and
-byte orders. The
-[3.3.21 Mesh fixture](../../tests/fixtures/native-mesh/README.md#legacy-storage-only-evidence)
-separately establishes Blender-written raw MVert/MPoly/MLoop/MLoopUV values
-and normal flags, including signed `int` MLoop indices rather than the
-synthetic decoder's `uint` members. Its original header retains the current
-fatal unsupported-version diagnostic. Raw storage evidence does not extend
-the 4.5/5.x version gate or establish legacy IR/normal/transform decoding.
+and float2/MLoopUV UV maps compose with legacy geometry in the 4.5/5.x path.
+Both pointer widths and byte orders have synthetic fixed-array evidence.
+The unchanged
+[3.3.21 Mesh fixture](../../tests/fixtures/native-mesh/README.md#legacy-scene-decoding)
+also compares owning points, topology, normals, transforms, UV indexing,
+render selection and shared Meshes against its saved oracle through native
+decoding and registered-plugin reads, without rewriting its header or data.
+
+Blender 3.3's tested default normal mode differs from the modern split-fan
+mode: smooth corners use angle-weighted point normals including contributions
+from flat faces; flat corners retain face normals. Saved sharp-edge flags do
+not select split fans in this mode. Scalar `ushort` Mesh flags accept only
+the observed default `0xd100` and synthetic zero; other values and packed
+custom-normal layers return `BLEND_MESH_NORMALS_UNSUPPORTED`, not guessed
+normals. Auto-smooth/angle-dependent and custom-normal legacy decoding remains
+outside this evidence. This is tested 3.3 storage support, not blanket
+compatibility for Blender 3.x–4.4.
 
 Polygon normals are constructed from source positions and normalized.
 Outside the legacy flag path, missing `sharp_face` or `sharp_edge` attributes

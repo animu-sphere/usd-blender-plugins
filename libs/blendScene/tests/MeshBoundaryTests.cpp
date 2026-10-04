@@ -101,14 +101,9 @@ void CheckLegacy(const std::filesystem::path& path, bool reverse = false) {
       fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64}));
   Require(selected.scene.metadata.sourceScene == "MeshDomains" && selected.objects.size() == 5,
       "Legacy container selects the saved Mesh-domain membership");
-  const auto decoded = blend::DecodeScene(fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64});
-  Require(!decoded.HasValue() && decoded.GetError().blockIndex.has_value(),
-      "Legacy Mesh version gate returns no partial Scene");
-  const auto rejected = *decoded.GetError().blockIndex;
-  Failure(decoded, "BLEND_MESH_STORAGE_UNSUPPORTED", fixture, rejected);
-  Require(std::any_of(selected.objects.begin(), selected.objects.end(),
-              [&](const auto& object) { return object.dataBlockIndex == rejected; }),
-      "Unsupported version diagnostic identifies a selected Mesh");
+  const auto decoded = Take(blend::DecodeScene(fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64}));
+  Require(decoded.objects.size() == 5 && decoded.meshes.size() == 4 && decoded.metadata.sourceVersion == "3.3",
+      "Unchanged Blender 3.3 Mesh storage decodes into an owning Scene");
 
   std::map<std::string, std::uint32_t> meshes;
   for (const auto& id : Take(blend::ListDatablocks(fixture.bytes, fixture.blocks, fixture.schema))) {
@@ -284,6 +279,42 @@ void CheckLegacy(const std::filesystem::path& path, bool reverse = false) {
   }
   oracle >> std::ws;
   Require(oracle.eof(), "Legacy oracle has no trailing records");
+  const auto decode = [](const Fixture& input) {
+    return blend::DecodeScene(input.bytes, input.blocks, input.schema, input.header, {10000, 64});
+  };
+  const auto store = [](Fixture& input, const blend::DnaValueView& value, std::uint64_t bits) {
+    const auto offset = static_cast<std::size_t>(value.Bytes().data() - input.bytes.data());
+    const auto width = value.Bytes().size();
+    Require(width <= 8, "Legacy mutation writes one scalar only");
+    for (std::size_t byte = 0; byte < width; ++byte) {
+      const auto shift = input.header.byteOrder == blend::ByteOrder::Little ? byte : width - 1 - byte;
+      input.bytes[offset + byte] = static_cast<std::byte>((bits >> (8 * shift)) & 255);
+    }
+  };
+  const auto seams = meshes.at("Seams");
+  const auto loopIndex = fixture.Resolve(map, Take(fixture.View(seams).Member("mloop")));
+  for (const auto member : {"v", "e"}) {
+    for (const auto invalid : {0xffffffffu, 0x80000000u, 0x7fffffffu}) {
+      auto changed = fixture;
+      store(changed, Take(changed.View(loopIndex).Member(member)), invalid);
+      Failure(decode(changed), "BLEND_MESH_TOPOLOGY_INVALID", changed, loopIndex);
+    }
+  }
+  auto changed = fixture;
+  const auto meshFlags = Take(changed.View(seams).Member("flag"));
+  Require(Take(meshFlags.UnsignedInteger()) == 0xd100, "Saved default legacy Mesh flags are pinned");
+  store(changed, meshFlags, 0xd120);
+  Failure(decode(changed), "BLEND_MESH_NORMALS_UNSUPPORTED", changed, seams);
+  for (const auto version : {302u, 304u, 404u, 600u}) {
+    changed = fixture;
+    changed.header.version = version;
+    const auto result = decode(changed);
+    Require(!result.HasValue() && result.GetError().blockIndex &&
+                std::any_of(selected.objects.begin(), selected.objects.end(),
+                    [&](const auto& object) { return object.dataBlockIndex == result.GetError().blockIndex; }),
+        "Unverified versions retain selected Mesh context and return no partial Scene");
+    Failure(result, "BLEND_MESH_STORAGE_UNSUPPORTED", changed, *result.GetError().blockIndex);
+  }
 }
 
 void StorePointer(Fixture& fixture, const blend::DnaValueView& view, std::uint64_t address) {

@@ -8,14 +8,25 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Fixture-backed Blender 3.3 legacy Mesh decoding using the unchanged 3.3.21
+    Mesh-domain file and saved Scene oracle. Signed MLoop indices, absent
+    modern members and validated CustomData/fixed-array aliases compose into
+    owning points, topology, transforms, shared Meshes and exact indexed
+    MLoopUV maps. The older default normal mode includes flat-face contributions
+    in smooth point normals without sharp-edge splitting; unsupported Mesh
+    flags and packed custom normals fail explicitly. Native and registered
+    plugin oracle checks cover empty warnings, extent, metadata, references
+    and repeated/reversed determinism in both build modes. Modern member/core
+    validation remains strict; other 3.x–4.4 versions and broader legacy
+    normal modes remain unclaimed.
 - Blender-written 3.3.21 legacy Mesh storage-only fixture and saved oracle.
     `blendScene.legacyMeshStorage` compares independent raw MVert/MPoly/MLoop
     and MLoopUV values, normal flags, empty pointers, UV zero signs/render
     selection, membership and sharing across repeated/reversed reads in both
     build modes. Observed MLoop indices are signed `int`, unlike the synthetic
-    decoder's `uint` shape. The unchanged header must retain contextual fatal
-    unsupported-version rejection without partial IR; no older-version Scene
-    decoding or USD support is added. Mesh generation/check regressions now
+    decoder's original `uint` shape. This initial storage-only milestone pinned
+    contextual fatal unsupported-version rejection without partial IR, before
+    the fixture-backed decoding above. Mesh generation/check regressions
     admit this pinned Blender build without broadening other generators.
 - Optional direct `.blend` viewport regression using OpenUSD's `testusdview`
     harness: the registered Cube must render with Storm, converge within a
@@ -32,8 +43,8 @@ All notable changes to this project are recorded here. The format follows
     cover owning/shared positions and topology, flat/smooth/mixed and sharp
     normals, packed automatic normals, indexed float2/MLoopUV maps, loose
     points, unit independence, determinism and contextual fatal diagnostics.
-    Blender-written fixed-array IR decoding and additional Blender version
-    compatibility remain unclaimed.
+    This initial boundary had synthetic evidence only; the 3.3.21 decoding
+    above adds the separate Blender-written evidence.
 - Blender-written 4.5.13/5.2.2 Mesh-domain oracles and `blendScene.meshFixture`,
     covering empty Meshes, loose points, UV-free polygons, corner seams,
     out-of-range and signed-zero UVs, constant coordinates and distinct

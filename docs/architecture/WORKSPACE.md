@@ -78,8 +78,10 @@ The shared Scene-oracle executable also supplies `blendScene.meshFixture`
 for Blender-written Mesh-domain and indexed-UV evidence, without adding a
 library dependency or requiring Blender at test time.
 The Mesh-boundary executable also supplies `blendScene.legacyMeshStorage`:
-unchanged Blender 3.3.21 raw storage/oracle checks and contextual rejection
-at the existing Mesh version gate, not older-version Scene decoding.
+unchanged Blender 3.3.21 raw storage/oracle checks and contextual failures for
+signed-index, unverified-version and unsupported-normal-mode mutations.
+The same file joins `blendScene.meshFixture` for owning legacy IR/oracle
+comparisons; it adds no runtime dependency or new library edge.
 The scene gate additionally allows `blendFile` and rejects OpenUSD, Blender,
 host-backend and unknown libraries; the reader gate still rejects scene links.
 The plugin now consumes the allowed `blendScene` edge for its internal
