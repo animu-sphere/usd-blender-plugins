@@ -527,12 +527,15 @@ void CheckLegacyVersion(const Fixture& fixture) {
   }
   autoSmooth.Float(autoSmooth.mesh, autoSmooth.Member("Mesh", "smoothresh").offset, 0);
   const auto separated = Take(autoSmooth.Decode()).meshes[0];
-  Require(separated.cornerNormals[0] == separated.cornerNormals[1] &&
-              separated.cornerNormals[1] == separated.cornerNormals[2] &&
-              separated.cornerNormals[3] == separated.cornerNormals[4] &&
-              separated.cornerNormals[4] == separated.cornerNormals[5] &&
-              separated.cornerNormals[0] != separated.cornerNormals[3],
-      "Zero auto-smooth angle separates noncoplanar faces");
+  Require(separated.cornerNormals.size() == 6, "Zero auto-smooth angle retains every corner normal");
+  const blend::Vector3 tiltedNormal = {3 / std::sqrt(17.0), 2 / std::sqrt(17.0), 2 / std::sqrt(17.0)};
+  for (std::size_t corner = 0; corner < separated.cornerNormals.size(); ++corner) {
+    const auto expectedNormal = corner < 3 ? blend::Vector3{0, 1, 0} : tiltedNormal;
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      Require(std::abs(separated.cornerNormals[corner][axis] - expectedNormal[axis]) < 1e-12,
+          "Zero auto-smooth angle retains each face's analytic normal");
+    }
+  }
   autoSmooth.Float(autoSmooth.mesh, autoSmooth.Member("Mesh", "smoothresh").offset, std::numbers::pi_v<float>);
   autoSmooth.Bits(autoSmooth.legacyEdges, 2 * autoSmooth.Size("MEdge") + autoSmooth.Member("MEdge", "flag").offset, 512, 2);
   Require(SameMesh(separated, Take(autoSmooth.Decode()).meshes[0]), "Sharp edges split fans even at pi");

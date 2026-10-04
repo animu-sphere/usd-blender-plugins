@@ -133,6 +133,10 @@ exactly deterministic. Four synthetic pointer-width/byte-order layouts in
 splitting at pi and negative/nonfinite/immediately-above-pi/wrong-type angle
 failures with exact fatal Mesh block/byte context and no partial Scene.
 Inactive smoothing angles are not interpreted.
+Zero-angle synthetic normals compare to each face's analytic normal within
+`1e-12`, rather than requiring bit-identical results from independently
+weighted/renormalized corner fans. Exact comparisons still pin
+repeated/reversed decoding of the same input.
 
 `usdBlend.authoring` checks native-to-USD identity, repeated/reversed stages
 and metadata-only reads in both build modes. Registered-plugin tests compare
