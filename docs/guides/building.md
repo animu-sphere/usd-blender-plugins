@@ -700,6 +700,44 @@ Full-file saved addresses/UI state are not byte-reproducible. The
 [fixture record](../../plugins/usdBlendFileFormat/tests/fixtures/README.md#normal-save-cube)
 owns provenance. The bundle's smoke/roundtrip/golden pyramid uses this input.
 
+#### Direct usdview rendering
+
+Use an installed imaging runtime with `usdview`, Storm, a compatible host
+Python, Qt and PyOpenGL. The local `lookdev` profile supplies these; it is
+separate from the `usd` profile used by the regular regression commands.
+Build the bundle against the runtime being loaded.
+
+The following commands were exercised on Windows on 2026-10-05 with OpenUSD
+26.08, Python 3.13, PySide6 6.8.3 and PyOpenGL 3.1.9:
+
+```powershell
+ost plugin build plugins\usdBlendFileFormat --target cy2026 --profile lookdev
+$usdBin = Join-Path $HOME '.ost\runtimes\openstrata-cy2026-windows-x86_64-py313-lookdev\bin'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile lookdev -- python "$usdBin\usdview" plugins\usdBlendFileFormat\tests\fixtures\single_cube.blend --defaultsettings --select /Asset/geo/Cube/mesh --renderer Storm --quitAfterStartup
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile lookdev -- python "$usdBin\testusdview" plugins\usdBlendFileFormat\tests\fixtures\single_cube.blend --renderer Storm --select /Asset/geo/Cube/mesh --testScript plugins\usdBlendFileFormat\tests\test_usdview.py
+```
+
+The first launch checks direct `.blend` startup and exits automatically.
+The second uses OpenUSD's existing `testusdview` harness to verify the loaded
+file-format identity, `/Asset/geo/Cube/mesh`, Y-up/meter metadata, Storm
+convergence within 30 seconds, a visible Cube against a black background and
+a center-pixel pick of that Mesh. It uses a wider three-quarter test camera
+to expose the silhouette, disables HUD/bounding-box overlays, and closes the
+viewer after checking. It fails with `--norender`; opening a stage alone is
+not rendering evidence.
+
+The Python launcher is explicit because `ost` 0.23.14 cannot directly execute
+the extensionless `usdview`/`testusdview` scripts on Windows (Win32 error 193).
+To inspect interactively, omit `--quitAfterStartup` from the first command
+and orbit/zoom as needed. Neither launch rewrites or exports the `.blend`.
+Set `USD_BLEND_USDVIEW_SCREENSHOT` to a writable PNG file path before the
+harness command to retain its viewport capture; an unwritable path fails
+the check. The default invocation does not write a screenshot.
+
+These GPU/Qt checks are local and optional, not part of the hosted
+stage-contract workflow. The exact Cube milestone run and hosted source SHA
+are recorded with the [fixture evidence](../../plugins/usdBlendFileFormat/tests/fixtures/README.md#cube-milestone-verification).
+
 ### Multi-scale unit and naming oracles
 
 Run with each pinned Blender installation (4.5.13 or 5.2.2). Default outputs

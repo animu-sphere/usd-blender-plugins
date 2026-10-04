@@ -118,6 +118,7 @@ codes remain recoverable stderr diagnostics. Its
 | Y-up, meters | supported | cube, integrated Scene and eight multi-scale fixtures in `test_stage.py` | Phase 0 |
 | Mesh/Empty objects, parenting, transforms and own render visibility | supported | both integrated Scene oracles in `test_stage.py`; shared Meshes, parent-only Object, nonuniform/negative scales and sheared parent inverses | Phase 2 |
 | meshes: polygon topology, normals, indexed UVs and extent | supported | `single_cube.blend` and golden; both integrated Scene oracles in `test_stage.py`; native-to-authoring checks in both CMake modes | Phase 2 |
+| direct Cube display in usdview (Windows, Storm) | supported | `single_cube.blend`; local `test_usdview.py` checks the loaded `.blend`, converged viewport, Cube silhouette and center Mesh pick; [dated evidence](../../plugins/usdBlendFileFormat/tests/fixtures/README.md#cube-milestone-verification); no Linux viewport claim | Phase 2 |
 | deterministic identifiers and repeated reads | supported | reserved `mesh_1` child, repeated anonymous layers and referenced geometry in `test_stage.py`; ASCII multi-scale fixtures in `usdBlend.units` | Phase 2 |
 | `metadataOnly` hierarchy without geometry attributes | supported | cube and integrated Scenes retain prim types, provenance, transforms and visibility in `test_stage.py`; both authoring CTests check the byte-to-Scene composition | Phase 2 |
 | materials: Principled BSDF subset | — | | Phase 3 |
