@@ -10,6 +10,13 @@
 #include <stdexcept>
 #include <string_view>
 
+void CheckNativeMeshes(const std::vector<std::byte>& bytes,
+    const std::vector<blend::BlendBlock>& blocks, const blend::DnaSchema& schema,
+    const blend::Header& header);
+void CheckCorpusMesh(const std::vector<std::byte>& bytes,
+    const std::vector<blend::BlendBlock>& blocks, const blend::DnaSchema& schema,
+    const blend::Header& header, const blend::SelectedSceneObjects& selected);
+
 namespace {
 
 void Require(bool condition, const char* message) {
@@ -410,6 +417,8 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
   const auto constraintsOffset = offset;
   members.push_back({8, 0, "constraints", 0, {}, offset, static_cast<std::uint64_t>(2 * width)});
   offset += 2 * width;
+  members.push_back({8, 0, "modifiers", 0, {}, offset, static_cast<std::uint64_t>(2 * width)});
+  offset += 2 * width;
   const auto locationOffset = offset;
   for (const auto name : {"loc", "dloc", "size", "dscale", "rot", "drot"}) {
     members.push_back({1, 0, name, 0, {3}, offset, 12});
@@ -510,6 +519,7 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
               result.GetValue().objects[1].worldTransform == blend::ToUsdBasis(Multiply(Multiply(root, inverse), child)) &&
               result.Diagnostics().empty(),
       "Native decoding publishes only owning normalized Empty objects and selected parent indices");
+  CheckNativeMeshes(bytes, blocks, schema, header);
   for (const float scale : {1.0f, 0.01f, 0.001f, 10.0f}) {
     auto changed = bytes;
     scalar(changed, 1, idSize, scale);
@@ -550,7 +560,7 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
   changed = bytes;
   bits(changed, 4, typeOffset, 1, 2);
   bits(changed, 4, idSize + width, 3000, width);
-  failure(changed, blocks, schema, "BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED", 4);
+  failure(changed, blocks, schema, "BLEND_DNA_MEMBER", static_cast<std::uint32_t>(blocks.size() - 2));
   bits(changed, 4, idSize + width, 0, width);
   failure(changed, blocks, schema, "BLEND_SCENE_REFERENCE_INVALID", 4);
   changed = bytes;
@@ -1504,9 +1514,15 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
       "Object value reading preserves corpus membership");
   const auto native = blend::DecodeScene(decoded.GetValue(), blocks.GetValue(),
       schema.GetValue(), header.GetValue(), {10000, 64});
-  Require(!native.HasValue() && native.GetError().code == "BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED" &&
-              native.GetError().blockIndex == objects.GetValue().objects.front().blockIndex,
-      "Native decoding reports unsupported corpus objects rather than replacing them with Empty objects");
+  const auto unsupported = std::find_if(objectValues.GetValue().objects.begin(),
+      objectValues.GetValue().objects.end(),
+      [](const auto& object) { return object.values->type != 0 && object.values->type != 1; });
+  if (native.HasValue() || native.GetError().code != "BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED" ||
+      unsupported == objectValues.GetValue().objects.end() ||
+      native.GetError().blockIndex != unsupported->blockIndex) {
+    throw std::runtime_error("Native corpus decoding must reject unsupported Object kinds: " +
+        (native.HasValue() ? std::string("got Scene") : native.GetError().code + ": " + native.GetError().message));
+  }
   auto emptyObjects = decoded.GetValue();
   const auto* objectStruct = schema.GetValue().FindStruct("Object");
   for (const auto& object : objects.GetValue().objects) {
@@ -1525,6 +1541,8 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
   }
   Require(nativeEmpty.GetValue().objects.size() == 3 && nativeEmpty.GetValue().meshes.empty(),
       "Corpus SDNA supports Empty decoding when Object kind/data are mutated without fabricating layouts");
+  CheckCorpusMesh(decoded.GetValue(), blocks.GetValue(), schema.GetValue(),
+      header.GetValue(), objects.GetValue());
   for (const auto& object : objects.GetValue().objects) {
     names.push_back(object.sourceName);
     const auto view = blend::ViewDnaBlock(decoded.GetValue(), blocks.GetValue(),

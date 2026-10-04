@@ -111,12 +111,21 @@ Fixture paths are relative to
 | `BLEND_SCENE_GLOBAL_INVALID` | Fatal | no | GLOB is missing, duplicated or not one FileGlobal | synthetic GLOB absence/count/type cases in `blendScene.ir` |
 | `BLEND_SCENE_ACTIVE_MISSING` | Fatal | no | FileGlobal.curscene is null; no implicit Scene fallback | Scene-only `empty.blend` and synthetic null pointers in `blendScene.ir` |
 | `BLEND_SCENE_REFERENCE_INVALID` | Fatal | no | a required Scene/Collection/list/Object reference, nonzero Object parent/data/instance, target code/type/count or semantic member shape is incompatible; opt-in Object values also reject missing type-required data or a null enabled instance | null/absent/interior/metadata pointers, wrong pointer types and targets, synthetic parent/data/value/instance errors and corpus pointer/flag mutations in `blendScene.ir` |
-| `BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED` | Fatal | no | opt-in Object value reading finds a source type without a verified data mapping, or native decoding reaches a non-Empty Object | positive unmapped and negative short types, native Mesh rejection across four synthetic layouts and native non-Empty rejection in both corpus files in `blendScene.ir` |
+| `BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED` | Fatal | no | opt-in Object value reading finds a source type without a verified data mapping, or native decoding reaches a kind other than Mesh/Empty | positive unmapped and negative short types, native Camera/Light rejection in both corpus files in `blendScene.ir` |
 | `BLEND_SCENE_OBJECT_DATA_UNSUPPORTED` | Fatal | no | native decoding reaches an Image Empty | Image ID target across four synthetic layouts in `blendScene.ir` |
 | `BLEND_SCENE_INSTANCE_UNSUPPORTED` | Fatal | no | native decoding reaches enabled Collection instancing after graph validation | valid instance target across four synthetic layouts in `blendScene.ir`; graph cycles retain `BLEND_SCENE_CYCLE` |
 | `BLEND_SCENE_TRANSFORM_UNSUPPORTED` | Fatal | no | native decoding reaches non-XYZ Euler rotation, nonzero transform flags or non-ordinary parenting | rotation modes, flags and parenting mode across four synthetic layouts in `blendScene.ir` |
 | `BLEND_SCENE_TRANSFORM_INVALID` | Fatal | no | native source transform storage has an incompatible scalar/array shape, nonfinite channels, non-affine parent inverse or construction overflow | malformed shapes, NaN/infinity, projective parent inverse and overflowing source parent matrices across four synthetic layouts in `blendScene.ir` |
-| `BLEND_SCENE_EVALUATION_UNAPPLIED` | Unsupported | yes | native decoding uses source transform channels with nonnull animation or constraint endpoints; evaluation contents are not followed | independent animation and both endpoint mutations with contextual diagnostics across four synthetic layouts in `blendScene.ir` |
+| `BLEND_SCENE_EVALUATION_UNAPPLIED` | Unsupported | yes | native decoding uses source transform/geometry values with nonnull animation, constraint or Mesh modifier endpoints; evaluation contents are not followed | independent animation, constraint endpoints and modifier presence with contextual diagnostics across four synthetic layouts in `blendScene.ir` |
+| `BLEND_MESH_REFERENCE_INVALID` | Fatal | no | a required Mesh storage pointer is null, absent, interior or resolves to a non-DATA block | offset/name/value pointers and non-DATA arrays in both synthetic storage forms across four layouts in `blendScene.ir` |
+| `BLEND_MESH_STORAGE_INVALID` | Fatal | no | Mesh counts, member shapes, record/array lengths/counts, attribute names, boolean values or UV selectors are invalid | negative/excessive counts, array/AttributeArray sizes, SDNA record counts, unterminated/duplicate names, boolean and UV selection mutations in `blendScene.ir` |
+| `BLEND_MESH_STORAGE_UNSUPPORTED` | Fatal | no | version/core attribute type/domain, missing required storage, mixed/external CustomData, flagged layers, constant/special Attribute storage or legacy UV storage is outside the initial decoder | version/type/domain, flagged/constant/special AttributeArray and legacy MLoopUV mutations in `blendScene.ir`; mixed/external rejection implemented but unverified |
+| `BLEND_MESH_TOPOLOGY_INVALID` | Fatal | no | face/corner counts disagree, offsets do not cover valid polygons, or a corner vertex is out of range | nonzero first, decreasing/negative/short/out-of-range/final offsets and negative/out-of-range vertex indices in `blendScene.ir` |
+| `BLEND_MESH_VALUE_INVALID` | Fatal | no | a source position or UV component is nonfinite | NaN/infinity positions and UVs in both storage forms across four layouts in `blendScene.ir` |
+| `BLEND_MESH_NORMALS_UNSUPPORTED` | Fatal | no | flat sharp-face data is absent or smooth, or packed/named custom normals are reached | smooth and packed/named custom-normal mutations in `blendScene.ir`; Blender-written smooth/custom-normal fixtures remain absent |
+| `BLEND_MESH_NORMALS_INVALID` | Fatal | no | a polygon's constructed normal is degenerate or nonfinite | collapsed source points in both storage forms across four layouts in `blendScene.ir` |
+| `BLEND_MESH_EMPTY` | Warning | yes | a source Mesh has no polygons; points and empty topology are retained | one contextual warning for a shared empty Mesh in both storage forms across four layouts in `blendScene.ir` |
+| `BLEND_MESH_EVALUATION_UNAPPLIED` | Unsupported | yes | a source Mesh has shape-key data; source positions are used without following or evaluating keys | nonnull key mutation leaves Mesh values unchanged in both storage forms across four layouts in `blendScene.ir` |
 | `BLEND_SCENE_LINKED_UNSUPPORTED` | Fatal | no | a selected Scene or reached Collection/Object/data ID has nonzero ID.lib; external data is not followed | synthetic linked Scene/Collection/Object/data IDs in `blendScene.ir` |
 | `BLEND_SCENE_NAME_INVALID` | Fatal | no | a selected Scene/Collection/Object/data ID.name is not a terminated, correctly prefixed one-byte char array | synthetic invalid Scene/Collection/Object/data prefixes and Scene/data terminators in `blendScene.ir` |
 | `BLEND_SCENE_LIMITS` | Fatal | no | Object selection receives a zero visit or depth limit | both missing limits in `blendScene.ir` |
@@ -185,19 +194,25 @@ The standalone `UnitConversion` helper throws `std::invalid_argument` for
 invalid input or `std::overflow_error` for meter-conversion overflow, with the
 stable code followed by a colon at the start of `what()`. It does not return a
 `Diagnostic` record or know source offsets/datablocks. `DecodeScene` translates
-unit conversion failures into fatal, non-recoverable diagnostics with Object
+unit conversion failures into fatal, non-recoverable diagnostics with Object or Mesh
 context and no fallback Scene; an overflowing native parent translation is
 tested across four synthetic layouts. Scene unit validation retains selection
 context. These failures are library-tested, not reachable through the
 header-only importer.
 
 `DecodeScene` first preserves the complete Object-value selection and recursive
-graph validation boundary. Its own fatal errors identify the affected Object's
+graph validation boundary. Its transform failures identify the affected Object's
 payload offset and block index; unit failures also carry its source name.
 Source-evaluation presence diagnostics identify each decoded Object once,
-including parent-only Objects, without following evaluation pointers.
+including parent-only Objects, without following evaluation pointers. Mesh
+Objects also report modifier presence; each shared decoded Mesh reports
+shape-key presence once. Mesh semantic failures identify the referring or
+invalid storage target's payload offset and block index; source numeric arrays
+and record counts are validated without publishing partial IR. Reader errors
+retain their original codes and value-view offsets.
 Allocation failures have no context. See the
-[native decoding boundary](../design/DESIGN_POLICY.md#527-native-empty-scene-decoding-boundary).
+[native decoding boundary](../design/DESIGN_POLICY.md#527-native-scene-decoding-boundary)
+and [Mesh storage boundary](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary).
 
 The tool prints codes and severity to stderr and preserves available block
 and datablock context. DNA1-relative offsets are translated to decoded file

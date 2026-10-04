@@ -161,10 +161,15 @@ authored-stage support. The importer remains header-only.
 | saved Object type, render visibility, transform flags and type-specific data ID requirements | supported | opt-in `SelectSceneObjectValues`; four synthetic layouts cover all mapped kinds, missing/wrong data, scalar shapes, parent-only values and ownership; both 4.5.13/5.2.2 corpus files cover native kinds, saved short/int visibility and visibility/data mutations in `blendScene.ir` | Phase 2 |
 | immediate instance Collection references and explicit visit-budget diagnostics | supported | four synthetic layouts cover saved member names, null/absent/interior/wrong/count/linked/name targets, inactive references, shared and already-visited targets, reordered indices and exact budgets; both corpus files cover null references and pointer/flag mutations in `blendScene.ir` | Phase 2 |
 | recursive instance graph validation | supported | four synthetic layouts cover nested missing/interior/wrong-type/linked targets, self/ancestor cycles through CollectionObject membership, shared targets, preserved membership and generic selection, and 256-child instance subgraphs with exact/one-smaller visit/depth budgets; both corpus files reject self-instancing master Collections in `blendScene.ir` | Phase 2 |
-| native Empty Scene IR decoding, render visibility and selected parent indices | supported | `DecodeScene` composes Object-value selection; four synthetic layouts cover empty/parented Scenes, parent-only Objects, block reordering, ownership and explicit failures for unsupported kinds/data/instances; both corpus SDNA layouts decode Object-kind/data mutations without rewriting fixtures in `blendScene.ir` | Phase 2 |
+| native Mesh/Empty Scene IR decoding, render visibility and selected parent indices | supported | `DecodeScene` composes Object-value selection; four synthetic layouts cover mixed Mesh/Empty Scenes, shared Mesh indices, parent-only Objects, block reordering, ownership and explicit failures for unsupported kinds/data/instances; both corpus SDNA layouts decode in-memory Object-kind/data mutations without rewriting fixtures in `blendScene.ir` | Phase 2 |
 | native XYZ Euler Empty local/world transform construction and meter normalization | supported | four synthetic layouts cover delta translation/rotation/scale, nonuniform/negative scale, column-first parent inverse, four source unit scales, shared and 256-deep parents at exact budgets, malformed/nonfinite storage and source/unit overflow in `blendScene.ir`; no Blender-written transform oracle | Phase 2 |
-| native source-only animation/constraint presence diagnostics | supported | nonnull `adt` and either constraint endpoint produce contextual recoverable `BLEND_SCENE_EVALUATION_UNAPPLIED` without changing source transforms in four synthetic layouts in `blendScene.ir` | Phase 2 |
-| parent-relative transforms, topology validation, normals and UV decoding | — | | Phase 2 |
+| native source-only animation/constraint/modifier and shape-key presence diagnostics | supported | nonnull `adt`, constraint endpoints and Mesh modifiers produce contextual recoverable `BLEND_SCENE_EVALUATION_UNAPPLIED`; Mesh keys produce `BLEND_MESH_EVALUATION_UNAPPLIED`, without following or applying evaluation data in four synthetic layouts in `blendScene.ir` | Phase 2 |
+| native Mesh source positions, polygon offsets and corner vertex indices | supported | real 4.5.13 CustomData and 5.2.2 AttributeArray Cube Mesh payloads with pinned points and all face indices; both storage forms across four synthetic layouts cover shared/mixed objects, ownership, repeated/reordered reads and four unit scales in `blendScene.ir` | Phase 2 |
+| native flat face-varying corner normals | supported | all 24 outward Cube corner normals in both corpus files; two synthetic triangles in both storage forms across four layouts, with normals unchanged by unit scale in `blendScene.ir` | Phase 2 |
+| native named indexed UV maps and saved render map | supported | real `UVMap` in both corpus files; two synthetic maps with exact deduplicated values/indices and non-first render map in both storage forms across four layouts in `blendScene.ir` | Phase 2 |
+| native empty/invalid/unsupported Mesh storage diagnostics | supported | empty shared Mesh, negative/excessive counts, missing/interior/non-DATA pointers, wrong array lengths/counts/SDNA, malformed names, invalid offsets/vertex indices, nonfinite values, degenerate/smooth/custom normals, flagged/constant/unsupported storage and invalid UV selectors in `blendScene.ir` | Phase 2 |
+| native smooth or custom split normals, constant attribute storage and legacy fixed Mesh/MLoopUV storage | unsupported | explicit missing-core, smooth/custom-normal, constant/flagged and legacy-UV failures in `blendScene.ir`; no Blender-written smooth/custom-normal fixture | Phase 2 |
+| parent-relative transforms | — | | Phase 2 |
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines row-major, column-vector matrix semantics and meter-space distances.
@@ -219,17 +224,22 @@ No Mesh values, data-cycle policy, instance graph or populated IR is added.
 Real data-edge evidence remains 64-bit little-endian; sharing, parent-only
 targets, budgets and other layouts have synthetic evidence.
 
-The [native Empty decoding boundary](../design/DESIGN_POLICY.md#527-native-empty-scene-decoding-boundary)
+The [native decoding boundary](../design/DESIGN_POLICY.md#527-native-scene-decoding-boundary)
 publishes owning Scene IR only after saved Object-value and recursive graph
 validation succeeds. It constructs source XYZ Euler transforms, including
 delta channels and ordinary Object parent inverses, then normalizes world
-translations and the basis once. Only data-less Empty objects with zero
+translations and the basis once. Mesh and data-less Empty objects with zero
 transform flags are accepted; other kinds, Image Empty data, active instances,
 other rotations and parenting modes fail explicitly, with no partial IR.
 Parent-only Objects affect world space but do not join membership. Immediate
 selected parents become IR indices; other parents leave an IR root with its
 complete world matrix. Source names and render visibility are retained,
-identifiers remain empty, and no meshes are decoded. Animation/constraint
-presence is reported without evaluation. Corpus evidence uses mutations of
-Object type/data, not Blender-written Empty or parenting fixtures. No backend,
+identifiers remain empty, and selected Mesh data is decoded once per shared
+target under the [Mesh storage boundary](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary).
+Animation/constraint/modifier and shape-key presence is reported without
+evaluation. The Cube's Mesh bytes in both corpus files are unchanged; non-Mesh
+Objects are mutated to Empty in memory to isolate the supported scene scope.
+Those files remain unsupported as complete Scenes because Camera/Light decoding
+is not introduced. Empty/parenting evidence still uses synthetic or mutated
+Object values, not Blender-written transform oracle fixtures. No backend,
 USD authoring, native-to-USD unit equivalence or importer connection is claimed.

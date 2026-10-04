@@ -7,7 +7,7 @@ endif()
 if(NOT TARGET blendFile::blendFile)
     find_package(blendFile CONFIG REQUIRED)
 endif()
-add_library(blendScene STATIC src/Scene.cpp src/Selection.cpp src/Collections.cpp src/Decode.cpp)
+add_library(blendScene STATIC src/Scene.cpp src/Selection.cpp src/Collections.cpp src/Decode.cpp src/Mesh.cpp)
 add_library(blendScene::blendScene ALIAS blendScene)
 target_link_libraries(blendScene PUBLIC blendFile::blendFile)
 target_compile_features(blendScene PUBLIC cxx_std_20)
@@ -32,7 +32,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/blendSceneConfig.cmake
     ${CMAKE_CURRENT_BINARY_DIR}/blendSceneConfigVersion.cmake DESTINATION lib/cmake/blendScene)
 if(BUILD_TESTING)
     file(WRITE "${CMAKE_BINARY_DIR}/.cmake/api/v1/query/client-blendScene/codemodel-v2" "")
-    add_executable(blendSceneTests tests/SceneTests.cpp)
+    add_executable(blendSceneTests tests/SceneTests.cpp tests/MeshTests.cpp)
     target_link_libraries(blendSceneTests PRIVATE blendScene::blendScene)
     add_test(NAME blendScene.ir COMMAND blendSceneTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests/fixtures/empty.blend

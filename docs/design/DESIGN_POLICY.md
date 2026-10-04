@@ -559,7 +559,7 @@ unsupported-kind USD fallback, populated Scene IR or importer integration
 are introduced. Fixture-backed scope belongs in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
 
-### 5.2.7 Native Empty Scene decoding boundary
+### 5.2.7 Native Scene decoding boundary
 
 `DecodeScene(bytes, blocks, schema, header, limits)` in `blendScene/Decode.h`
 composes `SelectSceneObjectValues` with semantic decoding into `Result<Scene>`.
@@ -569,7 +569,8 @@ instance graph before any Scene is published. Selection/reader failures retain
 their codes and context; fatal decoding errors likewise return no partial IR.
 The decoder neither opens files nor supplies compression or traversal defaults.
 
-The initial object scope is data-less Empty (`Object.type == 0`), XYZ Euler
+The initial object scope is data-less Empty (`Object.type == 0`) and Mesh
+(`Object.type == 1`), XYZ Euler
 (`rotmode == 1`), zero `transflag`, and ordinary Object parenting
 (`partype == 0` when a parent exists). Other mapped kinds fail with
 `BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED`; Image Empty data fails with
@@ -594,25 +595,98 @@ validated under the caller's budgets. Parent-only Objects contribute to world
 space and obey the same decoding restrictions without joining membership.
 An IR parent index is assigned only when the immediate saved parent belongs
 to selected membership; otherwise the Object is an IR root retaining its full
-world matrix. Source names and render visibility are copied; mesh indices stay
-absent and identifiers stay empty pending the naming pass. One selected-Scene
+world matrix. Source names and render visibility are copied. Selected Mesh
+Objects receive indices into the owning mesh vector under the
+[Mesh storage boundary](#528-native-mesh-storage-boundary); shared data targets
+are decoded once, in first selected-object discovery order. Parent-only Mesh
+Objects contribute transforms but do not publish their geometry. Identifiers
+stay empty pending the naming pass. One selected-Scene
 `UnitConversion` normalizes complete source world matrices into meters and the
 USD basis before publication. Unit-helper exceptions become contextual fatal
 diagnostics; authoring must not convert these matrices again.
 
-The decoder reads scalar `AnimData *adt` and embedded `ListBase constraints`
-only to detect source evaluation dependencies. Nonnull animation or constraint
+The decoder reads scalar `AnimData *adt`, embedded `ListBase constraints` and,
+for Mesh Objects, embedded `ListBase modifiers`
+only to detect source evaluation dependencies. Nonnull animation, constraint or modifier
 endpoints emit recoverable `Unsupported` `BLEND_SCENE_EVALUATION_UNAPPLIED`;
 their contents and addresses are neither followed nor evaluated. Source
 channels still define the result, including for parent-only Objects.
 
 An active Scene with empty Collections produces owning metadata and empty
 object/mesh vectors; the Scene-only library's null `curscene` remains an error.
-This is a library decoding boundary, not an `IBlendBackend`, mesh decoder,
+This is a library decoding boundary, not an `IBlendBackend`,
 identifier pass or USD/importer connection. Synthetic arithmetic and mutated
 corpus layouts do not substitute for Blender-written Empty/parenting oracle
 fixtures or STAGE-O1's multi-scale end-to-end evidence. Fixture-backed scope is
 in the [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
+
+### 5.2.8 Native Mesh storage boundary
+
+Mesh decoding is internal to `DecodeScene`, after the selected Object graph
+and local data IDs are validated. It targets the 4.5 and 5.x storage families,
+not every Mesh in those version ranges. Layouts come from SDNA, not host
+structures: embedded `attribute_storage` with nonzero `dna_attributes_num`
+selects `Attribute` records; otherwise embedded `vdata`, `edata`, `pdata` and
+`ldata` provide `CustomDataLayer` records. Mixed nonempty storage families and
+external CustomData are rejected. Legacy fixed arrays are not a fallback;
+modern attributes are authoritative even when legacy pointer fields are saved.
+
+The initial domain/type mapping is:
+
+| Value | Domain | CustomData type | Attribute data type |
+| --- | --- | --- | --- |
+| `position` | point (0) | float3 (48) | float3 (7) |
+| `.corner_vert` | corner (3) | integer (11) | integer (3) |
+| `sharp_face` | face (2) | boolean (50) | boolean (0) |
+| UV maps | corner (3) | float2 (49) | float2 (6) |
+
+Required positions and corner indices must be present for nonempty domains.
+Counts are nonnegative scalar `int`; `poly_offset_indices` holds `totpoly + 1`
+signed 32-bit offsets starting at zero, delimiting polygons of at least three
+corners and ending at `totloop`. Every corner vertex index must be within
+`totvert`. Winding and corner order are unchanged. Points are copied into
+meters and the USD basis exactly once, independent of Object world matrices.
+
+Storage pointers resolve exact keys to `DATA`, never interior addresses or
+external files. Structure arrays require the declared SDNA type, count and
+length. Modern consumed attributes require dense `AttributeArray` storage
+(`storage_type == 0`, `is_single == 0`) and a matching domain `size`. Consumed
+CustomData layers require zero flags. Raw arrays require `raw_data`, count one
+and the exact serialized byte length; scalar bytes are decoded in the source
+byte order. Structured vector/integer arrays use SDNA member views. Array
+lengths are validated before output reservation. Names are bounded terminated
+character storage, nonempty and unique within a domain; raw source bytes are
+retained without assigning identifiers.
+
+The initial normal scope is flat polygons with all `sharp_face` values true.
+Area-weighted polygon normals are constructed from source positions, normalized
+and rotated into the USD basis without unit scaling, then copied per corner.
+Missing/smooth sharp-face data and packed or named custom normals fail with
+`BLEND_MESH_NORMALS_UNSUPPORTED`; degenerate polygons fail with
+`BLEND_MESH_NORMALS_INVALID`. Smooth fans, custom split normals, constant
+attribute storage and legacy `MLoopUV` storage remain separate work, not
+success-shaped approximations.
+
+Every corner float2 map becomes an owning indexed `UvMap`: equal numeric pairs
+share a value at first occurrence, indices preserve corner order, and no UV
+axis is flipped. A nonnull `default_uv_map_attribute` names the render map;
+otherwise CustomData UV layers must agree on a valid `active_rnd` index.
+Modern storage with no saved render-map name marks no map active rather than
+choosing one. Other generic attributes are outside this initial IR scope.
+
+A Mesh without polygons retains its source points and empty topology with
+one recoverable `BLEND_MESH_EMPTY` diagnostic, including when shared.
+A nonnull typed `Key *key` emits `BLEND_MESH_EVALUATION_UNAPPLIED`; shape keys
+are not followed or applied. Semantic Mesh failures are fatal with referring
+or invalid target payload context and no partial Scene. Reader failures retain
+their codes and context. Full-file/block budgets remain the caller's
+responsibility; traversal limits still count graph records, not numeric array
+elements, whose storage is bounded by the supplied bytes and exact lengths.
+
+Evidence belongs in the
+[capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir). Neither
+synthetic storage nor corpus Mesh decoding establishes Blender transform/unit
+oracle equivalence, identifier policy, backend integration or USD authoring.
 
 ### 5.3 `usdBlendFileFormat` — the importer
 
