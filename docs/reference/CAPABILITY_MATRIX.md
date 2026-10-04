@@ -161,7 +161,9 @@ authored-stage support. The importer remains header-only.
 | saved Object type, render visibility, transform flags and type-specific data ID requirements | supported | opt-in `SelectSceneObjectValues`; four synthetic layouts cover all mapped kinds, missing/wrong data, scalar shapes, parent-only values and ownership; both 4.5.13/5.2.2 corpus files cover native kinds, saved short/int visibility and visibility/data mutations in `blendScene.ir` | Phase 2 |
 | immediate instance Collection references and explicit visit-budget diagnostics | supported | four synthetic layouts cover saved member names, null/absent/interior/wrong/count/linked/name targets, inactive references, shared and already-visited targets, reordered indices and exact budgets; both corpus files cover null references and pointer/flag mutations in `blendScene.ir` | Phase 2 |
 | recursive instance graph validation | supported | four synthetic layouts cover nested missing/interior/wrong-type/linked targets, self/ancestor cycles through CollectionObject membership, shared targets, preserved membership and generic selection, and 256-child instance subgraphs with exact/one-smaller visit/depth budgets; both corpus files reject self-instancing master Collections in `blendScene.ir` | Phase 2 |
-| native local/world transform construction | — | | Phase 2 |
+| native Empty Scene IR decoding, render visibility and selected parent indices | supported | `DecodeScene` composes Object-value selection; four synthetic layouts cover empty/parented Scenes, parent-only Objects, block reordering, ownership and explicit failures for unsupported kinds/data/instances; both corpus SDNA layouts decode Object-kind/data mutations without rewriting fixtures in `blendScene.ir` | Phase 2 |
+| native XYZ Euler Empty local/world transform construction and meter normalization | supported | four synthetic layouts cover delta translation/rotation/scale, nonuniform/negative scale, column-first parent inverse, four source unit scales, shared and 256-deep parents at exact budgets, malformed/nonfinite storage and source/unit overflow in `blendScene.ir`; no Blender-written transform oracle | Phase 2 |
+| native source-only animation/constraint presence diagnostics | supported | nonnull `adt` and either constraint endpoint produce contextual recoverable `BLEND_SCENE_EVALUATION_UNAPPLIED` without changing source transforms in four synthetic layouts in `blendScene.ir` | Phase 2 |
 | parent-relative transforms, topology validation, normals and UV decoding | — | | Phase 2 |
 
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
@@ -216,3 +218,18 @@ pointer nor an otherwise valid local ID of the wrong semantic type is rejected.
 No Mesh values, data-cycle policy, instance graph or populated IR is added.
 Real data-edge evidence remains 64-bit little-endian; sharing, parent-only
 targets, budgets and other layouts have synthetic evidence.
+
+The [native Empty decoding boundary](../design/DESIGN_POLICY.md#527-native-empty-scene-decoding-boundary)
+publishes owning Scene IR only after saved Object-value and recursive graph
+validation succeeds. It constructs source XYZ Euler transforms, including
+delta channels and ordinary Object parent inverses, then normalizes world
+translations and the basis once. Only data-less Empty objects with zero
+transform flags are accepted; other kinds, Image Empty data, active instances,
+other rotations and parenting modes fail explicitly, with no partial IR.
+Parent-only Objects affect world space but do not join membership. Immediate
+selected parents become IR indices; other parents leave an IR root with its
+complete world matrix. Source names and render visibility are retained,
+identifiers remain empty, and no meshes are decoded. Animation/constraint
+presence is reported without evaluation. Corpus evidence uses mutations of
+Object type/data, not Blender-written Empty or parenting fixtures. No backend,
+USD authoring, native-to-USD unit equivalence or importer connection is claimed.

@@ -111,7 +111,12 @@ Fixture paths are relative to
 | `BLEND_SCENE_GLOBAL_INVALID` | Fatal | no | GLOB is missing, duplicated or not one FileGlobal | synthetic GLOB absence/count/type cases in `blendScene.ir` |
 | `BLEND_SCENE_ACTIVE_MISSING` | Fatal | no | FileGlobal.curscene is null; no implicit Scene fallback | Scene-only `empty.blend` and synthetic null pointers in `blendScene.ir` |
 | `BLEND_SCENE_REFERENCE_INVALID` | Fatal | no | a required Scene/Collection/list/Object reference, nonzero Object parent/data/instance, target code/type/count or semantic member shape is incompatible; opt-in Object values also reject missing type-required data or a null enabled instance | null/absent/interior/metadata pointers, wrong pointer types and targets, synthetic parent/data/value/instance errors and corpus pointer/flag mutations in `blendScene.ir` |
-| `BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED` | Fatal | no | opt-in Object value reading finds a source type without a verified data mapping | positive unmapped and negative short types across four synthetic layouts in `blendScene.ir` |
+| `BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED` | Fatal | no | opt-in Object value reading finds a source type without a verified data mapping, or native decoding reaches a non-Empty Object | positive unmapped and negative short types, native Mesh rejection across four synthetic layouts and native non-Empty rejection in both corpus files in `blendScene.ir` |
+| `BLEND_SCENE_OBJECT_DATA_UNSUPPORTED` | Fatal | no | native decoding reaches an Image Empty | Image ID target across four synthetic layouts in `blendScene.ir` |
+| `BLEND_SCENE_INSTANCE_UNSUPPORTED` | Fatal | no | native decoding reaches enabled Collection instancing after graph validation | valid instance target across four synthetic layouts in `blendScene.ir`; graph cycles retain `BLEND_SCENE_CYCLE` |
+| `BLEND_SCENE_TRANSFORM_UNSUPPORTED` | Fatal | no | native decoding reaches non-XYZ Euler rotation, nonzero transform flags or non-ordinary parenting | rotation modes, flags and parenting mode across four synthetic layouts in `blendScene.ir` |
+| `BLEND_SCENE_TRANSFORM_INVALID` | Fatal | no | native source transform storage has an incompatible scalar/array shape, nonfinite channels, non-affine parent inverse or construction overflow | malformed shapes, NaN/infinity, projective parent inverse and overflowing source parent matrices across four synthetic layouts in `blendScene.ir` |
+| `BLEND_SCENE_EVALUATION_UNAPPLIED` | Unsupported | yes | native decoding uses source transform channels with nonnull animation or constraint endpoints; evaluation contents are not followed | independent animation and both endpoint mutations with contextual diagnostics across four synthetic layouts in `blendScene.ir` |
 | `BLEND_SCENE_LINKED_UNSUPPORTED` | Fatal | no | a selected Scene or reached Collection/Object/data ID has nonzero ID.lib; external data is not followed | synthetic linked Scene/Collection/Object/data IDs in `blendScene.ir` |
 | `BLEND_SCENE_NAME_INVALID` | Fatal | no | a selected Scene/Collection/Object/data ID.name is not a terminated, correctly prefixed one-byte char array | synthetic invalid Scene/Collection/Object/data prefixes and Scene/data terminators in `blendScene.ir` |
 | `BLEND_SCENE_LIMITS` | Fatal | no | Object selection receives a zero visit or depth limit | both missing limits in `blendScene.ir` |
@@ -119,7 +124,7 @@ Fixture paths are relative to
 | `BLEND_SCENE_DEPTH_LIMIT` | Fatal | no | the next membership or recursively instanced Collection, or unfinished Object parent expansion, would exceed the caller's active stack/chain limit | two-level, 256-child and 256-parent chains plus recursive instance depth in `blendScene.ir` |
 | `BLEND_SCENE_LIST_INVALID` | Fatal | no | ListBase endpoints, prev backlinks, terminal last or exclusive list-node ownership disagree | endpoint/backlink/last and shared-node cases across all four layouts in `blendScene.ir` |
 | `BLEND_SCENE_CYCLE` | Fatal | no | a next chain repeats a node, a child or instanced Collection refers to an active Collection, or an Object parent refers to an active ancestor | list and self/ancestor membership, recursive-instance and Object cycles across all four layouts; self-parent corpus mutations in `blendScene.ir` |
-| `BLEND_SCENE_ALLOCATION` | Fatal | no | scene selection, Collection traversal or Object parent/data validation cannot allocate | implemented; allocation failure injection unverified |
+| `BLEND_SCENE_ALLOCATION` | Fatal | no | scene selection, Collection traversal, Object validation or native Scene decoding cannot allocate | implemented; allocation failure injection unverified |
 | `BLEND_SCENE_UNIT_SCALE_INVALID` | Fatal | no | the source unit scale is zero, negative or nonfinite | `UnitConversion` constructor and saved Scene selection cases in `blendScene.ir` |
 | `BLEND_SCENE_UNIT_VALUE_INVALID` | Fatal | no | a source distance is nonfinite or its conversion to meters overflows | scalar, position and translation cases in `blendScene.ir` |
 | `BLEND_SCENE_UNIT_TRANSFORM_INVALID` | Fatal | no | unit conversion receives a non-affine mesh/empty world matrix | projective matrix in `blendScene.ir` |
@@ -179,10 +184,20 @@ codes and offsets. See the
 The standalone `UnitConversion` helper throws `std::invalid_argument` for
 invalid input or `std::overflow_error` for meter-conversion overflow, with the
 stable code followed by a colon at the start of `what()`. It does not return a
-`Diagnostic` record or know source offsets/datablocks. A future scene decoder
-must translate these failures into fatal, non-recoverable diagnostics and
-attach Scene/object context, with no fallback geometry. These failures are
-library-tested, not yet reachable through the header-only importer.
+`Diagnostic` record or know source offsets/datablocks. `DecodeScene` translates
+unit conversion failures into fatal, non-recoverable diagnostics with Object
+context and no fallback Scene; an overflowing native parent translation is
+tested across four synthetic layouts. Scene unit validation retains selection
+context. These failures are library-tested, not reachable through the
+header-only importer.
+
+`DecodeScene` first preserves the complete Object-value selection and recursive
+graph validation boundary. Its own fatal errors identify the affected Object's
+payload offset and block index; unit failures also carry its source name.
+Source-evaluation presence diagnostics identify each decoded Object once,
+including parent-only Objects, without following evaluation pointers.
+Allocation failures have no context. See the
+[native decoding boundary](../design/DESIGN_POLICY.md#527-native-empty-scene-decoding-boundary).
 
 The tool prints codes and severity to stderr and preserves available block
 and datablock context. DNA1-relative offsets are translated to decoded file

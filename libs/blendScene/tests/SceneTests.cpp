@@ -1,5 +1,6 @@
 #include <blendScene/Scene.h>
 #include <blendScene/Selection.h>
+#include <blendScene/Decode.h>
 
 #include <algorithm>
 #include <bit>
@@ -379,6 +380,318 @@ void CheckSelectionLayouts() {
           "Selected scene metadata owns its source strings");
     }
   }
+}
+
+void CheckNativeDecode(std::vector<std::byte> bytes,
+    std::vector<blend::BlendBlock> blocks, blend::DnaSchema schema,
+    const blend::Header& header) {
+  const auto width = header.pointerSize;
+  const auto order = header.byteOrder;
+  const auto idSize = schema.types[3].length;
+  const auto* savedObject = schema.FindStruct("Object");
+  const auto typeOffset = savedObject->FindMember("type")->offset;
+  const auto visibilityOffset = savedObject->FindMember(width == 4 ? "visibility_flag" : "restrictflag")->offset;
+  const auto flagsOffset = savedObject->FindMember("transflag")->offset;
+  const auto instanceOffset = savedObject->FindMember(width == 4 ? "instance_collection" : "dup_group")->offset;
+  const auto shortType = savedObject->FindMember("type")->typeIndex;
+  auto offset = static_cast<std::uint64_t>(schema.types[10].length);
+  auto& members = schema.structs[6].members;
+  const auto rotationModeOffset = offset;
+  members.push_back({shortType, 0, "rotmode", 0, {}, offset, 2});
+  offset += 2;
+  const auto parentingModeOffset = offset;
+  members.push_back({shortType, 0, "partype", 0, {}, offset, 2});
+  offset += 2;
+  const auto animationType = static_cast<std::uint16_t>(schema.types.size());
+  schema.types.push_back({"AnimData", 0});
+  const auto animationOffset = offset;
+  members.push_back({animationType, 0, "adt", 1, {}, offset, width});
+  offset += width;
+  const auto constraintsOffset = offset;
+  members.push_back({8, 0, "constraints", 0, {}, offset, static_cast<std::uint64_t>(2 * width)});
+  offset += 2 * width;
+  const auto locationOffset = offset;
+  for (const auto name : {"loc", "dloc", "size", "dscale", "rot", "drot"}) {
+    members.push_back({1, 0, name, 0, {3}, offset, 12});
+    offset += 12;
+  }
+  const auto inverseOffset = offset;
+  members.push_back({1, 0, "parentinv", 0, {4, 4}, offset, 64});
+  offset += 64;
+  schema.types[10].length = static_cast<std::uint16_t>(offset);
+  for (const auto index : {4, 5, 10}) {
+    std::vector<std::byte> payload(static_cast<std::size_t>(offset));
+    std::copy_n(bytes.begin() + static_cast<std::ptrdiff_t>(blocks[index].offset),
+        static_cast<std::size_t>(blocks[index].length), payload.begin());
+    blocks[index].offset = bytes.size();
+    blocks[index].length = offset;
+    bytes.insert(bytes.end(), payload.begin(), payload.end());
+  }
+  auto bits = [&](auto& input, std::uint32_t index, std::uint64_t member,
+                  std::uint64_t value, std::size_t size) {
+    StoreBits(input, static_cast<std::size_t>(blocks[index].offset + member), value, size, order);
+  };
+  auto scalar = [&](auto& input, std::uint32_t index, std::uint64_t member, float value) {
+    bits(input, index, member, std::bit_cast<std::uint32_t>(value), 4);
+  };
+  auto vector = [&](auto& input, std::uint32_t index, std::uint64_t member, blend::Vector3 value) {
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      scalar(input, index, member + axis * 4, static_cast<float>(value[axis]));
+    }
+  };
+  auto matrix = [&](auto& input, std::uint32_t index, const blend::Matrix4& value) {
+    for (std::size_t row = 0; row < 4; ++row) {
+      for (std::size_t column = 0; column < 4; ++column) {
+        scalar(input, index, inverseOffset + (column * 4 + row) * 4, static_cast<float>(value[row][column]));
+      }
+    }
+  };
+  for (const auto index : {4, 5, 10}) {
+    bits(bytes, index, 16, 0, width);
+    bits(bytes, index, idSize, 0, width);
+    bits(bytes, index, idSize + width, 0, width);
+    bits(bytes, index, typeOffset, 0, 2);
+    bits(bytes, index, flagsOffset, 0, 2);
+    bits(bytes, index, instanceOffset, 0, width);
+    bits(bytes, index, rotationModeOffset, 1, 2);
+    vector(bytes, index, locationOffset + 24, {1, 1, 1});
+    vector(bytes, index, locationOffset + 36, {1, 1, 1});
+    matrix(bytes, index, blend::IdentityMatrix);
+  }
+  vector(bytes, 4, locationOffset, {7, 19, 37});
+  vector(bytes, 4, locationOffset + 12, {1, 2, 3});
+  vector(bytes, 4, locationOffset + 24, {2, -3, 5});
+  vector(bytes, 5, locationOffset, {3, 5, 7});
+  bits(bytes, 5, idSize, blocks[4].oldAddress, width);
+  auto inverse = blend::IdentityMatrix;
+  inverse[0][3] = -1;
+  inverse[1][3] = -2;
+  inverse[2][3] = -3;
+  matrix(bytes, 5, inverse);
+  auto root = blend::IdentityMatrix;
+  root[0][0] = 2;
+  root[1][1] = -3;
+  root[2][2] = 5;
+  root[0][3] = 8;
+  root[1][3] = 21;
+  root[2][3] = 40;
+  auto child = blend::IdentityMatrix;
+  child[0][3] = 3;
+  child[1][3] = 5;
+  child[2][3] = 7;
+  auto decode = [&](const auto& input, const auto& records, const auto& dna,
+                    blend::SceneTraversalLimits limits = {8, 2}) {
+    return blend::DecodeScene(input, records, dna, header, limits);
+  };
+  auto failure = [&](const auto& input, const auto& records, const auto& dna,
+                     std::string_view code, std::optional<std::uint32_t> index,
+                     blend::SceneTraversalLimits limits = {64, 8}) {
+    const auto result = decode(input, records, dna, limits);
+    if (result.HasValue() || result.GetError().code != code || result.GetError().blockIndex != index) {
+      throw std::runtime_error("Native decoder expected " + std::string(code) +
+                               (result.HasValue() ? ", got a Scene" : ", got " + result.GetError().code));
+    }
+    Require(result.GetError().severity == blend::Severity::Fatal && !result.GetError().recoverable &&
+                result.GetError().byteOffset == (index ? std::optional<std::uint64_t>(records[*index].offset) : std::nullopt),
+        "Native decoder failures preserve exact fatal source context");
+  };
+  const auto result = decode(bytes, blocks, schema);
+  Require(result.HasValue() && result.GetValue().objects.size() == 2 && result.GetValue().meshes.empty() &&
+              result.GetValue().metadata.sourceScene == "Chosen" &&
+              result.GetValue().metadata.sourceVersion == header.SourceVersion() &&
+              result.GetValue().metadata.sourceUnitScale == 1 &&
+              result.GetValue().objects[0].sourceName == "One" &&
+              result.GetValue().objects[1].sourceName == "Two" &&
+              result.GetValue().objects[0].identifier.empty() &&
+              !result.GetValue().objects[0].mesh && !result.GetValue().objects[1].mesh &&
+              !result.GetValue().objects[0].parent && result.GetValue().objects[1].parent == 0 &&
+              result.GetValue().objects[0].hiddenForRender && !result.GetValue().objects[1].hiddenForRender &&
+              result.GetValue().objects[0].worldTransform == blend::ToUsdBasis(root) &&
+              result.GetValue().objects[1].worldTransform == blend::ToUsdBasis(Multiply(Multiply(root, inverse), child)) &&
+              result.Diagnostics().empty(),
+      "Native decoding publishes only owning normalized Empty objects and selected parent indices");
+  for (const float scale : {1.0f, 0.01f, 0.001f, 10.0f}) {
+    auto changed = bytes;
+    scalar(changed, 1, idSize, scale);
+    const auto converted = decode(changed, blocks, schema);
+    const blend::UnitConversion units(scale);
+    Require(converted.HasValue() && converted.GetValue().metadata.sourceUnitScale == scale &&
+                converted.GetValue().objects[0].worldTransform == units.WorldTransform(root) &&
+                converted.GetValue().objects[1].worldTransform == units.WorldTransform(Multiply(Multiply(root, inverse), child)),
+        "Native decoding normalizes full parent-world translations exactly once");
+  }
+  auto reorderedBlocks = blocks;
+  std::reverse(reorderedBlocks.begin(), reorderedBlocks.end());
+  const auto reordered = decode(bytes, reorderedBlocks, schema);
+  Require(reordered.HasValue() && reordered.GetValue().objects[0].sourceName == "One" &&
+              reordered.GetValue().objects[1].parent == 0 &&
+              reordered.GetValue().objects[1].worldTransform == result.GetValue().objects[1].worldTransform,
+      "Native parent indices and object discovery order do not depend on block enumeration");
+  auto changed = bytes;
+  bits(changed, 4, idSize, blocks[10].oldAddress, width);
+  vector(changed, 10, locationOffset, {11, 13, 17});
+  auto externalWorld = root;
+  externalWorld[0][3] += 11;
+  externalWorld[1][3] += 13;
+  externalWorld[2][3] += 17;
+  const auto external = decode(changed, blocks, schema, {9, 2});
+  Require(external.HasValue() && external.GetValue().objects.size() == 2 &&
+              !external.GetValue().objects[0].parent && external.GetValue().objects[1].parent == 0 &&
+              external.GetValue().objects[0].worldTransform == blend::ToUsdBasis(externalWorld),
+      "Parent-only Empty transforms contribute to world space without expanding membership");
+  failure(changed, blocks, schema, "BLEND_SCENE_VISIT_LIMIT", 4, {8, 2});
+  bits(changed, 10, 16, 999, width);
+  failure(changed, blocks, schema, "BLEND_SCENE_LINKED_UNSUPPORTED", 10);
+  failure(bytes, blocks, schema, "BLEND_SCENE_LIMITS", std::nullopt, {0, 2});
+  failure(bytes, blocks, schema, "BLEND_SCENE_DEPTH_LIMIT", 2, {8, 1});
+  changed = bytes;
+  bits(changed, 4, idSize, blocks[4].oldAddress, width);
+  failure(changed, blocks, schema, "BLEND_SCENE_CYCLE", 4);
+  changed = bytes;
+  bits(changed, 4, typeOffset, 1, 2);
+  bits(changed, 4, idSize + width, 3000, width);
+  failure(changed, blocks, schema, "BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED", 4);
+  bits(changed, 4, idSize + width, 0, width);
+  failure(changed, blocks, schema, "BLEND_SCENE_REFERENCE_INVALID", 4);
+  changed = bytes;
+  auto imageBlocks = blocks;
+  auto imageDna = schema;
+  const auto imageIndex = static_cast<std::uint32_t>(blocks.size() - 2);
+  imageBlocks[imageIndex].code = {'I', 'M', 0, 0};
+  imageDna.types[imageDna.structs[imageBlocks[imageIndex].sdnaIndex].typeIndex].name = "Image";
+  changed[static_cast<std::size_t>(imageBlocks[imageIndex].offset)] = std::byte{'I'};
+  changed[static_cast<std::size_t>(imageBlocks[imageIndex].offset) + 1] = std::byte{'M'};
+  bits(changed, 4, idSize + width, imageBlocks[imageIndex].oldAddress, width);
+  failure(changed, imageBlocks, imageDna, "BLEND_SCENE_OBJECT_DATA_UNSUPPORTED", 4);
+  changed = bytes;
+  bits(changed, 4, flagsOffset, 256, 2);
+  bits(changed, 4, instanceOffset, blocks.back().oldAddress, width);
+  failure(changed, blocks, schema, "BLEND_SCENE_INSTANCE_UNSUPPORTED", 4);
+  bits(changed, 4, instanceOffset, blocks[2].oldAddress, width);
+  failure(changed, blocks, schema, "BLEND_SCENE_CYCLE", 4);
+  bits(changed, 4, instanceOffset, 0, width);
+  failure(changed, blocks, schema, "BLEND_SCENE_REFERENCE_INVALID", 4);
+  for (const auto mode : {0, 2, 3, 4, 5, 6, 65535}) {
+    changed = bytes;
+    bits(changed, 4, rotationModeOffset, mode, 2);
+    failure(changed, blocks, schema, "BLEND_SCENE_TRANSFORM_UNSUPPORTED", 4);
+  }
+  changed = bytes;
+  bits(changed, 4, flagsOffset, 1, 2);
+  failure(changed, blocks, schema, "BLEND_SCENE_TRANSFORM_UNSUPPORTED", 4);
+  changed = bytes;
+  bits(changed, 5, parentingModeOffset, 4, 2);
+  failure(changed, blocks, schema, "BLEND_SCENE_TRANSFORM_UNSUPPORTED", 5);
+  for (const auto memberOffset : {locationOffset, locationOffset + 12, locationOffset + 24,
+           locationOffset + 36, locationOffset + 48, locationOffset + 60, inverseOffset}) {
+    for (const auto invalid : {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity()}) {
+      changed = bytes;
+      scalar(changed, 5, memberOffset, invalid);
+      failure(changed, blocks, schema, "BLEND_SCENE_TRANSFORM_INVALID", 5);
+    }
+  }
+  changed = bytes;
+  scalar(changed, 5, inverseOffset + 12, 1);
+  failure(changed, blocks, schema, "BLEND_SCENE_TRANSFORM_INVALID", 5);
+  for (const auto member : {"loc", "parentinv", "rotmode"}) {
+    auto dna = schema;
+    auto& field = *std::find_if(dna.structs[6].members.begin(), dna.structs[6].members.end(),
+        [&](const auto& value) { return value.baseName == member; });
+    field.arrayDimensions = std::string_view(member) == "loc" ? std::vector<std::uint64_t>{1, 3} : std::string_view(member) == "parentinv" ? std::vector<std::uint64_t>{16}
+                                                                                                                                           : std::vector<std::uint64_t>{1};
+    failure(bytes, blocks, dna, "BLEND_SCENE_TRANSFORM_INVALID",
+        std::string_view(member) == "parentinv" ? 5 : 4);
+    field.baseName = "missing";
+    const auto missing = decode(bytes, blocks, dna);
+    Require(!missing.HasValue() && missing.GetError().code == "BLEND_DNA_MEMBER" &&
+                missing.GetError().blockIndex == (std::string_view(member) == "parentinv" ? 5 : 4),
+        "Native decoder preserves reader member errors rather than defaulting transforms");
+  }
+  changed = bytes;
+  const float angle = 1.5707963267948966f;
+  vector(changed, 4, locationOffset + 48, {0, 0, angle});
+  vector(changed, 4, locationOffset + 60, {angle, 0, 0});
+  vector(changed, 4, locationOffset + 36, {2, 3, -1});
+  blend::Matrix4 rotationZ = {{{std::cos(angle), -std::sin(angle), 0, 0},
+      {std::sin(angle), std::cos(angle), 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}};
+  blend::Matrix4 deltaX = {{{1, 0, 0, 0}, {0, std::cos(angle), -std::sin(angle), 0},
+      {0, std::sin(angle), std::cos(angle), 0}, {0, 0, 0, 1}}};
+  auto rotatedExpected = Multiply(deltaX, rotationZ);
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    for (std::size_t row = 0; row < 3; ++row) {
+      rotatedExpected[row][axis] *= std::array<double, 3>{4, -9, -5}[axis];
+    }
+    rotatedExpected[axis][3] = root[axis][3];
+  }
+  rotatedExpected = blend::ToUsdBasis(rotatedExpected);
+  const auto rotated = decode(changed, blocks, schema);
+  Require(rotated.HasValue(), "XYZ Euler and delta rotation decode");
+  for (std::size_t row = 0; row < 4; ++row) {
+    for (std::size_t column = 0; column < 4; ++column) {
+      Require(std::abs(rotated.GetValue().objects[0].worldTransform[row][column] - rotatedExpected[row][column]) < 1e-6,
+          "Delta rotation precedes source rotation; scale multiplies columns");
+    }
+  }
+  for (const auto memberOffset : {animationOffset, constraintsOffset, constraintsOffset + width}) {
+    changed = bytes;
+    bits(changed, 4, memberOffset, 999, width);
+    const auto sourceOnly = decode(changed, blocks, schema);
+    Require(sourceOnly.HasValue() && sourceOnly.Diagnostics().size() == 1 &&
+                sourceOnly.Diagnostics()[0].code == "BLEND_SCENE_EVALUATION_UNAPPLIED" &&
+                sourceOnly.Diagnostics()[0].severity == blend::Severity::Unsupported &&
+                sourceOnly.Diagnostics()[0].recoverable && sourceOnly.Diagnostics()[0].blockIndex == 4 &&
+                sourceOnly.Diagnostics()[0].byteOffset == blocks[4].offset &&
+                sourceOnly.GetValue().objects[0].worldTransform == result.GetValue().objects[0].worldTransform,
+        "Animation/constraint presence is reported without following or evaluating it");
+  }
+  changed = bytes;
+  for (const auto index : {2, 3}) {
+    bits(changed, index, idSize, 0, width);
+    bits(changed, index, idSize + width, 0, width);
+  }
+  const auto empty = decode(changed, blocks, schema, {3, 2});
+  Require(empty.HasValue() && empty.GetValue().objects.empty() && empty.GetValue().meshes.empty(),
+      "A saved active Scene with empty Collections publishes an empty IR");
+  changed = bytes;
+  const auto firstParent = static_cast<std::uint32_t>(blocks.size());
+  const std::vector<std::byte> parentPayload(
+      bytes.begin() + static_cast<std::ptrdiff_t>(blocks[10].offset),
+      bytes.begin() + static_cast<std::ptrdiff_t>(blocks[10].offset + blocks[10].length));
+  for (std::uint32_t next = 0; next < 256; ++next) {
+    auto block = blocks[10];
+    block.oldAddress = 10000 + 100 * next;
+    block.offset = changed.size();
+    blocks.push_back(block);
+    changed.insert(changed.end(), parentPayload.begin(), parentPayload.end());
+    if (next != 0) {
+      bits(changed, firstParent + next - 1, idSize, block.oldAddress, width);
+    }
+  }
+  bits(changed, 4, idSize, blocks[firstParent].oldAddress, width);
+  const auto deep = decode(changed, blocks, schema, {264, 257});
+  Require(deep.HasValue() && deep.GetValue().objects[0].worldTransform == blend::ToUsdBasis(root) &&
+              deep.GetValue().objects.size() == 2,
+      "Native world construction uses an iterative parent chain at exact traversal budgets");
+  failure(changed, blocks, schema, "BLEND_SCENE_DEPTH_LIMIT", firstParent + 254, {264, 256});
+  failure(changed, blocks, schema, "BLEND_SCENE_VISIT_LIMIT", firstParent + 254, {263, 257});
+  bits(changed, firstParent + 7, idSize, 0, width);
+  for (std::uint32_t next = 0; next < 8; ++next) {
+    vector(changed, firstParent + next, locationOffset + 24, {1e38f, 1e38f, 1e38f});
+  }
+  vector(changed, firstParent + 7, locationOffset, {1e38f, 0, 0});
+  scalar(changed, 1, idSize, 1e38f);
+  failure(changed, blocks, schema, "BLEND_SCENE_UNIT_VALUE_INVALID", 4, {16, 9});
+  scalar(changed, 1, idSize, 1);
+  bits(changed, firstParent + 7, idSize, blocks[firstParent + 8].oldAddress, width);
+  vector(changed, firstParent + 8, locationOffset + 24, {1e38f, 1e38f, 1e38f});
+  bits(changed, firstParent + 8, idSize, 0, width);
+  vector(changed, firstParent + 8, locationOffset, {1e38f, 0, 0});
+  failure(changed, blocks, schema, "BLEND_SCENE_TRANSFORM_INVALID", firstParent, {17, 10});
+  bytes[static_cast<std::size_t>(blocks[4].offset) + 2] = std::byte{'X'};
+  schema.types[10].name = "Changed";
+  Require(result.GetValue().objects[0].sourceName == "One" &&
+              result.GetValue().objects[0].worldTransform == blend::ToUsdBasis(root),
+      "Native Scene IR owns its names and matrices independently of input storage");
 }
 
 void CheckCollectionLayouts() {
@@ -884,6 +1197,7 @@ void CheckCollectionLayouts() {
                   !values.GetValue().objects[1].values->instanceCollectionBlockIndex &&
                   !result.GetValue().objects[0].values,
           "Opt-in Object values retain saved flags and references without changing generic selection");
+      CheckNativeDecode(valueBytes, valueBlocks, valueDna, header);
       valueFailure(valueBytes, valueBlocks, valueDna, "BLEND_SCENE_VISIT_LIMIT", 4, {8, 2});
       auto changedValues = valueBytes;
       setValue(changedValues, 4, idSize + width, 0, width);
@@ -1136,6 +1450,10 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
         schema.GetValue(), header.GetValue(), {10000, 64});
     Require(!objects.HasValue() && objects.GetError().code == "BLEND_SCENE_ACTIVE_MISSING",
         "Object selection preserves the Scene-only library's lack of a saved active Scene");
+    const auto native = blend::DecodeScene(decoded.GetValue(), blocks.GetValue(),
+        schema.GetValue(), header.GetValue(), {10000, 64});
+    Require(!native.HasValue() && native.GetError().code == "BLEND_SCENE_ACTIVE_MISSING",
+        "Native decoding preserves the Scene-only library's lack of an active Scene");
     return;
   }
   if (!selected.HasValue()) {
@@ -1184,6 +1502,29 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
   }
   Require(objectValues.GetValue().objects.size() == objects.GetValue().objects.size(),
       "Object value reading preserves corpus membership");
+  const auto native = blend::DecodeScene(decoded.GetValue(), blocks.GetValue(),
+      schema.GetValue(), header.GetValue(), {10000, 64});
+  Require(!native.HasValue() && native.GetError().code == "BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED" &&
+              native.GetError().blockIndex == objects.GetValue().objects.front().blockIndex,
+      "Native decoding reports unsupported corpus objects rather than replacing them with Empty objects");
+  auto emptyObjects = decoded.GetValue();
+  const auto* objectStruct = schema.GetValue().FindStruct("Object");
+  for (const auto& object : objects.GetValue().objects) {
+    const auto base = static_cast<std::size_t>(blocks.GetValue()[object.blockIndex].offset);
+    for (const auto member : {"type", "transflag"}) {
+      StoreBits(emptyObjects, base + objectStruct->FindMember(member)->offset, 0, 2, header.GetValue().byteOrder);
+    }
+    StoreBits(emptyObjects, base + objectStruct->FindMember("data")->offset, 0,
+        header.GetValue().pointerSize, header.GetValue().byteOrder);
+    StoreBits(emptyObjects, base + objectStruct->FindMember("rotmode")->offset, 1, 2, header.GetValue().byteOrder);
+  }
+  const auto nativeEmpty = blend::DecodeScene(emptyObjects, blocks.GetValue(),
+      schema.GetValue(), header.GetValue(), {10000, 64});
+  if (!nativeEmpty.HasValue()) {
+    throw std::runtime_error(nativeEmpty.GetError().code + ": " + nativeEmpty.GetError().message);
+  }
+  Require(nativeEmpty.GetValue().objects.size() == 3 && nativeEmpty.GetValue().meshes.empty(),
+      "Corpus SDNA supports Empty decoding when Object kind/data are mutated without fabricating layouts");
   for (const auto& object : objects.GetValue().objects) {
     names.push_back(object.sourceName);
     const auto view = blend::ViewDnaBlock(decoded.GetValue(), blocks.GetValue(),

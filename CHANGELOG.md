@@ -8,6 +8,18 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Library-only native `DecodeScene` in `blendScene`, composing saved Object-value
+    and recursive graph validation into owning Empty Scene IR with source names,
+    render visibility and selected parent indices. XYZ Euler and delta channels,
+    ordinary parent inverses and parent-only transforms construct source world
+    matrices before one meter/basis conversion. Unsupported kinds, Image Empty
+    data, enabled instances and other transform modes fail explicitly without
+    partial IR; animation/constraint presence reports unapplied evaluation.
+    Four synthetic layouts cover ownership, scales, reordered/shared/deep parents,
+    exact budgets, malformed/nonfinite storage and source/unit overflow; both
+    corpus SDNA layouts are exercised with in-memory Empty-kind/data mutations.
+    No fixture bytes, identifiers, mesh decoding, backend or header-only importer
+    behavior are changed.
 - Opt-in saved Object value validation in `blendScene`, retaining source type,
     render visibility, transform flags and immediate instance Collection block
     indices while preserving generic Object selection. Type-specific data

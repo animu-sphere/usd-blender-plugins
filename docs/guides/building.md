@@ -259,6 +259,22 @@ Only the Object render bit is interpreted; recursively reached Objects are
 validated but do not expand selected-scene membership.
 Transform construction, geometry and USD authoring remain separate boundaries.
 
+The same test exercises library-only `DecodeScene` under the
+[native Empty decoding boundary](../design/DESIGN_POLICY.md#527-native-empty-scene-decoding-boundary).
+Four synthetic layouts cover owning empty/parented IR, selected and parent-only
+parent mapping, render visibility, block reordering, XYZ Euler and delta
+channels, nonuniform/negative scales, column-first parent inverses and
+single-pass normalization at four unit scales. Deep 256-parent chains succeed
+at exact visit/depth budgets and fail at one smaller; source-matrix and
+meter-conversion overflow return fatal context. Unsupported kinds, Image
+Empty data, enabled instances, other rotation/parenting modes, malformed
+storage and nonfinite inputs fail without a partial Scene. Animation and
+constraint presence emit recoverable source-only diagnostics. Both real corpus
+SDNA layouts are exercised through in-memory Empty-kind/data mutations;
+the original files remain unsupported by this initial object scope, and the
+Scene-only library retains its missing-active-Scene error. These tests do not
+prove Blender-written parenting/transform equivalence or author USD.
+
 The [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 defines matrix storage and ownership; supported scope is in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#5-scene-ir).
