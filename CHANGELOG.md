@@ -8,6 +8,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Accepted caller-overridable full-stream compression policy, resolving
+    BLEND-O5 from locally generated Blender 4.5.13/5.2.2 large-mesh,
+    repetitive-attribute and packed-image measurements. Standard budgets are
+    256 MiB input, 512 MiB output, expansion ratio 4,096 and an 8 MiB Zstandard
+    window. A reproducible generator, reader measurement mode, regression
+    checks and dated evidence accompany the decision. Explicit API/CLI limits,
+    header probes and uncompressed-only scene importing remain unchanged.
 - Fixture-backed Blender 3.3 legacy Mesh decoding using the unchanged 3.3.21
     Mesh-domain file and saved Scene oracle. Signed MLoop indices, absent
     modern members and validated CustomData/fixed-array aliases compose into

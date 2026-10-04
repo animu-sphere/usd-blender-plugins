@@ -937,7 +937,9 @@ owning byte reading, one bounded DNA1 schema and native `DecodeScene`.
 It requires a complete uncompressed container and the saved active Scene;
 header-only inputs and Scene-only libraries are not scene fallbacks.
 Compressed inputs fail with `BLEND_BLOCK_COMPRESSED` before full byte
-reading; no production decompression defaults resolve BLEND-O5 implicitly.
+reading; the accepted
+[full-stream limit policy](BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
+does not change this boundary or select defaults implicitly.
 `CanRead` remains a bounded header-identification probe, not a guarantee
 that full scene decoding succeeds.
 
@@ -986,7 +988,9 @@ Compressed inputs require all four caller-supplied limits:
 `--max-input-bytes`, `--max-output-bytes`, `--max-expansion-ratio` and
 `--max-window-log`. Values are positive decimal integers; window log is
 10 through 30. For uncompressed inputs without options, both byte limits
-are the file size; no corpus-derived decompression default is chosen.
+are the file size; the
+[standard decompression policy](BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
+is not selected implicitly.
 The block budget is bounded by decoded byte size and unsigned 32-bit indices.
 Full-stream limits retain the
 [blend contract's semantics](BLEND_CONTRACT.md#41-full-stream-byte-reading).

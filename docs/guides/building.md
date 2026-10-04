@@ -106,7 +106,10 @@ Exact byte budgets must preserve all decoded bytes; reducing an input/output
 limit by one, or the compressed file's ratio/window allowance below its
 minimum, must produce the matching `BLEND_COMPRESSION_*` diagnostic. See the
 [compression measurements](../../plugins/usdBlendFileFormat/tests/corpus/README.md#compression-measurements)
-for values, measurement semantics and corpus limitations.
+for values, measurement semantics and corpus limitations. The separately
+accepted standard policy and large generated-input evidence are in the
+[blend contract](../design/BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
+and [dated report](../reports/2026-10-05-compression-policy.md).
 
 Block cases enumerate both legacy pointer widths and byte orders and the
 format-1 layout, including the generated empty scene, the real uncompressed
@@ -439,7 +442,9 @@ tools/blendInspect/bin/blend_inspect.exe plugins/usdBlendFileFormat/tests/corpus
 
 On Linux, omit `.exe`. Uncompressed inputs need no limit options; compressed
 inputs require all four. The numbers above are test budgets, not production
-defaults or the resolution of BLEND-O5. Names keep their stored prefixes;
+implicit defaults. The accepted
+[standard policy](../design/BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
+is supplied explicitly. Names keep their stored prefixes;
 non-ASCII and control bytes are escaped. `--objects` does not decode
 transforms, geometry or scene membership. See the
 [CLI contract](../design/DESIGN_POLICY.md#54-blend_inspect--the-tool) for
@@ -484,7 +489,8 @@ installs both libraries into its workspace prefix before configuring the standal
 The eight stage tests assert the registered cube, integrated Scene and
 Mesh-domain oracles, multi-scale imports, metadata-only hierarchy, contextual fatal/recoverable
 diagnostics, repeat-read determinism and referenced geometry.
-Compressed input is rejected without introducing BLEND-O5 defaults.
+Compressed input is rejected; the accepted full-stream policy does not add
+compressed scene importing.
 
 Six fixtures are synthetic legacy headers; `empty.blend` is a complete
 Scene-only library written by Blender 5.2.2 LTS. Header-only and Scene-only

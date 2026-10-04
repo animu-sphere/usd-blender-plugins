@@ -84,8 +84,11 @@ The Blender 5.2.2 corpus is Zstandard-compressed:
 ```
 
 The same four options are required for gzip input. These values are explicit
-test budgets, not recommended production defaults; the owning decision is
-[BLEND-O5](../design/BLEND_CONTRACT.md#12-open-questions).
+test budgets, not the accepted
+[standard full-stream policy](../design/BLEND_CONTRACT.md#42-standard-full-stream-limit-policy).
+To opt into that policy, supply `--max-input-bytes 268435456
+--max-output-bytes 536870912 --max-expansion-ratio 4096 --max-window-log 23`.
+The CLI never selects those values implicitly.
 
 | Option | Meaning |
 | --- | --- |

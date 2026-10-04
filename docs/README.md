@@ -17,8 +17,9 @@ for upcoming work, use the [current tasks](roadmap/current.md).
 | [roadmap/](roadmap/) | Phase status, release mapping and incomplete tasks. | [README.md](roadmap/README.md) · [current.md](roadmap/current.md) |
 | [contributing/](contributing/) | How to maintain these documents. | [documentation.md](contributing/documentation.md) |
 | [guides/](guides/) | Commands verified against the implementation. | [building.md](guides/building.md) · [inspecting.md](guides/inspecting.md) |
+| [reports/](reports/) | Dated evidence from real runs, not current capability or phase status. | [2026-10-05 compression policy measurements](reports/2026-10-05-compression-policy.md) |
 
-`releases/` and `reports/` are created when they have real content
+`releases/` is created when it has real content
 ([contributing/documentation.md](contributing/documentation.md#category-ownership)).
 
 ## Canonical documents

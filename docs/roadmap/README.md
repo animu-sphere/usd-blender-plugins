@@ -30,7 +30,7 @@ Completion does not imply that the planned release has been tagged.
 | Phase | Scope | Status | Release |
 | --- | --- | --- | --- |
 | 0 | workspace skeleton, minimal file format | ✅ | v0.1.0 (planned) |
-| 1 | container and SDNA, `blend_inspect` | 🚧 | v0.2.0 (planned) |
+| 1 | container and SDNA, `blend_inspect` | ✅ | v0.2.0 (planned) |
 | 2 | objects and meshes | 🚧 | v0.3.0 (planned) |
 | 3 | materials and images | ⬜ | v0.4.0 (planned) |
 | 4 | cameras, lights and collections | ⬜ | v0.5.0 (planned) |
@@ -55,7 +55,6 @@ schedules them.
 
 | Id | Question | Owner | Blocks |
 | --- | --- | --- | --- |
-| BLEND-O5 | Decompression limits | [BLEND §12](../design/BLEND_CONTRACT.md#12-open-questions) | Phase 1 |
 | STAGE-O3 | Color attributes and `displayColor` | [STAGE §18](../design/STAGE_CONTRACT.md#18-open-questions) | Phase 3 |
 | MAT-O1 | Alpha mode mapping | [MATERIAL §9](../design/MATERIAL_POLICY.md#9-open-questions) | Phase 3 |
 | MAT-O4 | Emission strength | [MATERIAL §9](../design/MATERIAL_POLICY.md#9-open-questions) | Phase 3 |
