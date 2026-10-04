@@ -71,3 +71,39 @@ extent and identity transform. `test_stage.py` additionally checks metadata,
 reference composition, repeat-read determinism, metadata-only output,
 container/SDNA failures, compressed rejection and recoverable diagnostics.
 Commands are in the [build guide](../../../../docs/guides/building.md#registered-cube-fixture).
+
+### Cube milestone verification
+
+On Windows on 2026-10-05, Blender 5.2.2's non-destructive generator `--check`
+passed for the committed Cube. Root plain CMake (Visual Studio 18 2026,
+Release) and the standalone OpenStrata `usd` bundle both built against
+OpenUSD 26.08. Each registered-plugin invocation passed all eight
+`test_stage.py` tests. The root run passed eight selected native/authoring
+CTests; the standalone runs passed six selected Scene CTests, both authoring
+CTests and the L0-L5 pyramid, including the Cube golden.
+
+The separate local `lookdev` build opened the original `.blend` directly in
+`usdview` with Storm, without intermediate USD export. The
+[viewport callback](../test_usdview.py) passed with a visible three-quarter
+Cube, a converged renderer, black-background/nonblack-center pixels and a
+center pick resolving `/Asset/geo/Cube/mesh`. A PNG capture was inspected.
+The same callback rejected `--norender` with a nonzero exit, rather than
+treating stage loading as rendering. This is Windows GPU/Qt evidence only;
+the hosted jobs do not run the viewport callback.
+
+Hosted checks were inspected for implementation SHA
+`52bda17d8a93e47f16a519f84759b9bee077e812` (merged in #47). Its source tree
+matches local merge SHA `3c8a2ce`; the viewport callback and this documentation
+were added after those hosted runs.
+
+- [Source CI run 37212385751](https://github.com/animu-sphere/usd-blender-plugins/actions/runs/37212385751):
+  both Windows/Linux root jobs passed all 19 CTests; both standalone bundle
+  jobs passed their verification pyramid, including the Cube golden; the
+  workspace graph job passed.
+- [Stage-contract CI run 37212385759](https://github.com/animu-sphere/usd-blender-plugins/actions/runs/37212385759):
+  both Windows/Linux jobs passed plugin diagnostics, all eight registered
+  stage tests and both standalone authoring CTests.
+
+These runs cover the fixture-backed uncompressed Mesh/Empty boundary, not
+all Blender Mesh storage families, compressed importer inputs or Linux
+viewport rendering.

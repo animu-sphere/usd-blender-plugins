@@ -8,6 +8,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Optional direct `.blend` viewport regression using OpenUSD's `testusdview`
+    harness: the registered Cube must render with Storm, converge within a
+    bounded wait, remain visible against a black background and resolve a
+    center pick to `/Asset/geo/Cube/mesh`. Stage-only `--norender` launches
+    fail explicitly; optional PNG capture failures are reported. Windows
+    GPU verification and matching Windows/Linux hosted Mesh/Empty regression
+    evidence complete the Cube milestone without broadening decoder scope
+    or introducing compressed-input defaults.
 - Native legacy fixed-array Mesh geometry through SDNA `MVert`, `MLoop`,
     `MPoly` and normal-related `MEdge` flags. Explicit legacy storage selection
     preserves modern attribute/offset authority without rescuing malformed or

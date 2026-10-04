@@ -2,6 +2,7 @@
 /.strata/
 /CMakeUserPresets.json
 /strata.lock
+/strata.*.lock
 /.vscode/
 **/build/
 **/.strata/
