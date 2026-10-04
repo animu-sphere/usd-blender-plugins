@@ -178,6 +178,7 @@ normalized IR without changing the native libraries' dependency gates.
 | immediate instance Collection references and explicit visit-budget diagnostics | supported | four synthetic layouts cover saved member names, null/absent/interior/wrong/count/linked/name targets, inactive references, shared and already-visited targets, reordered indices and exact budgets; both corpus files cover null references and pointer/flag mutations in `blendScene.ir` | Phase 2 |
 | recursive instance graph validation | supported | four synthetic layouts cover nested missing/interior/wrong-type/linked targets, self/ancestor cycles through CollectionObject membership, shared targets, preserved membership and generic selection, and 256-child instance subgraphs with exact/one-smaller visit/depth budgets; both corpus files reject self-instancing master Collections in `blendScene.ir` | Phase 2 |
 | native Mesh/Empty Scene IR decoding, render visibility and selected parent indices | supported | `DecodeScene` composes Object-value selection; four synthetic layouts cover mixed Mesh/Empty Scenes, shared Mesh indices, parent-only Objects, block reordering, ownership and explicit failures for unsupported kinds/data/instances; both corpus SDNA layouts decode in-memory Object-kind/data mutations without rewriting fixtures in `blendScene.ir` | Phase 2 |
+| integrated Blender-written Mesh/Empty native Scene oracle | supported | [unchanged 4.5.13/5.2.2 Scene fixtures](../../tests/fixtures/native-scene/README.md) in `blendScene.sceneFixture` combine seven selected Objects, two unique Meshes, three shared-Mesh users, four-level mixed parenting, a parent-only Mesh in an unselected Scene, nested/shared Collection membership, own render bits, fixed `mesh` child reservation, world/local matrices, points/topology/normals and two indexed UV maps; repeated and reversed-block reads preserve every owning IR value | Phase 2 |
 | native deterministic Mesh/Empty Object identifiers | supported | `blendScene.naming` covers ASCII examples, literal underscores, unsigned source-byte ordering, natural suffix collisions, parent-scoped Mesh child reservations, repeated reads and all 40,320 permutations of an eight-Object IR with remapped parents; both Mesh storage forms across four synthetic layouts prove native fixed-child reservation and unchanged shared geometry in `blendScene.ir`; unchanged Blender-written 4.5.13/5.2.2 transform fixtures preserve identifiers under reversed blocks in `blendScene.transforms` | Phase 2 |
 | UTF-8 display repair and naming diagnostics | supported | valid scalar boundaries, maximal ill-formed subparts, overlong/surrogate/out-of-range/truncated encodings, duplicate sibling names and invalid immediate IR references in `blendScene.naming`; four synthetic layouts retain raw Object names and exact recoverable/fatal block context, including equal malformed names in separate scopes, in `blendScene.ir` | Phase 2 |
 | native Euler/Quaternion/Axis-Angle local/world transform construction and meter normalization | supported | four synthetic layouts cover active/inactive channels, normalized Quaternion/Axis-Angle, delta order, malformed/nonfinite storage, column-first parent inverse, four unit scales and shared/deep parents in `blendScene.ir`; [Blender-written 4.5.13/5.2.2 transform oracles](../../tests/fixtures/native-transforms/README.md) compare 27 Empty objects per file, all six Euler orders, Quaternion/Axis-Angle, delta channels, nonuniform/negative/zero scale, parent inverses, three-level hierarchy and converted parent/local composition in `blendScene.transforms` | Phase 2 |
@@ -231,6 +232,8 @@ followed or validated. Collection/Object linked
 IDs fail without external-file access. Real-file membership evidence is
 64-bit little-endian only; other
 layouts, nested/shared graphs and malformed cases have synthetic evidence.
+The integrated Scene fixtures additionally exercise nested Collections and
+an Object shared by master and nested Collection membership.
 
 The [parent-reference boundary](../design/DESIGN_POLICY.md#524-saved-object-parent-reference-boundary)
 validates selected Objects' saved parent chains with the same explicit budgets.
@@ -238,9 +241,10 @@ Parent-only Objects count once but do not join membership. Optional parent
 indices belong to the caller's blocks, not the selected Object vector or IR.
 Completed chains are shared; depth limits bound active unfinished expansion,
 not the longest complete path. Objects outside membership, its ancestors and
-immediate data targets remain unvalidated. Real-file evidence covers null parents and
-mutated invalid pointers only; nontrivial parenting is synthetic. No transform,
-parenting-mode or Blender-oracle equivalence is established.
+immediate data targets remain unvalidated. Corpus mutations cover invalid
+pointers; the integrated Scene fixtures additionally prove selected and
+parent-only Mesh/Empty parent references. Transform/oracle comparisons belong
+to the composed native decoding boundary, not generic reference selection.
 
 The [data-reference boundary](../design/DESIGN_POLICY.md#525-saved-object-data-reference-boundary)
 validates the immediate generic ID target for selected and parent-only Objects,
@@ -250,8 +254,9 @@ without external access. It does not enforce `Object.type`-specific data
 requirements or follow data-internal references, so neither a null mesh data
 pointer nor an otherwise valid local ID of the wrong semantic type is rejected.
 No Mesh values, data-cycle policy, instance graph or populated IR is added.
-Real data-edge evidence remains 64-bit little-endian; sharing, parent-only
-targets, budgets and other layouts have synthetic evidence.
+Real data-edge evidence remains 64-bit little-endian; the integrated Scene
+fixtures prove shared and parent-only Mesh data targets. Budgets and other
+layouts retain synthetic evidence.
 
 The [native decoding boundary](../design/DESIGN_POLICY.md#527-native-scene-decoding-boundary)
 publishes owning Scene IR only after saved Object-value and recursive graph
@@ -274,6 +279,12 @@ Those files remain unsupported as complete Scenes because Camera/Light decoding
 is not introduced. Separate Blender-written Empty fixtures compare native
 world matrices, constructed parent-relative locals and reconstructed world
 composition with saved transform oracles.
+The integrated Scene oracles combine Mesh/Empty world/local matrices with
+selected and parent-only hierarchy, shared geometry, render visibility,
+fixed-child identifiers, mixed normals and indexed UVs at source scale `0.01`.
+They compare every owning IR array after reader input release and require
+exact equality under repeated and reversed-block loads; they do not close
+the separate multi-scale native-to-USD unit evidence requirement.
 Separate normal oracles compare single-Mesh Blender-written files, four packed
 custom-normal files per version, and both independently constructed two-Mesh
 fixtures. The 5.2.2 fixture repeats `Attribute` and `AttributeArray` addresses

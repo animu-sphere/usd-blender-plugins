@@ -36,6 +36,8 @@ if(BUILD_TESTING)
     target_link_libraries(blendSceneTests PRIVATE blendScene::blendScene)
     add_executable(blendSceneTransformTests tests/TransformTests.cpp)
     target_link_libraries(blendSceneTransformTests PRIVATE blendScene::blendScene)
+    add_executable(blendSceneFixtureTests tests/SceneFixtureTests.cpp)
+    target_link_libraries(blendSceneFixtureTests PRIVATE blendScene::blendScene)
     add_executable(blendSceneNormalTests tests/NormalTests.cpp)
     target_link_libraries(blendSceneNormalTests PRIVATE blendScene::blendScene)
     add_executable(blendSceneMeshBoundaryTests tests/MeshBoundaryTests.cpp)
@@ -52,6 +54,9 @@ if(BUILD_TESTING)
     add_test(NAME blendScene.transforms COMMAND blendSceneTransformTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-transforms/blender-4.5.13/transforms.blend
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-transforms/blender-5.2.2/transforms.blend)
+    add_test(NAME blendScene.sceneFixture COMMAND blendSceneFixtureTests
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-scene/blender-4.5.13/scene.blend
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-scene/blender-5.2.2/scene.blend)
     add_test(NAME blendScene.ir COMMAND blendSceneTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests/fixtures/empty.blend
         ${CMAKE_CURRENT_SOURCE_DIR}/../../plugins/usdBlendFileFormat/tests/corpus/blender-4.5.13/Untitled.blend

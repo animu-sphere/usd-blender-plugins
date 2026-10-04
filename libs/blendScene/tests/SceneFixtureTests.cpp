@@ -1,0 +1,267 @@
+#include <blendScene/Decode.h>
+
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+
+namespace {
+
+void Require(bool condition, const std::string& message) {
+  if (!condition) {
+    throw std::runtime_error(message);
+  }
+}
+
+template <class Value>
+Value Take(const blend::Result<Value>& result) {
+  Require(result.HasValue(), result.HasValue() ? "" : result.GetError().code + ": " + result.GetError().message);
+  return result.GetValue();
+}
+
+void Marker(std::istream& input, const std::string& expected) {
+  std::string marker;
+  Require(static_cast<bool>(input >> marker) && marker == expected, "Expected oracle record " + expected);
+}
+
+template <std::size_t Size>
+std::array<double, Size> ReadVector(std::istream& input, const std::string& marker) {
+  Marker(input, marker);
+  std::array<double, Size> result{};
+  for (auto& value : result) {
+    Require(static_cast<bool>(input >> value) && std::isfinite(value), "Finite oracle vector");
+  }
+  return result;
+}
+
+blend::Matrix4 ReadMatrix(std::istream& input, const std::string& marker) {
+  Marker(input, marker);
+  blend::Matrix4 result{};
+  for (auto& row : result) {
+    for (auto& value : row) {
+      Require(static_cast<bool>(input >> value) && std::isfinite(value), "Finite oracle matrix");
+    }
+  }
+  for (std::size_t column = 0; column < 4; ++column) {
+    Require(std::abs(result[3][column] - blend::IdentityMatrix[3][column]) <= 1e-6,
+        "Oracle matrix is affine within Blender float precision");
+  }
+  result[3] = blend::IdentityMatrix[3];
+  return result;
+}
+
+template <std::size_t Size>
+void Compare(const std::array<double, Size>& actual, const std::array<double, Size>& expected,
+    const std::string& context) {
+  for (std::size_t index = 0; index < Size; ++index) {
+    Require(std::abs(actual[index] - expected[index]) <= 2e-5 * (1 + std::abs(expected[index])),
+        context + " differs at component " + std::to_string(index) + ": got " +
+            std::to_string(actual[index]) + ", expected " + std::to_string(expected[index]));
+  }
+}
+
+void Compare(const blend::Matrix4& actual, const blend::Matrix4& expected, const std::string& context) {
+  for (std::size_t row = 0; row < 4; ++row) {
+    Compare(actual[row], expected[row], context + " row " + std::to_string(row));
+  }
+}
+
+blend::Matrix4 Multiply(const blend::Matrix4& left, const blend::Matrix4& right) {
+  blend::Matrix4 result{};
+  for (std::size_t row = 0; row < 4; ++row) {
+    for (std::size_t column = 0; column < 4; ++column) {
+      for (std::size_t axis = 0; axis < 4; ++axis) {
+        result[row][column] += left[row][axis] * right[axis][column];
+      }
+    }
+  }
+  return result;
+}
+
+blend::Scene LoadScene(const std::filesystem::path& path, bool reverse = false) {
+  blend::FileByteSource source(path);
+  const auto bytes = Take(blend::ReadFileBytes(source, {4 * 1024 * 1024, 4 * 1024 * 1024, 16, 23}));
+  blend::MemoryByteSource memory(bytes);
+  const auto header = Take(blend::ReadHeader(memory));
+  auto blocks = Take(blend::ReadBlocks(memory, 10000));
+  const auto dna = std::find_if(blocks.begin(), blocks.end(),
+      [](const auto& block) { return block.code == std::array<char, 4>{'D', 'N', 'A', '1'}; });
+  Require(dna != blocks.end(), "Integrated fixture has DNA1");
+  const auto schema = Take(blend::ReadDna(
+      std::span<const std::byte>(bytes).subspan(static_cast<std::size_t>(dna->offset), static_cast<std::size_t>(dna->length)), header));
+  if (reverse) {
+    std::reverse(blocks.begin(), blocks.end());
+  }
+  const auto decoded = blend::DecodeScene(bytes, blocks, schema, header, {10000, 64});
+  auto scene = Take(decoded);
+  Require(decoded.Diagnostics().empty(), "Integrated source fixture needs no evaluation or repair");
+  return scene;
+}
+
+void CompareScenes(const blend::Scene& left, const blend::Scene& right) {
+  Require(left.metadata.sourceScene == right.metadata.sourceScene &&
+              left.metadata.sourceVersion == right.metadata.sourceVersion &&
+              left.metadata.sourceUnitScale == right.metadata.sourceUnitScale &&
+              left.objects.size() == right.objects.size() && left.meshes.size() == right.meshes.size(),
+      "Repeated/reordered metadata and counts are identical");
+  for (std::size_t index = 0; index < left.objects.size(); ++index) {
+    const auto& a = left.objects[index];
+    const auto& b = right.objects[index];
+    Require(a.sourceName == b.sourceName && a.identifier == b.identifier && a.parent == b.parent &&
+                a.mesh == b.mesh && a.hiddenForRender == b.hiddenForRender && a.worldTransform == b.worldTransform,
+        "Repeated/reordered Object order and owning values are identical");
+    const auto local = [](const blend::Scene& scene, std::size_t objectIndex) {
+      const auto& object = scene.objects[objectIndex];
+      return blend::ParentRelativeTransform(object.worldTransform,
+          object.parent ? scene.objects[*object.parent].worldTransform : blend::IdentityMatrix);
+    };
+    Require(local(left, index) == local(right, index), "Repeated/reordered parent-local matrices are identical");
+  }
+  for (std::size_t index = 0; index < left.meshes.size(); ++index) {
+    const auto& a = left.meshes[index];
+    const auto& b = right.meshes[index];
+    Require(a.sourceName == b.sourceName && a.points == b.points && a.faceVertexCounts == b.faceVertexCounts &&
+                a.faceVertexIndices == b.faceVertexIndices && a.cornerNormals == b.cornerNormals &&
+                a.uvMaps.size() == b.uvMaps.size(),
+        "Repeated/reordered Mesh order and arrays are identical");
+    for (std::size_t uv = 0; uv < a.uvMaps.size(); ++uv) {
+      Require(a.uvMaps[uv].sourceName == b.uvMaps[uv].sourceName &&
+                  a.uvMaps[uv].activeRender == b.uvMaps[uv].activeRender &&
+                  a.uvMaps[uv].values == b.uvMaps[uv].values && a.uvMaps[uv].indices == b.uvMaps[uv].indices,
+          "Repeated/reordered indexed UV maps are identical");
+    }
+  }
+}
+
+void CheckFixture(const std::filesystem::path& path) {
+  const auto scene = LoadScene(path);
+  Require(scene.metadata.sourceScene == "Integrated" && scene.objects.size() == 7 && scene.meshes.size() == 2,
+      "Only selected membership and its two unique Meshes are published");
+  std::unordered_map<std::string, std::size_t> objects, meshes;
+  for (std::size_t index = 0; index < scene.objects.size(); ++index) {
+    Require(objects.emplace(scene.objects[index].sourceName, index).second, "Unique selected Object names");
+  }
+  for (std::size_t index = 0; index < scene.meshes.size(); ++index) {
+    Require(meshes.emplace(scene.meshes[index].sourceName, index).second, "Unique selected Mesh names");
+  }
+  Require(!objects.contains("OutsideParent") && !meshes.contains("ParentOnlyGeometry"),
+      "Parent-only Mesh contributes transforms without membership or geometry");
+  const auto shared = scene.objects[objects.at("MeshParent")].mesh;
+  Require(shared && scene.objects[objects.at("SharedChild")].mesh == shared &&
+              scene.objects[objects.at("SharedRoot")].mesh == shared &&
+              scene.objects[objects.at("Independent")].mesh != shared,
+      "Three Mesh Objects share one IR index, independently of hierarchy");
+  Require(scene.objects[objects.at("mesh")].identifier == "mesh_1",
+      "Mesh parent's fixed child name is reserved for its Empty child");
+  auto oraclePath = path;
+  oraclePath.replace_extension(".oracle.txt");
+  std::ifstream oracle(oraclePath);
+  std::string line;
+  Require(static_cast<bool>(std::getline(oracle, line)) && line == "BLEND_SCENE_ORACLE 1", "Scene oracle version");
+  Require(static_cast<bool>(std::getline(oracle, line)), "Oracle Blender version");
+  double scale = 0;
+  std::size_t objectCount = 0, meshCount = 0;
+  Require(static_cast<bool>(oracle >> scale >> objectCount >> meshCount) &&
+              scale == scene.metadata.sourceUnitScale && objectCount == scene.objects.size() && meshCount == scene.meshes.size(),
+      "Oracle unit scale and selected counts");
+  const blend::UnitConversion units(scale);
+  for (std::size_t record = 0; record < objectCount; ++record) {
+    Marker(oracle, "OBJECT");
+    std::string name, parent, data;
+    bool hidden = false;
+    Require(static_cast<bool>(oracle >> std::quoted(name) >> std::quoted(parent) >> std::quoted(data) >> hidden) &&
+                objects.contains(name),
+        "Oracle Object references selected membership");
+    const auto& object = scene.objects[objects.at(name)];
+    const auto world = units.WorldTransform(ReadMatrix(oracle, "WORLD"));
+    const auto savedLocal = units.WorldTransform(ReadMatrix(oracle, "LOCAL"));
+    Require(object.hiddenForRender == hidden && object.identifier == (name == "mesh" ? "mesh_1" : name),
+        name + " preserves its own render bit and deterministic identifier");
+    if (data.empty()) {
+      Require(!object.mesh, name + " is data-less Empty");
+    } else {
+      Require(meshes.contains(data) && object.mesh == meshes.at(data), name + " retains the saved shared Mesh edge");
+    }
+    Compare(object.worldTransform, world, name + " world");
+    if (!parent.empty() && objects.contains(parent)) {
+      Require(object.parent == objects.at(parent), name + " retains its selected parent");
+      const auto& parentWorld = scene.objects[*object.parent].worldTransform;
+      const auto local = blend::ParentRelativeTransform(object.worldTransform, parentWorld);
+      Compare(local, savedLocal, name + " local");
+      Compare(Multiply(parentWorld, local), world, name + " parent/local composition");
+    } else {
+      Require(!object.parent && (parent.empty() || parent == "OutsideParent"), name + " is an IR root");
+      Compare(blend::ParentRelativeTransform(object.worldTransform), world, name + " root local");
+    }
+  }
+  for (std::size_t record = 0; record < meshCount; ++record) {
+    Marker(oracle, "MESH");
+    std::string name;
+    std::size_t points = 0, faces = 0, corners = 0, uvs = 0;
+    Require(static_cast<bool>(oracle >> std::quoted(name) >> points >> faces >> corners >> uvs) &&
+                meshes.contains(name) && points == 5 && faces == 2 && corners == 7 && uvs == 2,
+        "Oracle unique Mesh shape");
+    const auto& mesh = scene.meshes[meshes.at(name)];
+    Require(mesh.points.size() == points && mesh.faceVertexCounts.size() == faces &&
+                mesh.faceVertexIndices.size() == corners && mesh.cornerNormals.size() == corners && mesh.uvMaps.size() == uvs,
+        name + " preserves all Mesh domains");
+    for (const auto& point : mesh.points) {
+      Compare(point, units.Position(ReadVector<3>(oracle, "POINT")), name + " meter-space point");
+    }
+    Marker(oracle, "COUNTS");
+    for (const auto count : mesh.faceVertexCounts) {
+      std::int32_t expected = 0;
+      Require(static_cast<bool>(oracle >> expected) && count == expected, name + " face counts");
+    }
+    Marker(oracle, "INDICES");
+    for (const auto index : mesh.faceVertexIndices) {
+      std::int32_t expected = 0;
+      Require(static_cast<bool>(oracle >> expected) && index == expected, name + " right-handed corner order");
+    }
+    for (const auto& normal : mesh.cornerNormals) {
+      const auto expected = blend::ToUsdBasis(ReadVector<3>(oracle, "NORMAL"));
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        Require(std::abs(normal[axis] - expected[axis]) <= 2e-5, name + " unit-independent corner normal");
+      }
+      Require(std::abs(std::hypot(normal[0], normal[1], normal[2]) - 1) <= 1e-12, name + " normalized corner normal");
+    }
+    for (std::size_t uv = 0; uv < uvs; ++uv) {
+      Marker(oracle, "UV");
+      std::string uvName;
+      bool active = false;
+      Require(static_cast<bool>(oracle >> std::quoted(uvName) >> active), "Oracle UV header");
+      const auto& map = mesh.uvMaps[uv];
+      Require(map.sourceName == uvName && map.activeRender == active && map.indices.size() == corners &&
+                  map.values.size() == (uvName == "Detail" ? 5 : 7),
+          name + " indexed UV names, deduplication and non-first render map");
+      for (const auto index : map.indices) {
+        Require(index >= 0 && static_cast<std::size_t>(index) < map.values.size(), "UV index addresses owning values");
+        Require(map.values[static_cast<std::size_t>(index)] == ReadVector<2>(oracle, "VALUE"),
+            name + " UV coordinates are unchanged by units, basis and Object transforms");
+      }
+    }
+  }
+  oracle >> std::ws;
+  Require(oracle.eof(), "Scene oracle has no trailing records");
+  CompareScenes(scene, LoadScene(path));
+  CompareScenes(scene, LoadScene(path, true));
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+  try {
+    Require(argc == 3, "Two Blender-written integrated Scene fixtures are required");
+    CheckFixture(argv[1]);
+    CheckFixture(argv[2]);
+    return 0;
+  } catch (const std::exception& error) {
+    std::cerr << error.what() << '\n';
+    return 1;
+  }
+}
