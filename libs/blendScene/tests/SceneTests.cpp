@@ -427,6 +427,17 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
   const auto inverseOffset = offset;
   members.push_back({1, 0, "parentinv", 0, {4, 4}, offset, 64});
   offset += 64;
+  const auto quaternionOffset = offset;
+  for (const auto name : {"quat", "dquat"}) {
+    members.push_back({1, 0, name, 0, {4}, offset, 16});
+    offset += 16;
+  }
+  const auto axisOffset = offset;
+  members.push_back({1, 0, "rotAxis", 0, {3}, offset, 12});
+  offset += 12;
+  const auto angleOffset = offset;
+  members.push_back({1, 0, "rotAngle", 0, {}, offset, 4});
+  offset += 4;
   schema.types[10].length = static_cast<std::uint16_t>(offset);
   for (const auto index : {4, 5, 10}) {
     std::vector<std::byte> payload(static_cast<std::size_t>(offset));
@@ -466,6 +477,9 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
     vector(bytes, index, locationOffset + 24, {1, 1, 1});
     vector(bytes, index, locationOffset + 36, {1, 1, 1});
     matrix(bytes, index, blend::IdentityMatrix);
+    scalar(bytes, index, quaternionOffset, 1);
+    scalar(bytes, index, quaternionOffset + 16, 1);
+    vector(bytes, index, axisOffset, {0, 0, 1});
   }
   vector(bytes, 4, locationOffset, {7, 19, 37});
   vector(bytes, 4, locationOffset + 12, {1, 2, 3});
@@ -581,10 +595,49 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
   failure(changed, blocks, schema, "BLEND_SCENE_CYCLE", 4);
   bits(changed, 4, instanceOffset, 0, width);
   failure(changed, blocks, schema, "BLEND_SCENE_REFERENCE_INVALID", 4);
-  for (const auto mode : {0, 2, 3, 4, 5, 6, 65535}) {
+  for (const auto mode : {65534, 7, 32767}) {
     changed = bytes;
     bits(changed, 4, rotationModeOffset, mode, 2);
     failure(changed, blocks, schema, "BLEND_SCENE_TRANSFORM_UNSUPPORTED", 4);
+  }
+  for (const auto mode : {0, 1, 2, 3, 4, 5, 6, 65535}) {
+    changed = bytes;
+    bits(changed, 4, rotationModeOffset, mode, 2);
+    const auto identityRotation = decode(changed, blocks, schema);
+    Require(identityRotation.HasValue() &&
+                identityRotation.GetValue().objects[0].worldTransform == result.GetValue().objects[0].worldTransform,
+        "Every supported rotation mode retains identity channels across all layouts");
+  }
+  for (const auto member : {"quat", "dquat", "rotAxis", "rotAngle"}) {
+    const bool axisAngle = std::string_view(member) == "rotAxis" || std::string_view(member) == "rotAngle";
+    const auto* field = schema.structs[6].FindMember(member);
+    changed = bytes;
+    bits(changed, 4, rotationModeOffset, axisAngle ? 65535 : 0, 2);
+    const auto components = std::string_view(member) == "rotAngle" ? 1u : axisAngle ? 3u
+                                                                                    : 4u;
+    for (std::size_t component = 0; component < components; ++component) {
+      for (const auto invalid : {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity()}) {
+        auto nonfinite = changed;
+        scalar(nonfinite, 4, field->offset + 4 * component, invalid);
+        failure(nonfinite, blocks, schema, "BLEND_SCENE_TRANSFORM_INVALID", 4);
+      }
+    }
+    scalar(changed, 4, field->offset, 0);
+    auto dna = schema;
+    auto& malformed = *std::find_if(dna.structs[6].members.begin(), dna.structs[6].members.end(),
+        [&](const auto& value) { return value.baseName == member; });
+    malformed.arrayDimensions = std::string_view(member) == "rotAngle"
+                                    ? std::vector<std::uint64_t>{1}
+                                    : std::vector<std::uint64_t>{1, axisAngle ? 3u : 4u};
+    failure(changed, blocks, dna, "BLEND_SCENE_TRANSFORM_INVALID", 4);
+    malformed.baseName = "missing";
+    const auto missing = decode(changed, blocks, dna);
+    Require(!missing.HasValue() && missing.GetError().code == "BLEND_DNA_MEMBER" &&
+                missing.GetError().blockIndex == 4,
+        "Active rotation channels must not silently default");
+    changed = bytes;
+    scalar(changed, 4, field->offset, std::numeric_limits<float>::quiet_NaN());
+    Require(decode(changed, blocks, schema).HasValue(), "Inactive rotation channels are not interpreted");
   }
   changed = bytes;
   bits(changed, 4, flagsOffset, 1, 2);
@@ -640,6 +693,39 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
     for (std::size_t column = 0; column < 4; ++column) {
       Require(std::abs(rotated.GetValue().objects[0].worldTransform[row][column] - rotatedExpected[row][column]) < 1e-6,
           "Delta rotation precedes source rotation; scale multiplies columns");
+    }
+  }
+  for (const auto mode : {0, 65535}) {
+    changed = bytes;
+    bits(changed, 4, rotationModeOffset, mode, 2);
+    vector(changed, 4, locationOffset + 36, {2, 3, -1});
+    auto expected = rotationZ;
+    if (mode == 0) {
+      scalar(changed, 4, quaternionOffset, 2);
+      scalar(changed, 4, quaternionOffset + 12, 2);
+      scalar(changed, 4, quaternionOffset + 16, -3);
+      scalar(changed, 4, quaternionOffset + 20, -3);
+      expected = Multiply(deltaX, rotationZ);
+    } else {
+      vector(changed, 4, axisOffset, {0, 0, 7});
+      scalar(changed, 4, angleOffset, angle);
+      scalar(changed, 4, locationOffset + 60, std::numeric_limits<float>::quiet_NaN());
+      scalar(changed, 4, quaternionOffset + 16, std::numeric_limits<float>::quiet_NaN());
+    }
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      for (std::size_t row = 0; row < 3; ++row) {
+        expected[row][axis] *= std::array<double, 3>{4, -9, -5}[axis];
+      }
+      expected[axis][3] = root[axis][3];
+    }
+    const auto otherRotation = decode(changed, blocks, schema);
+    Require(otherRotation.HasValue(), "Nonunit quaternion/axis channels decode across all layouts");
+    expected = blend::ToUsdBasis(expected);
+    for (std::size_t row = 0; row < 4; ++row) {
+      for (std::size_t column = 0; column < 4; ++column) {
+        Require(std::abs(otherRotation.GetValue().objects[0].worldTransform[row][column] - expected[row][column]) < 1e-6,
+            "Quaternion delta order, sign and normalization; axis-angle ignores delta rotation");
+      }
     }
   }
   for (const auto memberOffset : {animationOffset, constraintsOffset, constraintsOffset + width}) {
@@ -1521,7 +1607,7 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
       unsupported == objectValues.GetValue().objects.end() ||
       native.GetError().blockIndex != unsupported->blockIndex) {
     throw std::runtime_error("Native corpus decoding must reject unsupported Object kinds: " +
-        (native.HasValue() ? std::string("got Scene") : native.GetError().code + ": " + native.GetError().message));
+                             (native.HasValue() ? std::string("got Scene") : native.GetError().code + ": " + native.GetError().message));
   }
   auto emptyObjects = decoded.GetValue();
   const auto* objectStruct = schema.GetValue().FindStruct("Object");

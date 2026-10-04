@@ -162,7 +162,7 @@ authored-stage support. The importer remains header-only.
 | immediate instance Collection references and explicit visit-budget diagnostics | supported | four synthetic layouts cover saved member names, null/absent/interior/wrong/count/linked/name targets, inactive references, shared and already-visited targets, reordered indices and exact budgets; both corpus files cover null references and pointer/flag mutations in `blendScene.ir` | Phase 2 |
 | recursive instance graph validation | supported | four synthetic layouts cover nested missing/interior/wrong-type/linked targets, self/ancestor cycles through CollectionObject membership, shared targets, preserved membership and generic selection, and 256-child instance subgraphs with exact/one-smaller visit/depth budgets; both corpus files reject self-instancing master Collections in `blendScene.ir` | Phase 2 |
 | native Mesh/Empty Scene IR decoding, render visibility and selected parent indices | supported | `DecodeScene` composes Object-value selection; four synthetic layouts cover mixed Mesh/Empty Scenes, shared Mesh indices, parent-only Objects, block reordering, ownership and explicit failures for unsupported kinds/data/instances; both corpus SDNA layouts decode in-memory Object-kind/data mutations without rewriting fixtures in `blendScene.ir` | Phase 2 |
-| native XYZ Euler Empty local/world transform construction and meter normalization | supported | four synthetic layouts cover delta translation/rotation/scale, nonuniform/negative scale, column-first parent inverse, four source unit scales, shared and 256-deep parents at exact budgets, malformed/nonfinite storage and source/unit overflow in `blendScene.ir`; no Blender-written transform oracle | Phase 2 |
+| native Euler/Quaternion/Axis-Angle local/world transform construction and meter normalization | supported | four synthetic layouts cover active/inactive channels, normalized Quaternion/Axis-Angle, delta order, malformed/nonfinite storage, column-first parent inverse, four unit scales and shared/deep parents in `blendScene.ir`; [Blender-written 4.5.13/5.2.2 transform oracles](../../tests/fixtures/native-transforms/README.md) compare 27 Empty objects per file, all six Euler orders, Quaternion/Axis-Angle, delta channels, nonuniform/negative/zero scale, parent inverses, three-level hierarchy and converted parent/local composition in `blendScene.transforms` | Phase 2 |
 | native source-only animation/constraint/modifier and shape-key presence diagnostics | supported | nonnull `adt`, constraint endpoints and Mesh modifiers produce contextual recoverable `BLEND_SCENE_EVALUATION_UNAPPLIED`; Mesh keys produce `BLEND_MESH_EVALUATION_UNAPPLIED`, without following or applying evaluation data in four synthetic layouts in `blendScene.ir` | Phase 2 |
 | native Mesh source positions, polygon offsets and corner vertex indices | supported | real 4.5.13 CustomData and 5.2.2 AttributeArray Cube Mesh payloads with pinned points and all face indices; both storage forms across four synthetic layouts cover shared/mixed objects, ownership, repeated/reordered reads and four unit scales in `blendScene.ir` | Phase 2 |
 | native flat face-varying corner normals | supported | all 24 outward Cube corner normals in both corpus files; two synthetic triangles in both storage forms across four layouts, with normals unchanged by unit scale in `blendScene.ir` | Phase 2 |
@@ -226,11 +226,11 @@ targets, budgets and other layouts have synthetic evidence.
 
 The [native decoding boundary](../design/DESIGN_POLICY.md#527-native-scene-decoding-boundary)
 publishes owning Scene IR only after saved Object-value and recursive graph
-validation succeeds. It constructs source XYZ Euler transforms, including
-delta channels and ordinary Object parent inverses, then normalizes world
+validation succeeds. It constructs source Euler, Quaternion and Axis-Angle
+transforms, including applicable delta channels and ordinary Object parent inverses, then normalizes world
 translations and the basis once. Mesh and data-less Empty objects with zero
 transform flags are accepted; other kinds, Image Empty data, active instances,
-other rotations and parenting modes fail explicitly, with no partial IR.
+unknown rotation modes and non-ordinary parenting modes fail explicitly, with no partial IR.
 Parent-only Objects affect world space but do not join membership. Immediate
 selected parents become IR indices; other parents leave an IR root with its
 complete world matrix. Source names and render visibility are retained,
@@ -240,6 +240,8 @@ Animation/constraint/modifier and shape-key presence is reported without
 evaluation. The Cube's Mesh bytes in both corpus files are unchanged; non-Mesh
 Objects are mutated to Empty in memory to isolate the supported scene scope.
 Those files remain unsupported as complete Scenes because Camera/Light decoding
-is not introduced. Empty/parenting evidence still uses synthetic or mutated
-Object values, not Blender-written transform oracle fixtures. No backend,
+is not introduced. Separate Blender-written Empty fixtures compare native
+world matrices and parent/local composition with saved transform oracles.
+The native matrix tolerance is `2e-5 * (1 + abs(expected))` per component;
+the decoder keeps strict finite/affine validation. No backend,
 USD authoring, native-to-USD unit equivalence or importer connection is claimed.

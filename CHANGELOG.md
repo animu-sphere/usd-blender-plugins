@@ -209,3 +209,12 @@ All notable changes to this project are recorded here. The format follows
 - Plain CMake accepts the caller's installed OpenUSD SDK without a version
     constraint. The OpenStrata verification runtime remains pinned to 26.08;
     accepting another SDK is not a compatibility guarantee.
+- Native Object rotation decoding for all six Euler orders, Quaternion and
+    Axis-Angle, with active-channel shape/finite validation and Blender's
+    mode-specific delta behavior. Repository-generated Blender 4.5.13/5.2.2
+    transform fixtures compare 27 Empty objects per file against saved world
+    and parent-local matrix oracles, including nonuniform/negative/zero scales,
+    parent inverses, three-level hierarchy, render visibility and single-pass
+    normalization. Root and standalone tests include the oracle comparison;
+    generator regressions check semantic reproduction and non-destructive
+    validation. USD authoring and the header-only importer are unchanged.
