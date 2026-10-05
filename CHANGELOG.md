@@ -6,6 +6,22 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Blender 5.x constant Principled materials (Base Color, Metallic, Roughness,
+    IOR and Coat) under `/Asset/mtl/<Material>/preview/Surface`. `preview` is
+    an encapsulated `UsdShadeNodeGraph`; Material surface outputs connect
+    through its output to `UsdPreviewSurface`. Shared-Mesh material slots
+    resolve independently per Object, including null overrides; single slots
+    bind on Meshes and multiple used slots get standard face subsets.
+    Empty or invalid face slots remain unbound with diagnostics.
+- A Blender-written 5.2.2 constant-material and binding oracle, native
+    malformed-storage tests and registered-plugin checks for naming,
+    repeat/reordered reads, reference composition and typed metadata-only
+    hierarchy. Unsupported/muted surfaces use diagnosed viewport fallback,
+    linked inputs use diagnosed socket constants, and Alpha/Emission remain
+    explicitly deferred. No texture or full older-version support is claimed.
+
 ## [0.1.0] - 2026-10-05
 
 ### Fixed

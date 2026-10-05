@@ -930,7 +930,7 @@ inside the bundle (`src/AuthorScene.cpp`), so the `SdfFileFormat` class stays th
 ### 5.3.1 Scene IR USD authoring boundary
 
 `AuthorScene(scene, metadataOnly = false)` in the bundle's internal `AuthorScene.h` returns
-`Result<SdfLayerRefPtr>`. It consumes owning, already-normalized Mesh/Empty
+`Result<SdfLayerRefPtr>`. It consumes owning, already-normalized Object/Mesh/Material
 Scene IR, not bytes, SDNA, saved addresses or Blender evaluation. It creates
 a temporary stage and returns its root layer only after successful authoring;
 fatal input or OpenUSD errors publish no partial layer. This remains bundle
@@ -957,6 +957,13 @@ extent. A Mesh without polygons retains its points and empty topology, with
 one recoverable `BLEND_MESH_EMPTY` diagnostic per shared IR Mesh.
 UV naming follows [NAMING §4.2](NAMING_POLICY.md#42-uv-map-naming-boundary).
 
+Constant Materials and effective per-Object slots follow the separate
+[material boundary](MATERIAL_POLICY.md#71-native-constant-material-boundary).
+Material indices and face-index shapes are validated before binding; standard
+`UsdShadeMaterial`, `UsdShadeNodeGraph`, `UsdShadeShader` and
+`UsdShadeMaterialBindingAPI` authoring stays inside the bundle. Native libraries
+still do not link OpenUSD.
+
 `CreateAssetStage(sourceVersion, optionalSourceScene)` is the shared metadata
 scaffold used by this boundary. Scene authoring records Scene provenance.
 Required scopes, kind, defaultPrim, Y-up, meters and contract version remain
@@ -965,7 +972,9 @@ decoder diagnostics and translate them at the importer boundary.
 
 With `metadataOnly`, the same validated Scene produces the same hierarchy,
 Object transforms, render visibility and provenance, but typed Mesh children
-carry no geometry attributes. Geometry is still decoded and validated; this
+carry no geometry attributes; typed Material/graph/shader/subset children have
+no material networks, face arrays or bindings. Geometry and Materials are still
+decoded and validated; this
 is not the Phase 8 lazy-decode fast path.
 
 Blender-written transform

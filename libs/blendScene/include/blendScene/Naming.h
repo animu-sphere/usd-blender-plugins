@@ -9,5 +9,6 @@ bool SourceNameLess(std::string_view left, std::string_view right);
 Result<std::string> NameForDisplay(std::string_view sourceName);
 Result<std::vector<std::string>> ObjectIdentifiers(const Scene& scene);
 Result<std::vector<std::string>> UvIdentifiers(const Mesh& mesh);
+Result<std::vector<std::string>> MaterialIdentifiers(const Scene& scene);
 
 } // namespace blend

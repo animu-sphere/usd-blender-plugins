@@ -32,7 +32,7 @@ Completion does not imply that the planned release has been tagged.
 | 0 | workspace skeleton, minimal file format | ✅ | [v0.1.0](../releases/v0.1.0.md) |
 | 1 | container and SDNA, `blend_inspect` | ✅ | [v0.1.0](../releases/v0.1.0.md) |
 | 2 | objects and meshes | ✅ | [v0.1.0](../releases/v0.1.0.md) |
-| 3 | materials and images | ⬜ | v0.4.0 (planned) |
+| 3 | materials and images | 🚧 | v0.4.0 (planned) |
 | 4 | cameras, lights and collections | ⬜ | v0.5.0 (planned) |
 | 5 | object animation | ⬜ | v0.6.0 (planned) |
 | 6 | armatures and UsdSkel | ⬜ | v0.7.0 (planned) |

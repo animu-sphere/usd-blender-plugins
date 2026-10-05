@@ -18,4 +18,10 @@ Mesh DecodeMesh(std::span<const std::byte> bytes,
     const Header& header, const ScenePointers& pointers, std::uint32_t index,
     const UnitConversion& units, std::vector<Diagnostic>& diagnostics);
 
+void DecodeMaterials(std::span<const std::byte> bytes,
+    std::span<const BlendBlock> blocks, const DnaSchema& schema,
+    const Header& header, const ScenePointers& pointers,
+    const SelectedSceneObjects& selected, Scene& scene,
+    std::vector<Diagnostic>& diagnostics);
+
 } // namespace blend::detail

@@ -125,6 +125,8 @@ public:
       }
       scene.objects.push_back(std::move(object));
     }
+    detail::DecodeMaterials(bytes_, blocks_, schema_, header_, pointers_,
+        selected, scene, diagnostics_);
     const auto names = ObjectIdentifiers(scene);
     const auto contextualize = [&](Diagnostic diagnostic, std::size_t occurrence = 0) {
       const auto object = std::find_if(selected.objects.begin(), selected.objects.end(),

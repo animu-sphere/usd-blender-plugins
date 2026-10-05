@@ -38,6 +38,17 @@ struct Mesh {
   std::vector<std::int32_t> faceVertexIndices;
   std::vector<Vector3> cornerNormals;
   std::vector<UvMap> uvMaps;
+  std::vector<std::int32_t> faceMaterialIndices;
+};
+
+struct Material {
+  std::string sourceName;
+  Vector3 diffuseColor = {0.8, 0.8, 0.8};
+  double metallic = 0;
+  double roughness = 0.5;
+  double ior = 1.5;
+  double clearcoat = 0;
+  double clearcoatRoughness = 0.03;
 };
 
 struct Object {
@@ -47,12 +58,14 @@ struct Object {
   std::optional<std::size_t> mesh;
   Matrix4 worldTransform = IdentityMatrix;
   bool hiddenForRender = false;
+  std::vector<std::optional<std::size_t>> materialSlots;
 };
 
 struct Scene {
   SceneMetadata metadata;
   std::vector<Object> objects;
   std::vector<Mesh> meshes;
+  std::vector<Material> materials;
 };
 
 Vector3 ToUsdBasis(const Vector3& value);
@@ -72,4 +85,4 @@ public:
 private:
   double metersPerBlenderUnit_;
 };
-}
+} // namespace blend

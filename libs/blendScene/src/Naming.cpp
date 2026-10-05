@@ -208,4 +208,18 @@ Result<std::vector<std::string>> UvIdentifiers(const Mesh& mesh) {
   }
 }
 
+Result<std::vector<std::string>> MaterialIdentifiers(const Scene& scene) {
+  try {
+    std::vector<std::string_view> names;
+    for (const auto& material : scene.materials) {
+      names.push_back(material.sourceName);
+    }
+    return AssignIdentifiers(names, "Material", {});
+  } catch (const std::bad_alloc&) {
+    return Result<std::vector<std::string>>(AllocationFailure());
+  } catch (const std::length_error&) {
+    return Result<std::vector<std::string>>(AllocationFailure());
+  }
+}
+
 } // namespace blend

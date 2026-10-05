@@ -1483,7 +1483,11 @@ void CheckCorpusMesh(const std::vector<std::byte>& bytes,
   }
   const auto result = blend::DecodeScene(input, blocks, schema, header, {10000, 64});
   const auto decoded = Take(result);
-  Require(result.Diagnostics().empty() && decoded.objects.size() == 3 && decoded.meshes.size() == 1,
+  Require(std::all_of(result.Diagnostics().begin(), result.Diagnostics().end(), [&](const auto& diagnostic) {
+    return header.version < 500 && diagnostic.code == "BLEND_MATERIAL_VERSION_UNSUPPORTED" &&
+           diagnostic.recoverable && diagnostic.datablock == "Material";
+  }) && decoded.objects.size() == 3 &&
+              decoded.meshes.size() == 1,
       "Both real corpus Mesh payloads decode without changing their stored Mesh bytes");
   const auto cube = std::find_if(decoded.objects.begin(), decoded.objects.end(),
       [](const auto& object) { return object.sourceName == "Cube"; });
