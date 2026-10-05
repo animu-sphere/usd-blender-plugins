@@ -21,7 +21,8 @@ MESHES = [NATIVE / "native-mesh" / version / "mesh.blend"
 LEGACY_NORMALS = [NATIVE / "native-normals" / "blender-3.3.21" / f"{group}.blend"
                   for group in ("auto_smooth", "auto_angle", "auto_zero", "auto_boundary")]
 POLYGON_NORMALS = [NATIVE / "native-normals" / "blender-5.2.2" / f"{group}.blend"
-                   for group in ("polygon_smooth", "polygon_split")]
+                   for group in ("polygon_smooth", "polygon_split",
+                                 "custom_polygon_smooth", "custom_polygon_split")]
 COMPRESSED_CORPUS = FIXTURES.parent / "corpus" / "blender-5.2.2" / "Untitled.blend"
 
 
@@ -422,10 +423,12 @@ class StageContractTests(unittest.TestCase):
         for fixture in [*LEGACY_NORMALS, *POLYGON_NORMALS]:
             with self.subTest(fixture=str(fixture)):
                 legacy = fixture in LEGACY_NORMALS
+                custom = fixture.stem.startswith("custom")
                 stage = Usd.Stage.Open(str(fixture))
                 self._assert_contract(stage, "3.3" if legacy else "5.2", "Normals")
                 records = iter(fixture.with_suffix(".oracle.txt").read_text(encoding="ascii").splitlines())
-                self.assertEqual(next(records), "BLEND_NORMALS_ORACLE 3" if legacy else "BLEND_NORMALS_ORACLE 1")
+                self.assertEqual(next(records), "BLEND_NORMALS_ORACLE 3" if legacy else
+                                 "BLEND_NORMALS_ORACLE 2" if custom else "BLEND_NORMALS_ORACLE 1")
                 self.assertEqual(next(records), "'3.3.21'" if legacy else "'5.2.2 LTS'")
                 scale, count = next(records).split()
                 self.assertEqual(int(count), 1)
@@ -454,6 +457,14 @@ class StageContractTests(unittest.TestCase):
                 for actual, expected in zip(normals, expected_normals):
                     for component, target in zip(actual, expected):
                         self.assertLessEqual(abs(component - target), 2e-5)
+                if custom:
+                    marker, packed = next(records).split()
+                    self.assertEqual((marker, int(packed)), ("PACKED_CUSTOM_NORMALS", int(corners)))
+                    pairs = [tuple(map(int, next(records).split())) for _ in range(int(packed))]
+                    self.assertTrue(all(len(pair) == 2 and all(-32768 <= value <= 32767 for value in pair)
+                                        for pair in pairs))
+                    self.assertIn((0, 0), pairs)
+                    self.assertIn((-32768, -32768), pairs)
                 self.assertEqual(list(records), [])
                 referenced = Usd.Stage.CreateInMemory()
                 referenced.DefinePrim("/Referenced").GetReferences().AddReference(str(fixture))

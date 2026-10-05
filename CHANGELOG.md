@@ -29,6 +29,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Blender-written 5.2.2 packed-custom polygon normal oracles add 495 corners
+    on concave/nonplanar polygons, shared sharp edges, flat boundaries and
+    angle-sweep wedges, with automatic values and mixed signed-short pairs.
+    Native tests compare exact saved pairs/storage and reconstructed normals
+    at the unchanged `2e-5` threshold; maximum component error is `1.11984e-6`.
+    Root/standalone authoring and registered-plugin oracle, metadata, repeat
+    and reference tests cover composition. Generator regressions pin
+    reproduction and non-destructive saved-geometry/edge/pair mutation checks.
+    Decoder behavior and older-version fixture defaults are unchanged; this
+    is bounded evidence, not completion of general Blender 5.x Mesh support.
 - Blender-written 5.2.2 recursive Collection-instance graph oracle with
     shared and multi-level targets, instance-only Objects and parent-only
     inactive references. Native tests pin exact 23-visit/depth-3 budgets,

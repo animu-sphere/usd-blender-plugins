@@ -166,7 +166,7 @@ void CheckFixture(const std::filesystem::path& path) {
 int main(int argc, char** argv) {
   try {
     if (argc == 3 && std::string(argv[1]) == "--polygons") {
-      for (const auto name : {"polygon_smooth", "polygon_split"}) {
+      for (const auto name : {"polygon_smooth", "polygon_split", "custom_polygon_smooth", "custom_polygon_split"}) {
         CheckFixture(std::filesystem::path(argv[2]) / (std::string(name) + ".blend"));
       }
       return 0;

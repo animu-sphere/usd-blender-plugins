@@ -9,7 +9,7 @@ import bpy
 
 GENERATOR = Path(__file__).with_name("generate_normals.py")
 GROUPS = ("smooth", "flat", "split", "custom", "custom_fans", "custom_split_fans", "custom_angles", "multi", "constant")
-POLYGON_GROUPS = ("polygon_smooth", "polygon_split")
+POLYGON_GROUPS = ("polygon_smooth", "polygon_split", "custom_polygon_smooth", "custom_polygon_split")
 
 
 class NormalFixtureTests(unittest.TestCase):
@@ -172,10 +172,31 @@ class NormalFixtureTests(unittest.TestCase):
                 fixture = output / f"{group}.blend"
                 bpy.ops.wm.open_mainfile(filepath=str(fixture), load_ui=False, use_scripts=False)
                 mesh = bpy.data.objects[group.capitalize()].data
-                if group == "polygon_smooth":
+                if group.endswith("_smooth"):
                     mesh.vertices[6].co.z += 0.5
+                elif group.startswith("custom"):
+                    edge = next(edge for edge in mesh.edges if tuple(sorted(edge.vertices)) == (3, 4))
+                    edge.use_edge_sharp = False
                 else:
                     mesh.polygons[-1].use_smooth = True
+                bpy.ops.wm.save_as_mainfile(filepath=str(fixture), compress=False, check_existing=False)
+                saved = {path: path.read_bytes() for path in output.iterdir()}
+                self.assertIn("Normal oracle values differ",
+                              self.run_generator(output, check=True, success=False, groups=(group,)))
+                self.assertEqual(saved, {path: path.read_bytes() for path in output.iterdir()})
+
+    @unittest.skipUnless(bpy.app.version >= (5, 0, 0), "Blender 5.x custom polygon evidence")
+    def test_check_inspects_saved_polygon_packed_normals(self):
+        with TemporaryDirectory(prefix="blend-normal-polygon-packed-") as directory:
+            output = Path(directory)
+            groups = ("custom_polygon_smooth", "custom_polygon_split")
+            self.run_generator(output, groups=groups)
+            for group in groups:
+                fixture = output / f"{group}.blend"
+                bpy.ops.wm.open_mainfile(filepath=str(fixture), load_ui=False, use_scripts=False)
+                mesh = bpy.data.objects[group.capitalize()].data
+                mesh.attributes["custom_normal"].data[0].value = (16384, 32767)
+                mesh.update()
                 bpy.ops.wm.save_as_mainfile(filepath=str(fixture), compress=False, check_existing=False)
                 saved = {path: path.read_bytes() for path in output.iterdir()}
                 self.assertIn("Normal oracle values differ",

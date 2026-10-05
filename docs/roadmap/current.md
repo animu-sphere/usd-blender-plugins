@@ -31,6 +31,12 @@ Task 2.5's additional
 pins modern corner-angle weights on concave/nonplanar polygons and point/split
 fans through native decoding and registered-plugin reads. This is another
 bounded fixture-backed Mesh boundary, not completion of general 5.x coverage.
+The additional
+[5.2 custom polygon-fan evidence](../../tests/fixtures/native-normals/README.md#blender-52-custom-polygon-fans)
+combines packed custom normals with the same concave/nonplanar geometry,
+sharp/flat boundaries, automatic values and signed-pair averaging. Native
+storage/oracle checks and both USD build modes retain the existing error
+threshold and metadata/repeat/reference behavior without changing decoding.
 Task 2.3's native boundary now has an
 [integrated Blender-written Scene oracle](../../tests/fixtures/native-scene/README.md)
 combining Mesh/Empty hierarchy, shared Meshes, a parent-only Mesh outside

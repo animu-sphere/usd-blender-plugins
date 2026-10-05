@@ -996,8 +996,9 @@ Run with each pinned Blender installation (4.5.13 or 5.2.2). The default
 output directory holds `smooth.blend`, `flat.blend`, `split.blend`,
 `custom.blend`, `custom_fans.blend`, `custom_split_fans.blend`,
 `custom_angles.blend`, `multi.blend`, `constant.blend` and adjacent `.oracle.txt` files.
-Blender 5.2 additionally generates `polygon_smooth.blend` and
-`polygon_split.blend`; the older-version defaults are unchanged.
+Blender 5.2 additionally generates `polygon_smooth.blend`,
+`polygon_split.blend`, `custom_polygon_smooth.blend` and
+`custom_polygon_split.blend`; the older-version defaults are unchanged.
 Provenance, cases, comparison thresholds and ownership/reconstruction evidence are in the
 [normal fixture record](../../tests/fixtures/native-normals/README.md).
 
@@ -1028,19 +1029,22 @@ native comparison without requiring Blender at test time:
 
 ```powershell
 $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
-& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --groups polygon_smooth polygon_split
-& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check --groups polygon_smooth polygon_split
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --groups custom_polygon_smooth custom_polygon_split
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check --groups polygon_smooth polygon_split custom_polygon_smooth custom_polygon_split
 ctest --preset reader -R '^blendScene\.polygonNormals$' --output-on-failure
 ```
 
 `polygon_smooth` and `polygon_split` share concave/nonplanar polygon pairs,
 unequal-area triangles, disconnected vertex fans and 35 angle-sweep wedges.
 An additional flat triangle selects connected split fans in the second file.
-The normal-oracle executable compares 495 corners at the unchanged `2e-5`
-threshold and pins exact reversed-block equality in both build modes.
+The `custom_polygon_*` files add 495 packed-custom corners on that geometry,
+including sharp shared edges, signed limits and mixed-pair fan averages.
+The normal-oracle executable compares all 990 polygon corners at the unchanged
+`2e-5` threshold and pins exact reversed-block equality in both build modes.
 Registered-plugin tests compare those saved normals and preserve metadata,
 repeat and referenced reads. The generator regression suite rejects saved
-polygon-coordinate and flat-face-selector mutations without rewriting files.
+polygon-coordinate, ordinary flat-face-selector, custom sharp-edge and
+packed-pair mutations without rewriting files.
 
 The generator constructs source geometry without modifiers. All `custom*`
 groups record Blender's resulting corner normals and packed short pairs.
