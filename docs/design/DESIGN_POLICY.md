@@ -958,7 +958,9 @@ one recoverable `BLEND_MESH_EMPTY` diagnostic per shared IR Mesh.
 UV naming follows [NAMING §4.2](NAMING_POLICY.md#42-uv-map-naming-boundary).
 
 Constant Materials and effective per-Object slots follow the separate
-[material boundary](MATERIAL_POLICY.md#71-native-constant-material-boundary).
+[material boundary](MATERIAL_POLICY.md#71-native-constant-material-boundary);
+owning external-texture inputs follow its
+[texture boundary](MATERIAL_POLICY.md#72-native-external-texture-boundary).
 Material indices and face-index shapes are validated before binding; standard
 `UsdShadeMaterial`, `UsdShadeNodeGraph`, `UsdShadeShader` and
 `UsdShadeMaterialBindingAPI` authoring stays inside the bundle. Native libraries

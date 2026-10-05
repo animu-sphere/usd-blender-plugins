@@ -50,6 +50,8 @@ if(BUILD_TESTING)
     target_link_libraries(blendSceneMaterialTests PRIVATE blendScene::blendScene)
     add_test(NAME blendScene.materials COMMAND blendSceneMaterialTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-materials/blender-5.2.2/materials.blend)
+    add_test(NAME blendScene.textures COMMAND blendSceneMaterialTests --textures
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-textures/blender-5.2.2/textures.blend)
     add_test(NAME blendScene.instances COMMAND blendSceneInstanceTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-scene/blender-5.2.2/instances.blend)
     add_test(NAME blendScene.naming COMMAND blendSceneNamingTests)

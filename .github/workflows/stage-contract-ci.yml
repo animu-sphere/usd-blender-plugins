@@ -147,7 +147,7 @@ jobs:
           set -euo pipefail
           mapfile -t test_files < <(find "$BUNDLE/build" -maxdepth 2 -type f -name CTestTestfile.cmake)
           test "${#test_files[@]}" -eq 1
-          ost plugin run "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE" -- ctest --test-dir "$(dirname "${test_files[0]}")" -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(authoring|units|importer|instances|materials)$' 2>&1 | tee .ost-ci/authoring.log
+          ost plugin run "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE" -- ctest --test-dir "$(dirname "${test_files[0]}")" -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(authoring|units|importer|instances|materials|textures)$' 2>&1 | tee .ost-ci/authoring.log
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

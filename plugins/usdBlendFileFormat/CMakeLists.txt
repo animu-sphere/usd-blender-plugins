@@ -120,4 +120,6 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-units/blender-5.2.2")
     add_test(NAME usdBlend.materials COMMAND usdBlendAuthoringTests --materials
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-materials/blender-5.2.2/materials.blend")
+    add_test(NAME usdBlend.textures COMMAND usdBlendAuthoringTests --textures
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-textures/blender-5.2.2/textures.blend")
 endif()

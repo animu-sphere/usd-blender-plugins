@@ -1,0 +1,441 @@
+{
+  "materials": {
+    "Absolute": {
+      "diagnostics": [
+        "BLEND_IMAGE_ABSOLUTE_PATH"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "C:/usd-blend-fixtures/color.png",
+        "input": "Base Color",
+        "normal": false,
+        "output": "rgb",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "repeat"
+      }
+    },
+    "ActiveUV": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Base Color",
+        "normal": false,
+        "output": "rgb",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "Render",
+        "varname": "st",
+        "wrap": "black"
+      }
+    },
+    "AlphaScalar": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Roughness",
+        "normal": false,
+        "output": "a",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "repeat"
+      }
+    },
+    "ClearcoatAlpha": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Coat Weight",
+        "normal": false,
+        "output": "a",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "repeat"
+      }
+    },
+    "ClearcoatRoughnessAlpha": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Coat Roughness",
+        "normal": false,
+        "output": "a",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "repeat"
+      }
+    },
+    "Closest": {
+      "diagnostics": [
+        "BLEND_IMAGE_INTERPOLATION_UNSUPPORTED"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Base Color",
+        "normal": false,
+        "output": "rgb",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "repeat"
+      }
+    },
+    "ColorScalar": {
+      "diagnostics": [
+        "BLEND_MATERIAL_UNSUPPORTED_NODE"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "Generated": {
+      "diagnostics": [
+        "BLEND_IMAGE_SOURCE_UNSUPPORTED"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "IorAlpha": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "IOR",
+        "normal": false,
+        "output": "a",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "repeat"
+      }
+    },
+    "MappedVector": {
+      "diagnostics": [
+        "BLEND_MATERIAL_UNSUPPORTED_NODE"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "MetallicAlpha": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Metallic",
+        "normal": false,
+        "output": "a",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "repeat"
+      }
+    },
+    "Mirror": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Base Color",
+        "normal": false,
+        "output": "rgb",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "mirror"
+      }
+    },
+    "Missing": {
+      "diagnostics": [
+        "BLEND_IMAGE_MISSING"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "Movie": {
+      "diagnostics": [
+        "BLEND_IMAGE_SOURCE_UNSUPPORTED"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "MutedImage": {
+      "diagnostics": [
+        "BLEND_MATERIAL_UNSUPPORTED_NODE"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "NamedNormal": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Normal",
+        "normal": true,
+        "output": "rgb",
+        "sourceColorSpace": "raw",
+        "uvMap": "Detail_UV",
+        "varname": "Detail_UV_1",
+        "wrap": "repeat"
+      }
+    },
+    "NamedUV": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Base Color",
+        "normal": false,
+        "output": "rgb",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "Detail_UV",
+        "varname": "Detail_UV_1",
+        "wrap": "clamp"
+      }
+    },
+    "Normal": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Normal",
+        "normal": true,
+        "output": "rgb",
+        "sourceColorSpace": "raw",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "repeat"
+      }
+    },
+    "NormalStrength": {
+      "diagnostics": [
+        "BLEND_MATERIAL_UNSUPPORTED_NODE"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "ObjectNormal": {
+      "diagnostics": [
+        "BLEND_MATERIAL_UNSUPPORTED_NODE"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "Packed": {
+      "diagnostics": [
+        "BLEND_IMAGE_PACKED"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "Projection": {
+      "diagnostics": [
+        "BLEND_MATERIAL_UNSUPPORTED_NODE"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "Raw": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Base Color",
+        "normal": false,
+        "output": "rgb",
+        "sourceColorSpace": "raw",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "repeat"
+      }
+    },
+    "Relative": {
+      "diagnostics": [],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "./textures/color.png",
+        "input": "Base Color",
+        "normal": false,
+        "output": "rgb",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "repeat"
+      }
+    },
+    "Sequence": {
+      "diagnostics": [
+        "BLEND_IMAGE_SOURCE_UNSUPPORTED"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "Tiled": {
+      "diagnostics": [
+        "BLEND_IMAGE_SOURCE_UNSUPPORTED"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": null
+    },
+    "UNC": {
+      "diagnostics": [
+        "BLEND_IMAGE_ABSOLUTE_PATH"
+      ],
+      "diffuseColor": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ],
+      "roughness": 0.30000001192092896,
+      "texture": {
+        "assetPath": "//usd-blend-fixtures/textures/color.png",
+        "input": "Base Color",
+        "normal": false,
+        "output": "rgb",
+        "sourceColorSpace": "sRGB",
+        "uvMap": "",
+        "varname": "st",
+        "wrap": "repeat"
+      }
+    }
+  },
+  "scene": "Textures",
+  "version": "5.2.2 LTS"
+}

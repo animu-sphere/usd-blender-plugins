@@ -192,10 +192,175 @@ void Boundaries(const Fixture& fixture) {
       "Synthetic non-node flag selects saved viewport constants without requiring a graph");
 }
 
+std::uint32_t Node(const Fixture& fixture, std::string_view material, std::string_view type) {
+  const auto source = fixture.View(fixture.ids.at("MA" + std::string(material)));
+  const auto tree = fixture.View(fixture.Resolve(Take(Take(source.Member("nodetree")).Pointer())));
+  auto address = Take(Take(Take(tree.Member("nodes")).Member("first")).Pointer());
+  while (address != 0) {
+    const auto index = fixture.Resolve(address);
+    const auto value = fixture.View(index);
+    const auto bytes = Take(value.Member("idname")).Bytes();
+    if (std::string_view(reinterpret_cast<const char*>(bytes.data())) == type) {
+      return index;
+    }
+    address = Take(Take(value.Member("next")).Pointer());
+  }
+  throw std::runtime_error("Missing fixture node");
+}
+
+blend::DnaValueView InputSocket(const Fixture& fixture, std::uint32_t node, std::string_view name) {
+  auto address = Take(Take(Take(fixture.View(node).Member("inputs")).Member("first")).Pointer());
+  while (address != 0) {
+    const auto socket = fixture.View(fixture.Resolve(address));
+    const auto identifier = Take(socket.Member("identifier")).Bytes();
+    if (std::string_view(reinterpret_cast<const char*>(identifier.data())) == name) {
+      return socket;
+    }
+    address = Take(Take(socket.Member("next")).Pointer());
+  }
+  throw std::runtime_error("Missing fixture socket");
+}
+
+void CheckTextures(const Fixture& fixture) {
+  const auto result = fixture.Decode(fixture.bytes);
+  const auto scene = Take(result);
+  Require(scene.materials.size() == 27 && scene.meshes.size() == 27 && scene.objects.size() == 27,
+      "Texture fixture retains all effective Materials and geometry");
+  std::map<std::string, const blend::Material*> materials;
+  for (const auto& material : scene.materials) {
+    materials.emplace(material.sourceName, &material);
+    Require(std::abs(material.diffuseColor[0] - 0.2) < 1e-6 && std::abs(material.roughness - 0.3) < 1e-6,
+        "Textures retain their saved constant fallback");
+  }
+  const auto check = [&](const char* name, blend::TextureInput input, const char* path,
+                         blend::TextureColorSpace colorSpace, blend::TextureWrap wrap, const char* uv) {
+    const auto& textures = materials.at(name)->textures;
+    Require(textures.size() == 1, std::string("One owning texture for ") + name);
+    const auto& texture = textures.front();
+    Require(texture.input == input && texture.assetPath == path && texture.colorSpace == colorSpace &&
+                texture.wrap == wrap && texture.uvMap == uv &&
+                texture.normalUvMap == (input == blend::TextureInput::Normal ? uv : ""),
+        std::string("Saved texture settings match Blender oracle for ") + name);
+  };
+  using Input = blend::TextureInput;
+  using Color = blend::TextureColorSpace;
+  using Wrap = blend::TextureWrap;
+  for (const auto name : {"Relative", "Closest"}) {
+    check(name, Input::BaseColor, "./textures/color.png", Color::SRgb, Wrap::Repeat, "");
+  }
+  check("NamedUV", Input::BaseColor, "./textures/color.png", Color::SRgb, Wrap::Clamp, "Detail_UV");
+  check("ActiveUV", Input::BaseColor, "./textures/color.png", Color::SRgb, Wrap::Black, "Render");
+  check("Mirror", Input::BaseColor, "./textures/color.png", Color::SRgb, Wrap::Mirror, "");
+  check("Absolute", Input::BaseColor, "C:/usd-blend-fixtures/color.png", Color::SRgb, Wrap::Repeat, "");
+  check("UNC", Input::BaseColor, "//usd-blend-fixtures/textures/color.png", Color::SRgb, Wrap::Repeat, "");
+  check("Raw", Input::BaseColor, "./textures/color.png", Color::Raw, Wrap::Repeat, "");
+  check("AlphaScalar", Input::Roughness, "./textures/color.png", Color::SRgb, Wrap::Repeat, "");
+  check("MetallicAlpha", Input::Metallic, "./textures/color.png", Color::SRgb, Wrap::Repeat, "");
+  check("IorAlpha", Input::Ior, "./textures/color.png", Color::SRgb, Wrap::Repeat, "");
+  check("ClearcoatAlpha", Input::Clearcoat, "./textures/color.png", Color::SRgb, Wrap::Repeat, "");
+  check("ClearcoatRoughnessAlpha", Input::ClearcoatRoughness, "./textures/color.png", Color::SRgb, Wrap::Repeat, "");
+  check("Normal", Input::Normal, "./textures/color.png", Color::Raw, Wrap::Repeat, "");
+  check("NamedNormal", Input::Normal, "./textures/color.png", Color::Raw, Wrap::Repeat, "Detail_UV");
+  for (const auto& [code, name] : {
+           std::pair{"BLEND_IMAGE_PACKED", "Packed"}, {"BLEND_IMAGE_MISSING", "Missing"},
+           {"BLEND_IMAGE_SOURCE_UNSUPPORTED", "Generated"}, {"BLEND_IMAGE_SOURCE_UNSUPPORTED", "Movie"},
+           {"BLEND_IMAGE_SOURCE_UNSUPPORTED", "Sequence"}, {"BLEND_IMAGE_SOURCE_UNSUPPORTED", "Tiled"},
+           {"BLEND_MATERIAL_UNSUPPORTED_NODE", "NormalStrength"}, {"BLEND_MATERIAL_UNSUPPORTED_NODE", "ObjectNormal"},
+           {"BLEND_MATERIAL_UNSUPPORTED_NODE", "Projection"}, {"BLEND_MATERIAL_UNSUPPORTED_NODE", "MutedImage"},
+           {"BLEND_MATERIAL_UNSUPPORTED_NODE", "MappedVector"}, {"BLEND_MATERIAL_UNSUPPORTED_NODE", "ColorScalar"}}) {
+    Require(materials.at(name)->textures.empty() && Has(result, code, name),
+        std::string("Unsupported texture uses diagnosed constants: ") + name);
+  }
+  Require(Has(result, "BLEND_IMAGE_INTERPOLATION_UNSUPPORTED", "Closest") &&
+              Has(result, "BLEND_IMAGE_ABSOLUTE_PATH", "Absolute") &&
+              Has(result, "BLEND_IMAGE_ABSOLUTE_PATH", "UNC"),
+      "Approximate filtering and absolute paths are contextual diagnostics");
+  auto blocks = fixture.blocks;
+  std::reverse(blocks.begin(), blocks.end());
+  const auto reversed = Take(blend::DecodeScene(fixture.bytes, blocks, fixture.schema, fixture.header, {1000, 100}));
+  Require(reversed.materials.size() == scene.materials.size(), "Reordered texture materials retain their count");
+  for (std::size_t index = 0; index < scene.materials.size(); ++index) {
+    Require(reversed.materials[index].sourceName == scene.materials[index].sourceName &&
+                reversed.materials[index].textures == scene.materials[index].textures,
+        "Saved block order cannot change owning texture data");
+  }
+  const auto reject = [&](const blend::DnaValueView& value, std::uint64_t bits, const char* code) {
+    auto changed = fixture.bytes;
+    fixture.Store(changed, value, bits);
+    const auto failure = fixture.Decode(changed);
+    Require(!failure.HasValue() && failure.GetError().code == code && !failure.GetError().recoverable,
+        std::string("Invalid texture storage fails without partial Scene: ") + code);
+  };
+  const auto texture = fixture.View(Node(fixture, "Relative", "ShaderNodeTexImage"));
+  reject(Take(texture.Member("storage")), 123, "BLEND_MATERIAL_REFERENCE_INVALID");
+  reject(Take(texture.Member("id")), fixture.blocks[fixture.ids.at("MARelative")].oldAddress,
+      "BLEND_MATERIAL_REFERENCE_INVALID");
+  const auto uv = fixture.View(Node(fixture, "NamedUV", "ShaderNodeUVMap"));
+  reject(Take(uv.Member("storage")), 123, "BLEND_MATERIAL_REFERENCE_INVALID");
+  const auto normalIndex = Node(fixture, "Normal", "ShaderNodeNormalMap");
+  const auto normal = fixture.View(normalIndex);
+  reject(Take(normal.Member("storage")), 123, "BLEND_MATERIAL_REFERENCE_INVALID");
+  const auto strength = fixture.View(fixture.Resolve(Take(Take(InputSocket(fixture, normalIndex, "Strength").Member("default_value")).Pointer())));
+  reject(Take(strength.Member("value")), std::bit_cast<std::uint32_t>(std::numeric_limits<float>::infinity()),
+      "BLEND_MATERIAL_VALUE_INVALID");
+  const auto image = fixture.View(fixture.ids.at("IMRelativeImage"));
+  auto unterminated = fixture.bytes;
+  const auto path = Take(image.Member("name"));
+  const auto pathOffset = static_cast<std::size_t>(path.Bytes().data() - fixture.bytes.data());
+  std::fill_n(unterminated.begin() + pathOffset, path.Bytes().size(), std::byte{'x'});
+  const auto invalidPath = fixture.Decode(unterminated);
+  Require(!invalidPath.HasValue() && invalidPath.GetError().code == "BLEND_MATERIAL_STORAGE_INVALID",
+      "Unterminated image paths fail without a partial Scene");
+  const auto packed = fixture.View(fixture.ids.at("IMPackedImage"));
+  const auto files = Take(packed.Member("packedfiles"));
+  const auto packedAddress = Take(Take(files.Member("first")).Pointer());
+  const auto packedFile = fixture.View(fixture.Resolve(packedAddress));
+  reject(Take(packedFile.Member("next")), packedAddress, "BLEND_MATERIAL_GRAPH_INVALID");
+  auto changed = fixture.bytes;
+  fixture.Store(changed, Take(Take(image.Member("name")).Element(0)), 0);
+  const auto missing = fixture.Decode(changed);
+  Require(missing.HasValue() && Has(missing, "BLEND_IMAGE_MISSING", "Relative"),
+      "An empty image path is diagnosed without accessing the filesystem");
+  const auto diagnose = [&](const blend::DnaValueView& value, std::uint64_t bits, const char* code, const char* name) {
+    auto modified = fixture.bytes;
+    fixture.Store(modified, value, bits);
+    const auto fallback = fixture.Decode(modified);
+    Require(fallback.HasValue() && Has(fallback, code, name),
+        std::string("Unsupported texture settings have explicit contextual fallback: ") + code);
+    const auto found = std::find_if(fallback.GetValue().materials.begin(), fallback.GetValue().materials.end(),
+        [&](const auto& material) { return material.sourceName == name; });
+    Require(found != fallback.GetValue().materials.end() && found->textures.empty(),
+        "Unsupported image settings do not author a success-shaped texture");
+  };
+  diagnose(Take(texture.Member("id")), 0, "BLEND_IMAGE_MISSING", "Relative");
+  const auto colorSpace = Take(Take(image.Member("colorspace_settings")).Member("name"));
+  diagnose(Take(colorSpace.Element(0)), 'X', "BLEND_IMAGE_COLORSPACE_UNSUPPORTED", "Relative");
+  diagnose(Take(Take(image.Member("name")).Element(0)), 'x', "BLEND_IMAGE_PATH_UNSUPPORTED", "Relative");
+  diagnose(Take(Take(image.Member("id")).Member("lib")), 123, "BLEND_IMAGE_LINKED_UNSUPPORTED", "Relative");
+  diagnose(Take(image.Member("alpha_mode")), 1, "BLEND_IMAGE_ALPHA_UNSUPPORTED", "Relative");
+  const auto imageStorage = fixture.View(fixture.Resolve(Take(Take(texture.Member("storage")).Pointer())));
+  const auto mapping = Take(Take(imageStorage.Member("base")).Member("tex_mapping"));
+  diagnose(Take(Take(mapping.Member("loc")).Element(0)), std::bit_cast<std::uint32_t>(0.5f),
+      "BLEND_MATERIAL_UNSUPPORTED_NODE", "Relative");
+  const auto colorMapping = Take(Take(imageStorage.Member("base")).Member("color_mapping"));
+  diagnose(Take(colorMapping.Member("bright")), std::bit_cast<std::uint32_t>(0.5f),
+      "BLEND_MATERIAL_UNSUPPORTED_NODE", "Relative");
+  reject(Take(Take(mapping.Member("size")).Element(0)),
+      std::bit_cast<std::uint32_t>(std::numeric_limits<float>::quiet_NaN()), "BLEND_MATERIAL_VALUE_INVALID");
+  const auto normalStorage = fixture.View(fixture.Resolve(Take(Take(normal.Member("storage")).Pointer())));
+  diagnose(Take(normalStorage.Member("convention")), 1, "BLEND_MATERIAL_UNSUPPORTED_NODE", "Normal");
+  diagnose(Take(normalStorage.Member("base")), 0, "BLEND_MATERIAL_UNSUPPORTED_NODE", "Normal");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
   try {
+    if (argc == 3 && std::string(argv[1]) == "--textures") {
+      CheckTextures(Fixture(argv[2]));
+      std::cout << "External image, UV, normal-map and malformed-storage checks passed\n";
+      return 0;
+    }
     Require(argc == 2, "Pass the Blender-written material fixture");
     const Fixture fixture(argv[1]);
     Check(fixture);

@@ -5,9 +5,11 @@
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/gf/vec2f.h>
 #include <pxr/base/gf/vec3f.h>
+#include <pxr/base/gf/vec4f.h>
 #include <pxr/base/tf/errorMark.h>
 #include <pxr/base/vt/array.h>
 #include <pxr/usd/sdf/types.h>
+#include <pxr/usd/sdf/assetPath.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/metrics.h>
 #include <pxr/usd/usdGeom/primvarsAPI.h>
@@ -24,6 +26,7 @@
 #include <limits>
 #include <map>
 #include <numeric>
+#include <set>
 #include <stdexcept>
 
 namespace blend {
@@ -38,7 +41,7 @@ struct AuthoringFailure : std::runtime_error {
   }
 };
 
-void Fail(std::string code, std::string message, std::string datablock = {}) {
+[[noreturn]] void Fail(std::string code, std::string message, std::string datablock = {}) {
   throw AuthoringFailure({std::move(code), Severity::Fatal, std::move(message),
       {}, {}, std::move(datablock), false});
 }
@@ -219,8 +222,169 @@ void AuthorMesh(const UsdStageRefPtr& stage, const SdfPath& path,
   }
 }
 
+struct TextureNames {
+  std::string prefix;
+  std::string input;
+  double fallback = 0;
+};
+
+TextureNames Names(const Material& material, TextureInput input) {
+  switch (input) {
+  case TextureInput::BaseColor:
+    return {"BaseColor", "diffuseColor"};
+  case TextureInput::Metallic:
+    return {"Metallic", "metallic", material.metallic};
+  case TextureInput::Roughness:
+    return {"Roughness", "roughness", material.roughness};
+  case TextureInput::Ior:
+    return {"Ior", "ior", material.ior};
+  case TextureInput::Clearcoat:
+    return {"Clearcoat", "clearcoat", material.clearcoat};
+  case TextureInput::ClearcoatRoughness:
+    return {"ClearcoatRoughness", "clearcoatRoughness", material.clearcoatRoughness};
+  case TextureInput::Normal:
+    return {"Normal", "normal"};
+  }
+  Fail("BLEND_USD_MATERIAL_INVALID", "Texture has an unknown target input", material.sourceName);
+}
+
+TfToken ColorSpace(const MaterialTexture& texture, const std::string& name) {
+  switch (texture.colorSpace) {
+  case TextureColorSpace::SRgb:
+    return TfToken("sRGB");
+  case TextureColorSpace::Raw:
+    return TfToken("raw");
+  }
+  Fail("BLEND_USD_MATERIAL_INVALID", "Texture has an unknown color space", name);
+}
+
+TfToken Wrap(const MaterialTexture& texture, const std::string& name) {
+  switch (texture.wrap) {
+  case TextureWrap::Repeat:
+    return TfToken("repeat");
+  case TextureWrap::Clamp:
+    return TfToken("clamp");
+  case TextureWrap::Black:
+    return TfToken("black");
+  case TextureWrap::Mirror:
+    return TfToken("mirror");
+  }
+  Fail("BLEND_USD_MATERIAL_INVALID", "Texture has an unknown wrapping mode", name);
+}
+
+struct PreparedTexture {
+  std::size_t index;
+  std::string varname;
+  SdfAssetPath assetPath;
+};
+
+std::optional<std::string> TextureUvIdentifier(const Scene& scene,
+    std::size_t material, const std::string& uvMap,
+    const std::vector<std::optional<PreparedMesh>>& meshes) {
+  std::optional<std::string> identifier;
+  for (const auto& object : scene.objects) {
+    if (!object.mesh || std::find(object.materialSlots.begin(), object.materialSlots.end(), material) == object.materialSlots.end()) {
+      continue;
+    }
+    const auto& mesh = scene.meshes[*object.mesh];
+    const auto map = std::find_if(mesh.uvMaps.begin(), mesh.uvMaps.end(),
+        [&](const auto& value) { return uvMap.empty() ? value.activeRender : value.sourceName == uvMap; });
+    if (map == mesh.uvMaps.end()) {
+      return {};
+    }
+    const auto& candidate = meshes[*object.mesh]->uvIdentifiers[static_cast<std::size_t>(map - mesh.uvMaps.begin())];
+    if (identifier && *identifier != candidate) {
+      return {};
+    }
+    identifier = candidate;
+  }
+  if (!identifier && uvMap.empty()) {
+    return "st";
+  }
+  return identifier;
+}
+
+std::vector<PreparedTexture> PrepareTextures(const Scene& scene, std::size_t materialIndex,
+    const std::vector<std::optional<PreparedMesh>>& meshes, std::vector<Diagnostic>& diagnostics) {
+  const auto& material = scene.materials[materialIndex];
+  std::set<TextureInput> inputs;
+  std::vector<PreparedTexture> result;
+  for (std::size_t index = 0; index < material.textures.size(); ++index) {
+    const auto& texture = material.textures[index];
+    Names(material, texture.input);
+    ColorSpace(texture, material.sourceName);
+    Wrap(texture, material.sourceName);
+    if (!inputs.insert(texture.input).second || texture.assetPath.empty() ||
+        texture.assetPath.find('\0') != std::string::npos ||
+        texture.assetPath.find('\\') != std::string::npos ||
+        (texture.input != TextureInput::Normal && !texture.normalUvMap.empty())) {
+      Fail("BLEND_USD_MATERIAL_INVALID", "Texture inputs must be unique, paths nonempty/normalized and tangent UV selection normal-only", material.sourceName);
+    }
+    const SdfAssetPath assetPath(texture.assetPath);
+    const auto varname = TextureUvIdentifier(scene, materialIndex, texture.uvMap, meshes);
+    const auto normalVarname = texture.input == TextureInput::Normal
+                                   ? TextureUvIdentifier(scene, materialIndex, texture.normalUvMap, meshes)
+                                   : varname;
+    if (!varname || !normalVarname || *varname != *normalVarname) {
+      diagnostics.push_back({"BLEND_MATERIAL_UV_UNSUPPORTED", Severity::Unsupported,
+          "Texture and tangent UVs must exist and map to one consistent primvar on every bound Mesh; the constant fallback is used",
+          {}, {}, material.sourceName, true});
+      continue;
+    }
+    result.push_back({index, *varname, assetPath});
+  }
+  std::sort(result.begin(), result.end(), [&](const auto& left, const auto& right) {
+    return material.textures[left.index].input < material.textures[right.index].input;
+  });
+  return result;
+}
+
+void AuthorTexture(const UsdStageRefPtr& stage, const UsdShadeNodeGraph& preview,
+    UsdShadeShader surface, const Material& material,
+    const PreparedTexture& prepared, bool metadataOnly) {
+  const auto& texture = material.textures[prepared.index];
+  const auto names = Names(material, texture.input);
+  const auto readerName = prepared.varname == "st" ? "StReader" : names.prefix + "StReader";
+  auto reader = UsdShadeShader::Define(stage, preview.GetPath().AppendChild(TfToken(readerName)));
+  auto shader = UsdShadeShader::Define(stage, preview.GetPath().AppendChild(TfToken(names.prefix + "Texture")));
+  Check(static_cast<bool>(reader));
+  Check(static_cast<bool>(shader));
+  if (metadataOnly) {
+    return;
+  }
+  Check(reader.CreateIdAttr().Set(TfToken("UsdPrimvarReader_float2")));
+  Check(reader.CreateInput(TfToken("varname"), SdfValueTypeNames->String).Set(prepared.varname));
+  const auto coordinates = reader.CreateOutput(TfToken("result"), SdfValueTypeNames->Float2);
+  Check(shader.CreateIdAttr().Set(TfToken("UsdUVTexture")));
+  Check(shader.CreateInput(TfToken("file"), SdfValueTypeNames->Asset).Set(prepared.assetPath));
+  Check(shader.CreateInput(TfToken("st"), SdfValueTypeNames->Float2).ConnectToSource(coordinates));
+  Check(shader.CreateInput(TfToken("sourceColorSpace"), SdfValueTypeNames->Token).Set(ColorSpace(texture, material.sourceName)));
+  for (const auto axis : {"wrapS", "wrapT"}) {
+    Check(shader.CreateInput(TfToken(axis), SdfValueTypeNames->Token).Set(Wrap(texture, material.sourceName)));
+  }
+  const auto normal = texture.input == TextureInput::Normal;
+  const auto color = texture.input == TextureInput::BaseColor;
+  GfVec4f fallback(FloatValue(names.fallback, material.sourceName));
+  if (color) {
+    fallback = GfVec4f(FloatValue(material.diffuseColor[0], material.sourceName),
+        FloatValue(material.diffuseColor[1], material.sourceName), FloatValue(material.diffuseColor[2], material.sourceName), 1);
+  } else if (normal) {
+    fallback = GfVec4f(0.5f, 0.5f, 1, 1);
+    Check(shader.CreateInput(TfToken("scale"), SdfValueTypeNames->Float4).Set(GfVec4f(2, 2, 2, 1)));
+    Check(shader.CreateInput(TfToken("bias"), SdfValueTypeNames->Float4).Set(GfVec4f(-1, -1, -1, 0)));
+  }
+  Check(shader.CreateInput(TfToken("fallback"), SdfValueTypeNames->Float4).Set(fallback));
+  const auto output = shader.CreateOutput(TfToken(color || normal ? "rgb" : "a"),
+      color || normal ? SdfValueTypeNames->Float3 : SdfValueTypeNames->Float);
+  const auto input = surface.CreateInput(TfToken(names.input),
+      normal ? SdfValueTypeNames->Normal3f : color ? SdfValueTypeNames->Color3f
+                                                   : SdfValueTypeNames->Float);
+  Check(input.ConnectToSource(output));
+}
+
 UsdShadeMaterial AuthorMaterial(const UsdStageRefPtr& stage, const SdfPath& path,
-    const Material& source, const std::string& identifier, bool metadataOnly) {
+    const Material& source, const std::string& identifier,
+    const std::vector<PreparedTexture>& textures, bool metadataOnly) {
   const auto material = UsdShadeMaterial::Define(stage, path);
   Check(static_cast<bool>(material));
   Provenance(material.GetPrim(), source.sourceName, identifier);
@@ -229,6 +393,9 @@ UsdShadeMaterial AuthorMaterial(const UsdStageRefPtr& stage, const SdfPath& path
   Check(static_cast<bool>(preview));
   Check(static_cast<bool>(surface));
   if (metadataOnly) {
+    for (const auto& texture : textures) {
+      AuthorTexture(stage, preview, surface, source, texture, true);
+    }
     return material;
   }
   Check(surface.CreateIdAttr().Set(TfToken("UsdPreviewSurface")));
@@ -245,6 +412,9 @@ UsdShadeMaterial AuthorMaterial(const UsdStageRefPtr& stage, const SdfPath& path
       Check(surface.CreateInput(TfToken(name), SdfValueTypeNames->Float).Set(FloatValue(value, source.sourceName)));
     }
     Check(surface.CreateInput(TfToken("useSpecularWorkflow"), SdfValueTypeNames->Int).Set(0));
+  }
+  for (const auto& texture : textures) {
+    AuthorTexture(stage, preview, surface, source, texture, false);
   }
   return material;
 }
@@ -404,6 +574,10 @@ Result<pxr::SdfLayerRefPtr> AuthorScene(const Scene& scene, bool metadataOnly) {
         meshes[*object.mesh] = PrepareMesh(scene.meshes[*object.mesh], diagnostics);
       }
     }
+    std::vector<std::vector<PreparedTexture>> textures(scene.materials.size());
+    for (std::size_t index = 0; index < scene.materials.size(); ++index) {
+      textures[index] = PrepareTextures(scene, index, meshes, diagnostics);
+    }
     const auto stage = Take(CreateAssetStage(scene.metadata.sourceVersion, scene.metadata.sourceScene), diagnostics);
     std::vector<std::size_t> materialOrder(scene.materials.size());
     std::iota(materialOrder.begin(), materialOrder.end(), 0);
@@ -414,7 +588,7 @@ Result<pxr::SdfLayerRefPtr> AuthorScene(const Scene& scene, bool metadataOnly) {
     for (const auto index : materialOrder) {
       materials[index] = AuthorMaterial(stage,
           SdfPath("/Asset/mtl").AppendChild(TfToken(materialIdentifiers[index])),
-          scene.materials[index], materialIdentifiers[index], metadataOnly);
+          scene.materials[index], materialIdentifiers[index], textures[index], metadataOnly);
     }
     std::vector<pxr::SdfPath> paths(scene.objects.size());
     for (const auto index : order) {

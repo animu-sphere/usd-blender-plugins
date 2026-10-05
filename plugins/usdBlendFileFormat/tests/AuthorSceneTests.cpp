@@ -5,6 +5,7 @@
 #include <blendScene/Naming.h>
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/gf/vec3d.h>
+#include <pxr/base/gf/vec4f.h>
 #include <pxr/usd/usd/primRange.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/metrics.h>
@@ -828,10 +829,107 @@ void CheckMaterials(const std::filesystem::path& path) {
       "Invalid face slots have a recoverable diagnostic");
 }
 
+void CheckTextures(const std::filesystem::path& path) {
+  auto scene = Decode(path);
+  const auto layer = Take(blend::AuthorScene(scene));
+  const auto stage = UsdStage::Open(layer);
+  const auto normal = UsdShadeShader(stage->GetPrimAtPath(SdfPath("/Asset/mtl/Normal/preview/NormalTexture")));
+  Require(normal && Get<TfToken>(normal.GetIdAttr()) == TfToken("UsdUVTexture") &&
+              Get<GfVec4f>(normal.GetInput(TfToken("scale")).GetAttr()) == GfVec4f(2, 2, 2, 1) &&
+              Get<GfVec4f>(normal.GetInput(TfToken("bias")).GetAttr()) == GfVec4f(-1, -1, -1, 0) &&
+              Get<GfVec4f>(normal.GetInput(TfToken("fallback")).GetAttr()) == GfVec4f(0.5f, 0.5f, 1, 1),
+      "Normal textures use standard tangent-space decode and a flat-normal fallback");
+  const auto named = UsdShadeShader(stage->GetPrimAtPath(SdfPath("/Asset/mtl/NamedUV/preview/BaseColorStReader")));
+  Require(named && Get<std::string>(named.GetInput(TfToken("varname")).GetAttr()) == "Detail_UV_1",
+      "Named UV readers use the actual collision-allocated Mesh primvar, not the raw UV name");
+  Require(Text(layer) == Text(Take(blend::AuthorScene(Decode(path, true)))),
+      "Reversing saved blocks cannot change texture shader names or connections");
+  std::reverse(scene.materials.begin(), scene.materials.end());
+  for (auto& object : scene.objects) {
+    for (auto& slot : object.materialSlots) {
+      if (slot) {
+        slot = scene.materials.size() - 1 - *slot;
+      }
+    }
+  }
+  Require(Text(layer) == Text(Take(blend::AuthorScene(scene))), "Material permutations retain texture networks");
+  const auto metadata = UsdStage::Open(Take(blend::AuthorScene(scene, true)));
+  for (const auto& prim : stage->Traverse()) {
+    const auto other = metadata->GetPrimAtPath(prim.GetPath());
+    Require(other && other.GetTypeName() == prim.GetTypeName(), "Metadata retains typed texture and reader hierarchy");
+    if (!prim.IsA<UsdGeomXform>()) {
+      Require(other.GetAuthoredAttributes().empty() && other.GetAuthoredRelationships().empty(),
+          "Metadata omits texture assets, networks and bindings");
+    }
+  }
+  const auto findMaterial = [](blend::Scene& value, const char* name) -> blend::Material& {
+    return *std::find_if(value.materials.begin(), value.materials.end(),
+        [&](const auto& material) { return material.sourceName == name; });
+  };
+  const auto reject = [&](auto mutation) {
+    auto invalid = Decode(path);
+    mutation(findMaterial(invalid, "Relative"));
+    Failure(invalid, "BLEND_USD_MATERIAL_INVALID", "Relative");
+    const auto result = blend::AuthorScene(invalid, true);
+    Require(!result.HasValue() && result.GetError().code == "BLEND_USD_MATERIAL_INVALID",
+        "Invalid texture IR also fails metadata-only authoring");
+  };
+  reject([](auto& material) { material.textures.push_back(material.textures.front()); });
+  reject([](auto& material) { material.textures.front().assetPath.clear(); });
+  reject([](auto& material) { material.textures.front().assetPath = "bad\\path.png"; });
+  reject([](auto& material) { material.textures.front().input = static_cast<blend::TextureInput>(100); });
+  reject([](auto& material) { material.textures.front().colorSpace = static_cast<blend::TextureColorSpace>(100); });
+  reject([](auto& material) { material.textures.front().wrap = static_cast<blend::TextureWrap>(100); });
+  reject([](auto& material) { material.textures.front().normalUvMap = "Render"; });
+  scene = Decode(path);
+  auto& material = findMaterial(scene, "Relative");
+  const auto original = material.textures.front();
+  for (const auto input : {blend::TextureInput::Metallic, blend::TextureInput::Roughness, blend::TextureInput::Ior,
+           blend::TextureInput::Clearcoat, blend::TextureInput::ClearcoatRoughness}) {
+    auto texture = original;
+    texture.input = input;
+    material.textures.push_back(texture);
+  }
+  const auto many = Take(blend::AuthorScene(scene));
+  std::reverse(material.textures.begin(), material.textures.end());
+  Require(Text(many) == Text(Take(blend::AuthorScene(scene))),
+      "Texture-vector permutations and shared st readers have deterministic networks");
+  const auto missingUv = [&](const char* name, auto mutation) {
+    auto changed = Decode(path);
+    mutation(changed, findMaterial(changed, name));
+    const auto result = blend::AuthorScene(changed);
+    const auto fallback = UsdStage::Open(Take(result));
+    Require(std::any_of(result.Diagnostics().begin(), result.Diagnostics().end(), [&](const auto& diagnostic) {
+      return diagnostic.code == "BLEND_MATERIAL_UV_UNSUPPORTED" && diagnostic.datablock == name && diagnostic.recoverable;
+    }) && Children(fallback->GetPrimAtPath(SdfPath(std::string("/Asset/mtl/") + name + "/preview"))).size() == 1,
+        "Missing, inconsistent or mismatched tangent UVs use explicit constant fallback");
+  };
+  missingUv("Relative", [](auto&, auto& value) { value.textures.front().uvMap = "Missing"; });
+  missingUv("Normal", [](auto&, auto& value) { value.textures.front().normalUvMap = "Detail_UV"; });
+  missingUv("NamedUV", [](auto& value, auto&) {
+    const auto object = std::find_if(value.objects.begin(), value.objects.end(),
+        [](const auto& item) { return item.sourceName == "NamedUV"; });
+    auto copy = *object;
+    copy.sourceName = "DifferentUV";
+    auto mesh = value.meshes[*object->mesh];
+    mesh.sourceName = "DifferentUVData";
+    mesh.uvMaps.front().sourceName = "Z";
+    copy.mesh = value.meshes.size();
+    value.meshes.push_back(mesh);
+    value.objects.push_back(copy);
+    Identify(value);
+  });
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
   try {
+    if (argc == 3 && std::string(argv[1]) == "--textures") {
+      CheckTextures(argv[2]);
+      std::cout << "External texture networks, UV naming, normal maps, metadata and invalid IR passed\n";
+      return 0;
+    }
     if (argc == 3 && std::string(argv[1]) == "--materials") {
       CheckMaterials(argv[2]);
       std::cout << "Constant material authoring, bindings, metadata and determinism passed\n";

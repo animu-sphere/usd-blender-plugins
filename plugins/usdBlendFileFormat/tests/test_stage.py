@@ -26,6 +26,7 @@ POLYGON_NORMALS = [NATIVE / "native-normals" / "blender-5.2.2" / f"{group}.blend
                                  "custom_polygon_smooth", "custom_polygon_split")]
 COMPRESSED_CORPUS = FIXTURES.parent / "corpus" / "blender-5.2.2" / "Untitled.blend"
 MATERIALS = NATIVE / "native-materials" / "blender-5.2.2" / "materials.blend"
+TEXTURES = NATIVE / "native-textures" / "blender-5.2.2" / "textures.blend"
 
 
 def raw_zstd_frame(data):
@@ -67,6 +68,104 @@ def cube_blocks(data):
 
 
 class StageContractTests(unittest.TestCase):
+    def test_external_textures_and_normal_maps(self):
+        oracle = json.loads(TEXTURES.with_suffix(".oracle.json").read_text(encoding="ascii"))
+        names = {"Base Color": ("BaseColor", "diffuseColor"),
+                 "Metallic": ("Metallic", "metallic"), "Roughness": ("Roughness", "roughness"),
+                 "IOR": ("Ior", "ior"), "Coat Weight": ("Clearcoat", "clearcoat"),
+                 "Coat Roughness": ("ClearcoatRoughness", "clearcoatRoughness"),
+                 "Normal": ("Normal", "normal")}
+        first = Sdf.Layer.OpenAsAnonymous(str(TEXTURES))
+        self.assertEqual(first.ExportToString(), Sdf.Layer.OpenAsAnonymous(str(TEXTURES)).ExportToString())
+        full = Usd.Stage.Open(first)
+        for metadata_only in (False, True):
+            stage = Usd.Stage.Open(Sdf.Layer.OpenAsAnonymous(str(TEXTURES), metadataOnly=metadata_only))
+            self._assert_contract(stage, "5.2", oracle["scene"])
+            self.assertEqual([(str(prim.GetPath()), prim.GetTypeName()) for prim in stage.Traverse()],
+                             [(str(prim.GetPath()), prim.GetTypeName()) for prim in full.Traverse()])
+            for name, expected in oracle["materials"].items():
+                with self.subTest(name=name, metadata_only=metadata_only):
+                    path = f"/Asset/mtl/{name}/preview"
+                    surface = UsdShade.Shader(stage.GetPrimAtPath(path + "/Surface"))
+                    graph = stage.GetPrimAtPath(path)
+                    texture = expected["texture"]
+                    shaders = [prim for prim in graph.GetChildren() if prim.GetName() != "Surface"]
+                    if metadata_only:
+                        for prim in (surface.GetPrim(), *shaders):
+                            self.assertEqual(prim.GetAuthoredAttributes(), [])
+                        continue
+                    self._assert_close(surface.GetInput("diffuseColor").Get(), expected["diffuseColor"])
+                    self._assert_close([surface.GetInput("roughness").Get()], [expected["roughness"]])
+                    if texture is None:
+                        self.assertEqual(shaders, [])
+                        self.assertFalse(surface.GetInput("diffuseColor").GetAttr().GetConnections())
+                        self.assertFalse(surface.GetInput("roughness").GetAttr().GetConnections())
+                        self.assertFalse(surface.GetInput("normal"))
+                        continue
+                    prefix, input_name = names[texture["input"]]
+                    shader = UsdShade.Shader(stage.GetPrimAtPath(path + f"/{prefix}Texture"))
+                    self.assertTrue(shader)
+                    self.assertEqual(shader.GetIdAttr().Get(), "UsdUVTexture")
+                    expected_type = (Sdf.ValueTypeNames.Normal3f if texture["normal"] else
+                                     Sdf.ValueTypeNames.Color3f if texture["input"] == "Base Color" else
+                                     Sdf.ValueTypeNames.Float)
+                    self.assertEqual(surface.GetInput(input_name).GetTypeName(), expected_type)
+                    self.assertEqual(shader.GetInput("file").GetTypeName(), Sdf.ValueTypeNames.Asset)
+                    self.assertEqual(shader.GetInput("file").Get().path, texture["assetPath"])
+                    self.assertEqual(shader.GetInput("sourceColorSpace").Get(), texture["sourceColorSpace"])
+                    for axis in ("S", "T"):
+                        self.assertEqual(shader.GetInput("wrap" + axis).Get(), texture["wrap"])
+                    self.assertEqual(surface.GetInput(input_name).GetAttr().GetConnections(),
+                                     [Sdf.Path(str(shader.GetPath()) + ".outputs:" + texture["output"])])
+                    self.assertEqual(shader.GetOutput(texture["output"]).GetTypeName(),
+                                     Sdf.ValueTypeNames.Float if texture["output"] == "a" else Sdf.ValueTypeNames.Float3)
+                    reader = UsdShade.Shader(shader.GetInput("st").GetConnectedSource()[0].GetPrim())
+                    self.assertEqual(reader.GetIdAttr().Get(), "UsdPrimvarReader_float2")
+                    self.assertEqual(reader.GetInput("varname").Get(), texture["varname"])
+                    self.assertEqual(reader.GetInput("varname").GetTypeName(), Sdf.ValueTypeNames.String)
+                    self.assertEqual(reader.GetOutput("result").GetTypeName(), Sdf.ValueTypeNames.Float2)
+                    self.assertEqual(shader.GetInput("st").GetAttr().GetConnections(),
+                                     [Sdf.Path(str(reader.GetPath()) + ".outputs:result")])
+                    mesh = stage.GetPrimAtPath(f"/Asset/geo/{name}/mesh")
+                    self.assertTrue(UsdGeom.PrimvarsAPI(mesh).GetPrimvar(texture["varname"]))
+                    self.assertEqual(str(UsdShade.MaterialBindingAPI(mesh).ComputeBoundMaterial()[0].GetPath()),
+                                     f"/Asset/mtl/{name}")
+                    if texture["normal"]:
+                        self.assertEqual(tuple(shader.GetInput("scale").Get()), (2, 2, 2, 1))
+                        self.assertEqual(tuple(shader.GetInput("bias").Get()), (-1, -1, -1, 0))
+                        self.assertEqual(tuple(shader.GetInput("fallback").Get()), (0.5, 0.5, 1, 1))
+                    else:
+                        self.assertFalse(shader.GetInput("scale"))
+                        self.assertFalse(shader.GetInput("bias"))
+        composed = Usd.Stage.CreateInMemory()
+        composed.DefinePrim("/Referenced").GetReferences().AddReference(str(TEXTURES))
+        source = composed.GetPrimAtPath("/Referenced/mtl/Normal/preview/NormalTexture")
+        self.assertEqual(UsdShade.Shader(source).GetInput("st").GetAttr().GetConnections(),
+                         [Sdf.Path("/Referenced/mtl/Normal/preview/StReader.outputs:result")])
+        anchored = Usd.Stage.Open(str(TEXTURES))
+        image = UsdShade.Shader(anchored.GetPrimAtPath("/Asset/mtl/Relative/preview/BaseColorTexture"))
+        self.assertEqual(Path(image.GetInput("file").Get().resolvedPath),
+                         TEXTURES.parent / "textures" / "color.png")
+        for metadata_only in (False, True):
+            result = subprocess.run(
+                [sys.executable, "-c",
+                 "from pxr import Sdf; import sys; "
+                 "assert Sdf.Layer.OpenAsAnonymous(sys.argv[1], metadataOnly=sys.argv[2]=='True')",
+                 str(TEXTURES), str(metadata_only)],
+                capture_output=True, text=True, check=False, timeout=120,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            for name, expected in oracle["materials"].items():
+                actual = [line for line in result.stderr.splitlines()
+                          if ("BLEND_IMAGE_" in line or "BLEND_MATERIAL_" in line)
+                          and f"[datablock {name}]" in line]
+                self.assertEqual(len(actual), len(expected["diagnostics"]), "\n".join(actual))
+                for code in expected["diagnostics"]:
+                    warnings = [line for line in actual if code in line]
+                    self.assertEqual(len(warnings), 1, "\n".join(actual))
+                    self.assertIn("[byte ", warnings[0])
+                    self.assertIn("[block ", warnings[0])
+
     def _assert_contract(self, stage, source_version, source_scene):
         self.assertIsNotNone(stage)
         self.assertEqual(str(stage.GetDefaultPrim().GetPath()), "/Asset")
