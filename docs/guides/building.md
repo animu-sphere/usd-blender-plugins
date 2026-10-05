@@ -789,13 +789,17 @@ ost plugin build plugins\usdBlendFileFormat --target cy2026 --profile usd
 ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(instances|authoring|importer)$'
 ctest --test-dir libs\blendScene\build\cy2026-windows-x86_64-py313-usd -C Release --output-on-failure --no-tests=error -R '^blendScene\.(instances|ir|sceneFixture|objectFallbacks|sourceEvaluation)$'
 
-ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd --no-inject --plugin-path "$PWD\plugins\usdBlendFileFormat" -- ctest --test-dir build\usd-vs18 -C Release --output-on-failure --no-tests=error -R '^(blendScene\.instances|usdBlend\.(instances|authoring|importer))$'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd --no-inject -- ctest --test-dir build\usd-vs18 -C Release --output-on-failure --no-tests=error -R '^(blendScene\.instances|usdBlend\.(instances|authoring|importer))$'
 ```
 
 The root build directories above are the configured local Visual Studio
 builds described in this guide, not newly required presets. Plugin CMake
 tests discover a Python interpreter; `usdBlend.instances` needs `pxr` and
-plugin discovery from the activated SDK, so run it through `ost plugin run`.
+its shared-library dependencies from the activated SDK, so run it through
+`ost plugin run`. The CTest prepends this build's plugin resource directory to
+`PXR_PLUGINPATH_NAME`, preserving inherited paths with the host's native list
+separator. Both workspace `ost test` and standalone tests therefore discover
+the built `.blend` format without external plugin-path injection.
 Reader-only and standalone Scene tests still require neither Python nor USD.
 
 `--output <path.blend>` redirects generator/check inputs. `--check` never

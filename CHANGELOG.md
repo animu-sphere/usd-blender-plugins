@@ -8,6 +8,10 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- Registered instance-graph CTests now explicitly prepend the built plugin's
+    resource directory to USD discovery paths, preserving inherited paths.
+    Workspace tests no longer depend on `ost plugin run` injecting the bundle;
+    the previously failing Windows/Linux workspace jobs use the same test setup.
 - Native Object evaluation diagnostics now retain the source Object name,
     including parent-only Objects, alongside their existing byte/block context.
     A Blender-written source-only Scene regression reproduces the formerly

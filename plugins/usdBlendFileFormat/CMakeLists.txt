@@ -87,6 +87,8 @@ if(BUILD_TESTING)
     add_test(NAME usdBlend.instances COMMAND Python3::Interpreter
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_instances.py"
         --cases-executable $<TARGET_FILE:${BLEND_INSTANCE_CASES_TARGET}>)
+    set_tests_properties(usdBlend.instances PROPERTIES ENVIRONMENT_MODIFICATION
+        "PXR_PLUGINPATH_NAME=path_list_prepend:${CMAKE_CURRENT_SOURCE_DIR}/plugin/resources/usdBlendFileFormat")
     add_executable(usdBlendImporterTests tests/ReadSceneTests.cpp)
     target_link_libraries(usdBlendImporterTests PRIVATE usdBlendAuthoring)
     add_test(NAME usdBlend.importer COMMAND usdBlendImporterTests
