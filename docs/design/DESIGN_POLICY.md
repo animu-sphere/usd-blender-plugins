@@ -663,7 +663,14 @@ for Mesh Objects, embedded `ListBase modifiers`
 only to detect source evaluation dependencies. Nonnull animation, constraint or modifier
 endpoints emit recoverable `Unsupported` `BLEND_SCENE_EVALUATION_UNAPPLIED`;
 their contents and addresses are neither followed nor evaluated. Source
-channels still define the result, including for parent-only Objects.
+channels still define the result, including for parent-only Objects. Each
+affected Object reports once, with its source name, payload offset and block
+index, even when several dependencies are present. Mesh shape-key presence
+has its separate diagnostic under the Mesh boundary; shared Meshes report
+once and parent-only Mesh geometry is not decoded. The
+[source-only evaluation oracle](../../tests/fixtures/native-scene/README.md#source-only-evaluation-oracle)
+compares saved source-channel matrices and original Mesh data rather than
+dependency-graph results. No animation time samples are authored.
 
 An active Scene with empty Collections produces owning metadata and empty
 object/mesh vectors; the Scene-only library's null `curscene` remains an error.

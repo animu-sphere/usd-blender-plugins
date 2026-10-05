@@ -270,6 +270,13 @@ private:
     }
   }
 
+  std::string SourceName(const DnaValueView& object) const {
+    const auto name = Take(Take(object.Member("id")).Member("name")).Bytes();
+    const auto end = std::find(name.begin() + 2, name.end(), std::byte{0});
+    return std::string(reinterpret_cast<const char*>(name.data() + 2),
+        static_cast<std::size_t>(end - name.begin() - 2));
+  }
+
   void ReportEvaluation(const DnaValueView& object, std::uint32_t index) {
     const auto animation = Pointer(object, "adt", "AnimData", index);
     const auto constraints = Take(object.Member("constraints"));
@@ -292,7 +299,7 @@ private:
     if (animation != 0 || first != 0 || last != 0 || modifiersPresent) {
       diagnostics_.push_back({"BLEND_SCENE_EVALUATION_UNAPPLIED", Severity::Unsupported,
           "Saved source transforms and geometry are used; animation, drivers, constraints and modifiers are not evaluated",
-          blocks_[index].offset, index, {}, true});
+          blocks_[index].offset, index, SourceName(object), true});
     }
   }
 
@@ -339,13 +346,9 @@ private:
     ValidateMatrix(local, index);
     ReportEvaluation(object, index);
     if (type != 1 && data != 0) {
-      const auto name = Take(Take(object.Member("id")).Member("name")).Bytes();
-      const auto end = std::find(name.begin() + 2, name.end(), std::byte{0});
       diagnostics_.push_back({"BLEND_SCENE_OBJECT_DATA_UNSUPPORTED", Severity::Unsupported,
           "Object data is not decoded; source hierarchy, transforms and visibility are preserved as an Empty",
-          blocks_[index].offset, index,
-          std::string(reinterpret_cast<const char*>(name.data() + 2),
-              static_cast<std::size_t>(end - name.begin() - 2)), true});
+          blocks_[index].offset, index, SourceName(object), true});
     }
     return {parent, local, parent ? ParentInverse(object, index) : IdentityMatrix};
   }

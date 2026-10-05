@@ -8,6 +8,10 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- Native Object evaluation diagnostics now retain the source Object name,
+    including parent-only Objects, alongside their existing byte/block context.
+    A Blender-written source-only Scene regression reproduces the formerly
+    missing name before the correction.
 - Modern source normal corner weights now share the independently measured
     Blender angle approximation with custom normal reference spaces instead
     of mathematical `acos`. A concave shared corner previously exceeded the
@@ -21,6 +25,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Blender-written 5.2.2 source-only Scene oracle with saved animation,
+    active constraints, subdivision modifiers and nonzero shape keys.
+    Native IR and registered-plugin tests compare seven selected Objects and
+    two shared/independent Meshes against Blender's source-channel matrices
+    and original Mesh data, not evaluated transforms or geometry. Four Object
+    diagnostics and one shared-Mesh diagnostic retain exact names and payload
+    context; combined dependencies warn once, and parent-only geometry remains
+    unpublished. Both build modes, generator mutation checks, metadata,
+    repeated/reversed reads, references and absence of time samples cover
+    this bounded evidence; animation or dependency-graph evaluation is not added.
 - Bounded gzip/Zstandard scene importing through the registered file format.
     The bundle explicitly selects the accepted full-stream compression policy;
     its internal `ReadScene` helper allows all four limit overrides without

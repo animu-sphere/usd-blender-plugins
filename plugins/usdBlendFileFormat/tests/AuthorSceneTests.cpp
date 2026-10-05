@@ -441,11 +441,11 @@ void CheckFixture(const std::filesystem::path& path) {
       "Reversed native block enumeration authors an identical stage");
   if (path.stem() != "transforms") {
     const auto singleNormal = path.stem().string().starts_with("auto_") || path.stem().string().starts_with("polygon_");
-    const auto objectCount = singleNormal ? 1 : path.stem() == "mesh"      ? 5
-                                            : path.stem() == "scene"       ? 7
-                                            : path.stem() == "fallbacks"   ? 11
-                                            : path.stem() == "single_cube" ? 1
-                                                                           : 2;
+    const auto objectCount = singleNormal ? 1 : path.stem() == "mesh"                               ? 5
+                                            : path.stem() == "scene" || path.stem() == "evaluation" ? 7
+                                            : path.stem() == "fallbacks"                            ? 11
+                                            : path.stem() == "single_cube"                          ? 1
+                                                                                                    : 2;
     const auto meshCount = singleNormal ? 1 : path.stem() == "mesh"      ? 4
                                           : path.stem() == "single_cube" ? 1
                                                                          : 2;
@@ -757,7 +757,7 @@ int main(int argc, char** argv) {
       std::cout << "Blender-written multi-scale native-to-USD unit and ASCII naming policies passed\n";
       return 0;
     }
-    Require(argc == 16, "Expected transform, independent Mesh, integrated Scene, cube, legacy Mesh, auto-smooth, polygon and fallback fixtures");
+    Require(argc == 17, "Expected transform, independent Mesh, integrated Scene, cube, legacy Mesh, auto-smooth, polygon, fallback and evaluation fixtures");
     CheckSynthetic();
     CheckFailures();
     for (int index = 1; index < argc; ++index) {

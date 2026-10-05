@@ -36,6 +36,13 @@ Task 2.3's native boundary now has an
 combining Mesh/Empty hierarchy, shared Meshes, a parent-only Mesh outside
 membership, visibility, identifiers, transforms and geometry. Registered-plugin
 tests now compare this composed stage against the saved oracle.
+Task 2.3's bounded
+[5.2.2 source-only evaluation oracle](../../tests/fixtures/native-scene/README.md#source-only-evaluation-oracle)
+adds animation, active constraints, modifiers and shape keys, including
+combined dependencies, shared Meshes and a parent-only Mesh. Native and
+registered-plugin checks pin saved source matrices/geometry, exact warning
+context, metadata/repeats/references and absence of time samples; this does
+not complete general Scene coverage or add dependency-graph evaluation.
 Task 2.3 also has a bounded
 [5.2.2 unsupported-data fallback oracle](../../tests/fixtures/native-scene/README.md#unsupported-data-fallback-oracle):
 known Camera/Light/text/Image Empty data retains diagnostic-bearing Empty

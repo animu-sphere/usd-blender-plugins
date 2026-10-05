@@ -141,3 +141,62 @@ independent-process/path reproduction, home-path exclusion, non-destructive
 checks and failures, modified-oracle rejection, removed Image data and
 changed Camera transforms. Commands are in the
 [build guide](../../../docs/guides/building.md#unsupported-data-fallback-oracle).
+
+## Source-only evaluation oracle
+
+`blender-5.2.2/evaluation.blend` is a separate, uncompressed normal-save
+fixture generated and reopened on Windows on 2026-10-05 by
+[generate_evaluation.py](../generate_evaluation.py), using Blender 5.2.2 LTS
+build `d13f752e3b9c`. It has 531961 bytes and SHA-256
+`cc6e5521f9e07769732a7ea51fffae0d2fe1d0dcdc4c8fc711a47f81eb273037`.
+It is repository-generated, redistributable test data under the same license
+as the integrated fixtures above; no Blender source is included.
+
+The active `SourceOnly` Scene extends the integrated fixture at unit scale
+`0.01`, retaining seven selected Objects, two unique selected Meshes, shared
+membership/geometry, hierarchy, visibility, reflected transforms and UV maps:
+
+- `Root` has location keys at frames 1 and 10, and is saved at frame 1.
+- `EmptyRoot`, `MeshParent` and parent-only `OutsideParent` have active
+  Copy Location constraints. `MeshParent` also has a subdivision modifier;
+  several dependencies on one Object must still report once.
+- `SharedGeometry` has Basis/Raised shape keys with a nonzero Raised value
+  and displaced point. Its three users retain original Mesh positions;
+  `MeshParent`'s evaluated subdivision has different topology.
+- `OutsideParent` additionally has a modifier and shape keys on
+  `ParentOnlyGeometry`. Its source transform contributes to `Independent`,
+  but neither its Object nor its Mesh joins selected membership.
+
+The adjacent `evaluation.oracle.txt` reuses `BLEND_SCENE_ORACLE 1` and the
+integrated thresholds above. Generation/checking temporarily mutes constraints
+to ask Blender for source-channel world/local matrices, restoring them in a
+`finally` block. Original Mesh vertices, topology, normals and UVs supply
+geometry, not evaluated Meshes or transformed points. Separate assertions
+prove that active constraints change world matrices, subdivision changes
+topology, shape keys change evaluated positions and location keys change
+channels at frame 10. Generation saves with dependencies active and verifies
+the oracle again after reopening.
+
+`blendScene.sourceEvaluation` compares the complete owning IR to this source
+oracle under repeated and reversed-block reads. It requires exactly four
+recoverable `Unsupported` `BLEND_SCENE_EVALUATION_UNAPPLIED` diagnostics for
+`Root`, `EmptyRoot`, `MeshParent` and `OutsideParent`, and one
+`BLEND_MESH_EVALUATION_UNAPPLIED` for shared `SharedGeometry`. Every diagnostic
+has the exact source datablock name, payload offset and block index.
+Parent-only Mesh shape keys produce no Mesh diagnostic because that geometry
+is not decoded. `usdBlend.authoring` covers native-to-layer composition and
+metadata-only output in both build modes. Registered-plugin tests independently
+compare source matrices/geometry, pin the same full/metadata warning context,
+retain repeat/reference behavior and require no animation time samples.
+
+[test_generate_evaluation.py](../test_generate_evaluation.py) verifies
+independent-process/path reproduction, home-path exclusion, non-destructive
+checks/failures, modified-oracle rejection, and saved animation, constraint,
+modifier, shape-key, parent-only dependency and source-transform mutations.
+Commands are in the
+[build guide](../../../docs/guides/building.md#source-only-evaluation-oracle).
+This is bounded source-only evidence, not dependency-graph evaluation,
+animation decoding or general Scene compatibility. Support and incomplete
+milestone scope remain in the
+[capability matrix](../../../docs/reference/CAPABILITY_MATRIX.md#5-scene-ir)
+and [roadmap](../../../docs/roadmap/current.md).
