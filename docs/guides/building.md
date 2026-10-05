@@ -49,8 +49,8 @@ runs `test_stage.py`. The hand-maintained companion workflow
 the existing bundle cells with `ost ci matrix`, without copying their SDK
 digests, runners or host Python/package requirements. It builds the standalone
 bundle on both hosts, runs explicit `ost plugin doctor` diagnostics and all
-nine stage-contract tests plus the standalone `usdBlend.authoring` and
-`usdBlend.units` CTests, and
+ten stage-contract tests plus the standalone `usdBlend.authoring`,
+`usdBlend.units` and `usdBlend.importer` CTests, and
 uploads their reports and logs. These additional
 build jobs also use billed hosted infrastructure; they do not publish anything
 or use secrets. The resolver bootstrap is pinned to the matrix's `ost` version
@@ -490,12 +490,15 @@ ost plugin test plugins\usdBlendFileFormat --target cy2026 --profile usd --from-
 
 The manifest declares the `blendFile` and `blendScene` edges; `ost` builds and
 installs both libraries into its workspace prefix before configuring the standalone bundle.
-The nine stage tests assert the registered cube, integrated Scene,
+The ten stage tests assert the registered cube, integrated Scene,
 unsupported-data fallback, Mesh-domain, legacy auto-smooth and 5.2 polygon-fan
 oracles, multi-scale imports, metadata-only hierarchy, contextual fatal/recoverable
-diagnostics, repeat-read determinism and referenced geometry.
-Compressed input is rejected; the accepted full-stream policy does not add
-compressed scene importing.
+diagnostics, repeat-read determinism and referenced geometry. Compressed
+regressions use the unchanged Blender-written 5.2.2 corpus plus temporary
+gzip/raw-Zstandard encodings of Cube, integrated Scene and fallback fixtures,
+including concatenated streams and decoded-size block bounds. The importer
+explicitly selects the accepted full-stream policy without changing explicit
+reader/CLI limits.
 
 Six fixtures are synthetic legacy headers; `empty.blend` is a complete
 Scene-only library written by Blender 5.2.2 LTS. Header-only and Scene-only
@@ -546,6 +549,34 @@ activation as the plugin.
 Use the corresponding build directories on other hosts. The companion CI
 discovers its single standalone CTest directory rather than duplicating the
 runtime target triplet; root CI includes the new CTest automatically.
+
+### Compressed importer
+
+`usdBlend.importer` compares the unchanged Blender-written 5.2.2 Zstandard
+corpus against importing its decoded bytes. Full/metadata layer text and
+every native warning field must agree. Exact input/output/ratio/window budgets
+must succeed; reducing any one below the corpus minimum must preserve its
+fatal `BLEND_COMPRESSION_*` code. A sparse source checks the default input
+limit without allocating a large file; a failing source checks payload read
+errors. Small compressed budgets do not cap uncompressed Cube importing.
+Registered-plugin tests additionally check gzip CRC failure, truncation,
+trailing garbage, default ratio/window failures, decoded DNA offsets,
+metadata, repeats and references.
+
+The following focused commands were exercised on Windows on 2026-10-05,
+after building both modes:
+
+```powershell
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir build\usd-vs18 -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(authoring|units|importer)$'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(authoring|units|importer)$'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd --no-inject --plugin-path "$PWD\plugins\usdBlendFileFormat" -- python plugins\usdBlendFileFormat\tests\test_stage.py
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- python plugins\usdBlendFileFormat\tests\test_stage.py
+```
+
+These are bounded composition regressions, not new Blender data/version
+compatibility or old Blender-written gzip evidence. Hosted Windows/Linux
+coverage is wired in the existing stage-contract workflow; the dated local
+run does not claim hosted execution results.
 
 ## Plain CMake with the installed SDK
 

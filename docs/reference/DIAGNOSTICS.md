@@ -78,7 +78,7 @@ Fixture paths are relative to
 | `BLEND_COMPRESSION_OUTPUT_LIMIT` | Fatal | no | decoded bytes exceed the caller's output budget or the addressable vector size | uncompressed, gzip and Zstandard output boundaries in `blendFile.header`; address-space exhaustion unverified |
 | `BLEND_COMPRESSION_RATIO_LIMIT` | Fatal | no | decoded bytes exceed source size times the caller's expansion ratio | gzip DEFLATE/Zstandard RLE bomb vectors and exact ratio boundaries in `blendFile.header` |
 | `BLEND_BLOCK_LIMITS` | Fatal | no | the caller's block limit is zero or exceeds the maximum unsigned 32-bit index | invalid budgets in `blendFile.header` |
-| `BLEND_BLOCK_COMPRESSED` | Fatal | no | block enumeration or the importer receives gzip or Zstandard bytes without an agreed production decompression policy | encoded synthetic containers in `blendFile.header`; compressed importer cases in `test_stage.py` |
+| `BLEND_BLOCK_COMPRESSED` | Fatal | no | `ReadBlocks` receives gzip or Zstandard bytes before full-stream decoding; the importer consumes this detection and decodes before enumerating again | encoded synthetic containers in `blendFile.header`; successful bounded compressed imports in `usdBlend.importer` and `test_stage.py` |
 | `BLEND_BLOCK_COUNT_LIMIT` | Fatal | no | the next block would exceed the caller's budget, or the record vector exceeds its addressable size | exact count boundary in `blendFile.header`; address-space exhaustion unverified |
 | `BLEND_BLOCK_TRUNCATED` | Fatal | no | insufficient bytes remain for the selected block-header layout | all short block-header prefixes in `blendFile.header` |
 | `BLEND_BLOCK_READ_FAILED` | Fatal | no | a bounded block-header read fails | source failures at successive block headers in `blendFile.header` |
@@ -217,7 +217,9 @@ stable code followed by a colon at the start of `what()`. It does not return a
 unit conversion failures into fatal, non-recoverable diagnostics with Object or Mesh
 context and no fallback Scene; an overflowing native parent translation is
 tested across four synthetic layouts. Scene unit validation retains selection
-context. The uncompressed importer now forwards these native failures.
+context. The importer forwards these native failures using decoded-file byte
+offsets for compressed inputs as well as uncompressed ones. Compression
+failures keep their stored-input context.
 
 `ParentRelativeTransform` uses the same exception/code-prefix convention:
 invalid finite/affine inputs and singular parents throw `std::invalid_argument`;

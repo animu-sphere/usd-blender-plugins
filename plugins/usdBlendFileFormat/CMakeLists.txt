@@ -76,6 +76,11 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(CTest)
 endif()
 if(BUILD_TESTING)
+    add_executable(usdBlendImporterTests tests/ReadSceneTests.cpp)
+    target_link_libraries(usdBlendImporterTests PRIVATE usdBlendAuthoring)
+    add_test(NAME usdBlend.importer COMMAND usdBlendImporterTests
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus/blender-5.2.2/Untitled.blend"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/single_cube.blend")
     add_executable(usdBlendAuthoringTests tests/AuthorSceneTests.cpp)
     target_link_libraries(usdBlendAuthoringTests PRIVATE usdBlendAuthoring)
     add_test(NAME usdBlend.authoring COMMAND usdBlendAuthoringTests

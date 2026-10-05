@@ -21,6 +21,17 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Bounded gzip/Zstandard scene importing through the registered file format.
+    The bundle explicitly selects the accepted full-stream compression policy;
+    its internal `ReadScene` helper allows all four limit overrides without
+    changing uncompressed budgets, explicit reader APIs or CLI requirements.
+    Block budgets use decoded size, graph budgets use enumerated blocks and
+    native error offsets remain decoded-file positions. Blender-written
+    5.2.2 compressed corpus and generated encodings of the existing Cube,
+    integrated Scene and fallback fixtures cover full/metadata equivalence,
+    repeats, references, concatenation, corruption, limit failures and warning
+    context. No broader data/version scope or Blender-written gzip evidence
+    is claimed.
 - Hierarchy-preserving Empty fallback for validated known unsupported Object
     data, including Image Empties. Source transforms, own render visibility,
     selected parent edges and parent-only transform contributions survive

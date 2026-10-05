@@ -54,7 +54,7 @@ No row says "supported" without a fixture.
 
 Full-stream byte reading validates compression and the decoded header, not
 blocks, `ENDB` or SDNA. The importer composes those separate boundaries for
-uncompressed inputs only.
+uncompressed and decoded gzip/Zstandard inputs.
 Caller-supplied limits and their semantics are defined in the
 [blend contract](../design/BLEND_CONTRACT.md#41-full-stream-byte-reading);
 the accepted [standard full-stream policy](../design/BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
@@ -137,6 +137,7 @@ not every 5.x release or scene.
 | direct Cube display in usdview (Windows, Storm) | supported | `single_cube.blend`; local `test_usdview.py` checks the loaded `.blend`, converged viewport, Cube silhouette and center Mesh pick; [dated evidence](../../plugins/usdBlendFileFormat/tests/fixtures/README.md#cube-milestone-verification); no Linux viewport claim | Phase 2 |
 | deterministic identifiers and repeated reads | supported | reserved `mesh_1` child, repeated anonymous layers and referenced geometry in `test_stage.py`; ASCII multi-scale fixtures in `usdBlend.units` | Phase 2 |
 | `metadataOnly` hierarchy without geometry attributes | supported | cube and integrated Scenes retain prim types, provenance, transforms and visibility in `test_stage.py`; both authoring CTests check the byte-to-Scene composition | Phase 2 |
+| gzip/Zstandard scene importing under bounded full-stream limits | supported | Blender-written 5.2.2 compressed corpus and generated gzip/raw-Zstandard Cube, integrated Scene and fallback encodings in `test_stage.py`; concatenated header splits, decoded-size block bounds, full/metadata equivalence, repeats/references, corruption and contextual decoded errors; exact caller limit boundaries and warning equivalence in `usdBlend.importer`; no Blender-written gzip evidence | Phase 2 |
 | materials: Principled BSDF subset | — | | Phase 3 |
 | material subsets and binding | — | | Phase 3 |
 | external image textures | — | | Phase 3 |
@@ -151,18 +152,22 @@ not every 5.x release or scene.
 | modifiers, Geometry Nodes | — | | Phase 7 (host backend only) |
 | `metadataOnly` fast path | — | | Phase 8 |
 
-The registered importer now reads complete uncompressed containers through
-native decoding and authoring. Structural byte/block/graph bounds are derived
-from the stored size and block count under the
-[importer contract](../design/DESIGN_POLICY.md#532-uncompressed-importer-boundary).
-Compression is rejected with `BLEND_BLOCK_COMPRESSED`; the accepted
-full-stream policy does not add compressed scene importing.
+The registered importer reads complete uncompressed, gzip and Zstandard
+containers through native decoding and authoring under the
+[importer contract](../design/DESIGN_POLICY.md#532-scene-importer-boundary).
+Compressed byte reading explicitly selects the accepted 256 MiB stored,
+512 MiB decoded, ratio 4,096 and window-log-23 policy; internal callers can
+override all four limits. Uncompressed byte bounds remain input-derived.
+Block budgets use decoded size and graph budgets use the enumerated block
+count. Compression/limit failures are fatal, without retry or partial layers.
 Header-only fixtures fail with `BLEND_BLOCK_MISSING_ENDB`, and the Scene-only
 library fails with `BLEND_SCENE_ACTIVE_MISSING`, without scaffold/first-Scene
 fallbacks. Tests also cover missing/duplicate/malformed DNA1, truncated/trailing
-containers, gzip/Zstandard rejection, contextual errors and recoverable block
-warnings. The uncompressed Camera/Cube/Light corpus now retains Camera/Light
-as diagnostic-bearing Empty Xforms; compressed corpus importing still fails.
+containers, gzip/Zstandard corruption, exact compression-budget failures,
+contextual errors and recoverable block warnings. Both Camera/Cube/Light
+corpus files retain Camera/Light as diagnostic-bearing Empty Xforms.
+Block/SDNA/Scene offsets are decoded-file positions; compression errors retain
+stored-stream context.
 `metadataOnly` changes authored output, not decoding cost.
 
 ### 3.1 Scene IR USD authoring
@@ -184,13 +189,13 @@ itself does not choose compression or fixed production resource budgets.
 
 | Backend | Status | Intended in |
 | --- | --- | --- |
-| native, uncompressed Mesh/Empty input composition | supported; `IBlendBackend` abstraction not introduced | Phase 1 onward |
+| native, uncompressed and decoded gzip/Zstandard Mesh/Empty input composition | supported; `IBlendBackend` abstraction not introduced | Phase 1 onward |
 | Blender host | — | Phase 7 |
 
 ## 5. Scene IR
 
 These are native library capabilities, not `.blend` scene compatibility.
-The uncompressed importer now composes these native capabilities; the separate
+The importer composes these native capabilities from decoded bytes; the separate
 [Scene IR USD authoring boundary](#31-scene-ir-usd-authoring) now consumes
 normalized IR without changing the native libraries' dependency gates.
 
@@ -348,5 +353,5 @@ storage. Single-flag AttributeArrays have synthetic evidence only.
 Other named normal representations remain explicitly unsupported.
 The native matrix tolerance is `2e-5 * (1 + abs(expected))` per component;
 the decoder keeps strict finite/affine validation. The Stage and authoring
-tables above record the composed uncompressed importer and multi-scale
+tables above record the composed importer and multi-scale
 native-to-USD evidence separately.
