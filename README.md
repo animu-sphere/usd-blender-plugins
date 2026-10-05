@@ -75,6 +75,9 @@ stages from each compose without special cases. The full contract is
 ## Documentation
 
 Build and test commands: [docs/guides/building.md](docs/guides/building.md).
+Binary packages: [GitHub Releases](https://github.com/animu-sphere/usd-blender-plugins/releases)
+and [installation instructions](docs/guides/installing.md).
+Release scope and limitations: [v0.1.0 record](docs/releases/v0.1.0.md).
 
 | | |
 | --- | --- |
@@ -83,6 +86,7 @@ Build and test commands: [docs/guides/building.md](docs/guides/building.md).
 | [docs/reference/](docs/reference/) | What is implemented, and diagnostics |
 | [docs/roadmap/](docs/roadmap/) | Phase status, release mapping and incomplete tasks |
 | [docs/contributing/](docs/contributing/) | How the documentation is maintained |
+| [docs/releases/](docs/releases/) | Per-version scope, binary configurations and distribution |
 
 Changes are recorded in the [changelog](CHANGELOG.md).
 

@@ -29,9 +29,9 @@ Completion does not imply that the planned release has been tagged.
 
 | Phase | Scope | Status | Release |
 | --- | --- | --- | --- |
-| 0 | workspace skeleton, minimal file format | ✅ | v0.1.0 (planned) |
-| 1 | container and SDNA, `blend_inspect` | ✅ | v0.2.0 (planned) |
-| 2 | objects and meshes | ✅ | v0.3.0 (planned) |
+| 0 | workspace skeleton, minimal file format | ✅ | [v0.1.0](../releases/v0.1.0.md) |
+| 1 | container and SDNA, `blend_inspect` | ✅ | [v0.1.0](../releases/v0.1.0.md) |
+| 2 | objects and meshes | ✅ | [v0.1.0](../releases/v0.1.0.md) |
 | 3 | materials and images | ⬜ | v0.4.0 (planned) |
 | 4 | cameras, lights and collections | ⬜ | v0.5.0 (planned) |
 | 5 | object animation | ⬜ | v0.6.0 (planned) |
@@ -41,8 +41,9 @@ Completion does not imply that the planned release has been tagged.
 
 v1.0.0 is the first stable reader contract
 ([DESIGN_POLICY.md §14.1](../design/DESIGN_POLICY.md#141-first-stable-release)).
-The planned versions follow the 2026-10-01 implementation plan and are
-re-decided when a Phase is ready to ship.
+The remaining planned versions follow the 2026-10-01 implementation plan and
+are re-decided when a Phase is ready to ship. The first public release
+consolidates the already accepted native-reader and Mesh/Empty milestones.
 
 See the [current tasks](current.md) for upcoming work and the
 [capability matrix](../reference/CAPABILITY_MATRIX.md) for implemented behavior.

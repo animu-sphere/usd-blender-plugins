@@ -15,12 +15,10 @@ for upcoming work, use the [current tasks](roadmap/current.md).
 | [design/](design/) | What the file format reads, what it authors, and why. | [DESIGN_POLICY.md](design/DESIGN_POLICY.md) |
 | [reference/](reference/) | Facts about the current tree: what is supported, which diagnostics exist. | [CAPABILITY_MATRIX.md](reference/CAPABILITY_MATRIX.md) · [DIAGNOSTICS.md](reference/DIAGNOSTICS.md) |
 | [roadmap/](roadmap/) | Phase status, release mapping and incomplete tasks. | [README.md](roadmap/README.md) · [current.md](roadmap/current.md) |
-| [contributing/](contributing/) | How to maintain these documents. | [documentation.md](contributing/documentation.md) |
-| [guides/](guides/) | Commands verified against the implementation. | [building.md](guides/building.md) · [inspecting.md](guides/inspecting.md) |
+| [contributing/](contributing/) | How to maintain these documents and publish releases. | [documentation.md](contributing/documentation.md) · [releasing.md](contributing/releasing.md) |
+| [guides/](guides/) | Commands verified against the implementation. | [building.md](guides/building.md) · [inspecting.md](guides/inspecting.md) · [installing.md](guides/installing.md) |
+| [releases/](releases/) | Immutable per-version scope and distribution records. | [v0.1.0](releases/v0.1.0.md) |
 | [reports/](reports/) | Dated evidence from real runs, not current capability or phase status. | [2026-10-05 compression policy measurements](reports/2026-10-05-compression-policy.md) |
-
-`releases/` is created when it has real content
-([contributing/documentation.md](contributing/documentation.md#category-ownership)).
 
 ## Canonical documents
 

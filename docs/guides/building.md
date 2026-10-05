@@ -59,6 +59,13 @@ companion workflow to the generator.
 
 The regular jobs use committed fixtures and do not install or run Blender.
 
+The hand-maintained [release workflow](../../.github/workflows/release.yml)
+resolves those same bundle cells, builds/tests the root and standalone paths,
+and verifies reproducible packages and a repository-free aggregate install.
+Tag pushes assemble a draft; manual dispatch produces workflow artifacts only.
+See [the release procedure](../contributing/releasing.md) and
+[installation guide](installing.md).
+
 ## Reader without OpenUSD
 
 ```powershell
