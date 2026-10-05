@@ -594,12 +594,22 @@ instance graph before any Scene is published. Selection/reader failures retain
 their codes and context; fatal decoding errors likewise return no partial IR.
 The decoder neither opens files nor supplies compression or traversal defaults.
 
-The object scope is data-less Empty (`Object.type == 0`) and Mesh
-(`Object.type == 1`), all six Euler orders (`rotmode == 1..6`), Quaternion
+The decoded data scope is data-less Empty (`Object.type == 0`) and Mesh
+(`Object.type == 1`). Other known kinds validated by the
+[Object value boundary](#526-saved-object-value-boundary), including Image
+Empty data, retain their source hierarchy, transforms and own render visibility
+as Empty IR Objects, with no Mesh index or invented data. Each decoded Object,
+including parent-only Objects and distinct Objects sharing unsupported data,
+reports one recoverable `Unsupported` `BLEND_SCENE_OBJECT_DATA_UNSUPPORTED`
+with its source name, payload offset and block index. Unmapped kinds still
+fail with `BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED` during selection. This follows
+[the source-concept policy](BLEND_CONTRACT.md#10-source-concepts); it does not
+decode Camera/Light schemas, text, images or other unsupported data.
+
+Transform scope is all six Euler orders (`rotmode == 1..6`), Quaternion
 (`rotmode == 0`) and Axis-Angle (`rotmode == -1`), `transflag` zero or bit 2 only, and ordinary Object parenting
-(`partype == 0` when a parent exists). Other mapped kinds fail with
-`BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED`; Image Empty data fails with
-`BLEND_SCENE_OBJECT_DATA_UNSUPPORTED`. Enabled Collection instancing fails with
+(`partype == 0` when a parent exists). Unsupported-data fallback does not
+bypass graph, linked-ID, transform or unit validation. Enabled Collection instancing fails with
 `BLEND_SCENE_INSTANCE_UNSUPPORTED` after graph validation, not by replacing the
 instance with an ordinary Empty. Other transform flags, unknown rotation modes and
 parenting modes fail with `BLEND_SCENE_TRANSFORM_UNSUPPORTED`. Bit 2 records

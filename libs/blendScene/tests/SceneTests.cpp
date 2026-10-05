@@ -756,7 +756,48 @@ void CheckNativeDecode(std::vector<std::byte> bytes,
   changed[static_cast<std::size_t>(imageBlocks[imageIndex].offset)] = std::byte{'I'};
   changed[static_cast<std::size_t>(imageBlocks[imageIndex].offset) + 1] = std::byte{'M'};
   bits(changed, 4, idSize + width, imageBlocks[imageIndex].oldAddress, width);
-  failure(changed, imageBlocks, imageDna, "BLEND_SCENE_OBJECT_DATA_UNSUPPORTED", 4);
+  const auto fallbackBytes = changed;
+  const std::array mappings = {
+      std::tuple{0, "IM", "Image"}, std::tuple{2, "CU", "Curve"},
+      std::tuple{3, "CU", "Curve"}, std::tuple{4, "CU", "Curve"},
+      std::tuple{5, "MB", "MetaBall"}, std::tuple{10, "LA", "Lamp"},
+      std::tuple{11, "CA", "Camera"}, std::tuple{12, "SK", "Speaker"},
+      std::tuple{13, "LP", "LightProbe"}, std::tuple{22, "LT", "Lattice"},
+      std::tuple{25, "AR", "bArmature"}, std::tuple{26, "GD", "bGPdata"},
+      std::tuple{27, "CV", "Curves"}, std::tuple{28, "PT", "PointCloud"},
+      std::tuple{29, "VO", "Volume"}, std::tuple{30, "GP", "GreasePencil"}};
+  for (const auto& [type, code, dnaType] : mappings) {
+    changed = fallbackBytes;
+    imageBlocks[imageIndex].code = {code[0], code[1], 0, 0};
+    imageDna.types[imageDna.structs[imageBlocks[imageIndex].sdnaIndex].typeIndex].name = dnaType;
+    changed[static_cast<std::size_t>(imageBlocks[imageIndex].offset)] = static_cast<std::byte>(code[0]);
+    changed[static_cast<std::size_t>(imageBlocks[imageIndex].offset) + 1] = static_cast<std::byte>(code[1]);
+    bits(changed, 4, typeOffset, type, 2);
+    const auto fallback = decode(changed, imageBlocks, imageDna, {9, 2});
+    Require(fallback.HasValue() && fallback.GetValue().objects.size() == 2 &&
+                fallback.GetValue().meshes.empty() && fallback.GetValue().objects[1].parent == 0 &&
+                fallback.GetValue().objects[0].worldTransform == result.GetValue().objects[0].worldTransform &&
+                fallback.GetValue().objects[1].worldTransform == result.GetValue().objects[1].worldTransform &&
+                fallback.GetValue().objects[0].hiddenForRender && fallback.Diagnostics().size() == 1,
+        "Known unsupported data preserves hierarchy, visibility and source transforms as Empty IR");
+    const auto& diagnostic = fallback.Diagnostics()[0];
+    Require(diagnostic.code == "BLEND_SCENE_OBJECT_DATA_UNSUPPORTED" &&
+                diagnostic.severity == blend::Severity::Unsupported && diagnostic.recoverable &&
+                diagnostic.blockIndex == 4 && diagnostic.byteOffset == blocks[4].offset &&
+                diagnostic.datablock == "One",
+        "Unsupported data warns once with exact referring Object context");
+    bits(changed, 4, flagsOffset, 1, 2);
+    failure(changed, imageBlocks, imageDna, "BLEND_SCENE_TRANSFORM_UNSUPPORTED", 4);
+    bits(changed, 4, flagsOffset, 0, 2);
+    bits(changed, imageIndex, 16, 999, width);
+    failure(changed, imageBlocks, imageDna, "BLEND_SCENE_LINKED_UNSUPPORTED", imageIndex);
+    bits(changed, imageIndex, 16, 0, width);
+    bits(changed, 4, idSize + width, 999, width);
+    failure(changed, imageBlocks, imageDna, "BLEND_SCENE_REFERENCE_INVALID", 4);
+  }
+  changed = bytes;
+  bits(changed, 4, typeOffset, 6, 2);
+  failure(changed, blocks, schema, "BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED", 4);
   changed = bytes;
   bits(changed, 4, flagsOffset, 256, 2);
   bits(changed, 4, instanceOffset, blocks.back().oldAddress, width);
@@ -1782,14 +1823,23 @@ void CheckSelectedScene(const char* path, bool hasSavedScene) {
       "Object value reading preserves corpus membership");
   const auto native = blend::DecodeScene(decoded.GetValue(), blocks.GetValue(),
       schema.GetValue(), header.GetValue(), {10000, 64});
-  const auto unsupported = std::find_if(objectValues.GetValue().objects.begin(),
-      objectValues.GetValue().objects.end(),
-      [](const auto& object) { return object.values->type != 0 && object.values->type != 1; });
-  if (native.HasValue() || native.GetError().code != "BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED" ||
-      unsupported == objectValues.GetValue().objects.end() ||
-      native.GetError().blockIndex != unsupported->blockIndex) {
-    throw std::runtime_error("Native corpus decoding must reject unsupported Object kinds: " +
-                             (native.HasValue() ? std::string("got Scene") : native.GetError().code + ": " + native.GetError().message));
+  if (!native.HasValue()) {
+    throw std::runtime_error(native.GetError().code + ": " + native.GetError().message);
+  }
+  Require(native.GetValue().objects.size() == 3 && native.GetValue().meshes.size() == 1 &&
+              std::count_if(native.Diagnostics().begin(), native.Diagnostics().end(),
+                  [](const auto& diagnostic) {
+                    return diagnostic.code == "BLEND_SCENE_OBJECT_DATA_UNSUPPORTED";
+                  }) == 2,
+      "Corpus Camera and Light preserve the Scene as diagnostic-bearing Empty Objects");
+  for (const auto& diagnostic : native.Diagnostics()) {
+    if (diagnostic.code != "BLEND_SCENE_OBJECT_DATA_UNSUPPORTED") {
+      continue;
+    }
+    Require(diagnostic.severity == blend::Severity::Unsupported && diagnostic.recoverable &&
+                diagnostic.blockIndex && diagnostic.byteOffset == blocks.GetValue()[*diagnostic.blockIndex].offset &&
+                (diagnostic.datablock == "Camera" || diagnostic.datablock == "Light"),
+        "Corpus unsupported data retains exact source Object context");
   }
   auto emptyObjects = decoded.GetValue();
   const auto* objectStruct = schema.GetValue().FindStruct("Object");

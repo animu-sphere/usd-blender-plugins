@@ -121,7 +121,7 @@ not every 5.x release or scene.
 
 | Version | Support status | Fixture evidence |
 | --- | --- | --- |
-| 5.x | supported for tested uncompressed Mesh/Empty storage only | `single_cube.blend`; `native-scene`, `native-transforms`, `native-units`: 5.2.2 |
+| 5.x | supported for tested uncompressed Mesh/Empty storage and diagnostic-bearing unsupported-data Xforms | `single_cube.blend`; `native-scene`, `native-transforms`, `native-units`: 5.2.2; `native-scene/fallbacks.blend` proves Camera/Light/text/Image Empty hierarchy only |
 | 4.5 LTS | regression-only; no current version support guarantee | `native-scene`, `native-transforms`, `native-units`: 4.5.13 |
 | 3.3 | regression-only; no current version support guarantee | `native-mesh` and `native-normals`: 3.3.21 legacy Mesh storage and default/auto-smooth normals; no other 3.x–4.4 version claim |
 
@@ -132,6 +132,7 @@ not every 5.x release or scene.
 | `/Asset`, `defaultPrim`, `geo`, `mtl` | supported | `single_cube.blend`, integrated Scene fixtures, `test_stage.py`, cube golden | Phase 0 |
 | Y-up, meters | supported | cube, integrated Scene and eight multi-scale fixtures in `test_stage.py` | Phase 0 |
 | Mesh/Empty objects, parenting, transforms and own render visibility | supported | both integrated Scene oracles in `test_stage.py`; shared Meshes, parent-only Object, nonuniform/negative scales and sheared parent inverses | Phase 2 |
+| unsupported Camera/Light/text/Image Empty data as hierarchy-preserving Xforms | approximated | [5.2.2 fallback oracle](../../tests/fixtures/native-scene/README.md#unsupported-data-fallback-oracle), `test_stage.py`: supported Mesh children, shared unsupported Camera data, parent-only Camera, visibility, source matrices, metadata/repeats/references and five contextual warnings; no Camera/Light/image/text data is authored | Phase 2 |
 | meshes: polygon topology, normals, indexed UVs and extent | supported | `single_cube.blend` and golden; both integrated Scene oracles in `test_stage.py`; native-to-authoring checks in both CMake modes | Phase 2 |
 | direct Cube display in usdview (Windows, Storm) | supported | `single_cube.blend`; local `test_usdview.py` checks the loaded `.blend`, converged viewport, Cube silhouette and center Mesh pick; [dated evidence](../../plugins/usdBlendFileFormat/tests/fixtures/README.md#cube-milestone-verification); no Linux viewport claim | Phase 2 |
 | deterministic identifiers and repeated reads | supported | reserved `mesh_1` child, repeated anonymous layers and referenced geometry in `test_stage.py`; ASCII multi-scale fixtures in `usdBlend.units` | Phase 2 |
@@ -140,8 +141,8 @@ not every 5.x release or scene.
 | material subsets and binding | — | | Phase 3 |
 | external image textures | — | | Phase 3 |
 | packed images | — | | — |
-| cameras | — | | Phase 4 |
-| lights | — | | Phase 4 |
+| camera schema and data | — | | Phase 4 |
+| light schema and data | — | | Phase 4 |
 | collections | — | | Phase 4 |
 | object animation | — | | Phase 5 |
 | armatures, skinning, skeletal animation | — | | Phase 6 |
@@ -160,7 +161,8 @@ Header-only fixtures fail with `BLEND_BLOCK_MISSING_ENDB`, and the Scene-only
 library fails with `BLEND_SCENE_ACTIVE_MISSING`, without scaffold/first-Scene
 fallbacks. Tests also cover missing/duplicate/malformed DNA1, truncated/trailing
 containers, gzip/Zstandard rejection, contextual errors and recoverable block
-warnings. Camera/Light corpus Scenes still fail explicitly.
+warnings. The uncompressed Camera/Cube/Light corpus now retains Camera/Light
+as diagnostic-bearing Empty Xforms; compressed corpus importing still fails.
 `metadataOnly` changes authored output, not decoding cost.
 
 ### 3.1 Scene IR USD authoring
@@ -209,7 +211,8 @@ normalized IR without changing the native libraries' dependency gates.
 | saved Object type, render visibility, transform flags and type-specific data ID requirements | supported | opt-in `SelectSceneObjectValues`; four synthetic layouts cover all mapped kinds, missing/wrong data, scalar shapes, parent-only values and ownership; both 4.5.13/5.2.2 corpus files cover native kinds, saved short/int visibility and visibility/data mutations in `blendScene.ir` | Phase 2 |
 | immediate instance Collection references and explicit visit-budget diagnostics | supported | four synthetic layouts cover saved member names, null/absent/interior/wrong/count/linked/name targets, inactive references, shared and already-visited targets, reordered indices and exact budgets; both corpus files cover null references and pointer/flag mutations in `blendScene.ir` | Phase 2 |
 | recursive instance graph validation | supported | four synthetic layouts cover nested missing/interior/wrong-type/linked targets, self/ancestor cycles through CollectionObject membership, shared targets, preserved membership and generic selection, and 256-child instance subgraphs with exact/one-smaller visit/depth budgets; both corpus files reject self-instancing master Collections in `blendScene.ir` | Phase 2 |
-| native Mesh/Empty Scene IR decoding, render visibility and selected parent indices | supported | `DecodeScene` composes Object-value selection; four synthetic layouts cover mixed Mesh/Empty Scenes, shared Mesh indices, parent-only Objects, block reordering, ownership and explicit failures for unsupported kinds/data/instances; both corpus SDNA layouts decode in-memory Object-kind/data mutations without rewriting fixtures in `blendScene.ir` | Phase 2 |
+| native Mesh/Empty Scene IR decoding, render visibility and selected parent indices | supported | `DecodeScene` composes Object-value selection; four synthetic layouts cover mixed Mesh/Empty Scenes, shared Mesh indices, parent-only Objects, block reordering, ownership and explicit failures for unmapped kinds and active instances; both unchanged Camera/Cube/Light corpus inputs decode, with Camera/Light data warnings, in `blendScene.ir` | Phase 2 |
+| native known unsupported data as Empty IR Objects | approximated | all mapped non-Mesh kinds and Image Empty across four synthetic layouts in `blendScene.ir`; exact recoverable Object context and unchanged fatal linked/reference/transform policy; [Blender 5.2.2 mixed-kind oracle](../../tests/fixtures/native-scene/README.md#unsupported-data-fallback-oracle) in `blendScene.objectFallbacks` compares 11 selected Objects, two Meshes, unsupported parents and parent-only/shared Camera data under owning/repeated/reversed reads; other mapped kinds have synthetic evidence only | Phase 2 |
 | integrated Blender-written Mesh/Empty native Scene oracle | supported | [unchanged 4.5.13/5.2.2 Scene fixtures](../../tests/fixtures/native-scene/README.md) in `blendScene.sceneFixture` combine seven selected Objects, two unique Meshes, three shared-Mesh users, four-level mixed parenting, a parent-only Mesh in an unselected Scene, nested/shared Collection membership, own render bits, fixed `mesh` child reservation, world/local matrices, points/topology/normals and two indexed UV maps; repeated and reversed-block reads preserve every owning IR value | Phase 2 |
 | native deterministic Mesh/Empty Object identifiers | supported | `blendScene.naming` covers ASCII examples, literal underscores, unsigned source-byte ordering, natural suffix collisions, parent-scoped Mesh child reservations, repeated reads and all 40,320 permutations of an eight-Object IR with remapped parents; both Mesh storage forms across four synthetic layouts prove native fixed-child reservation and unchanged shared geometry in `blendScene.ir`; unchanged Blender-written 4.5.13/5.2.2 transform fixtures preserve identifiers under reversed blocks in `blendScene.transforms` | Phase 2 |
 | UTF-8 display repair and naming diagnostics | supported | valid scalar boundaries, maximal ill-formed subparts, overlong/surrogate/out-of-range/truncated encodings, duplicate sibling names and invalid immediate IR references in `blendScene.naming`; four synthetic layouts retain raw Object names and exact recoverable/fatal block context, including equal malformed names in separate scopes, in `blendScene.ir` | Phase 2 |
@@ -306,8 +309,11 @@ signed channels and parent composition reconstruct reflections without
 applying the bit again. The unit fixtures prove saved bit 2 in both versions;
 four-layout synthetic cases keep source channels authoritative and reject
 all other non-instance bits, alone or combined with bit 2.
-Other kinds, Image Empty data, active instances,
-unknown rotation modes and non-ordinary parenting modes fail explicitly, with no partial IR.
+Known non-Mesh kinds and Image Empty data preserve Empty IR Objects with
+recoverable `BLEND_SCENE_OBJECT_DATA_UNSUPPORTED`; their source transforms,
+hierarchy and render visibility remain intact without invented geometry.
+Unmapped kinds, active instances, unknown rotation modes and non-ordinary
+parenting modes fail explicitly, with no partial IR.
 Parent-only Objects affect world space but do not join membership. Immediate
 selected parents become IR indices; other parents leave an IR root with its
 complete world matrix. Source names and render visibility are retained,
@@ -316,10 +322,10 @@ assigns deterministic ASCII identifiers without changing raw names or discovery
 order, and selected Mesh data is decoded once per shared
 target under the [Mesh storage boundary](../design/DESIGN_POLICY.md#528-native-mesh-storage-boundary).
 Animation/constraint/modifier and shape-key presence is reported without
-evaluation. The Cube's Mesh bytes in both corpus files are unchanged; non-Mesh
-Objects are mutated to Empty in memory to isolate the supported scene scope.
-Those files remain unsupported as complete Scenes because Camera/Light decoding
-is not introduced. Separate Blender-written Empty fixtures compare native
+evaluation. Both unchanged corpus files now decode their Cube Mesh and retain
+Camera/Light as diagnostic-bearing Empty Objects. Existing in-memory Empty
+mutations continue to isolate transform/storage regressions. Camera/Light data
+decoding is not introduced. Separate Blender-written Empty fixtures compare native
 world matrices, constructed parent-relative locals and reconstructed world
 composition with saved transform oracles.
 The integrated Scene oracles combine Mesh/Empty world/local matrices with

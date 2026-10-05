@@ -21,6 +21,18 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Hierarchy-preserving Empty fallback for validated known unsupported Object
+    data, including Image Empties. Source transforms, own render visibility,
+    selected parent edges and parent-only transform contributions survive
+    with one contextual recoverable `BLEND_SCENE_OBJECT_DATA_UNSUPPORTED`
+    diagnostic per decoded Object. A separate Blender-written 5.2.2
+    Camera/Light/text/Image fixture compares 11 selected Objects and two
+    shared Meshes against saved world/local and geometry oracles in native
+    and registered-plugin tests, including metadata, repeats and references.
+    Both CMake modes cover native-to-USD composition; four synthetic layouts
+    cover every mapped non-Mesh kind. Unknown kinds, linked/invalid
+    references, active instances and unsupported transforms remain fatal.
+    Camera/Light schemas, text/image data and instance expansion are not added.
 - Fixture-backed Blender 3.3 auto-smooth normals using four independently
     generated 3.3.21 saved files at 0/60/90/180 degrees. Observed Mesh flag
     `0xd120` and scalar-float `smoothresh` select angle-limited connected
