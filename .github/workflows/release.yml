@@ -224,13 +224,12 @@ jobs:
               case "$debug" in */*) cp "$debug" release-stage/ ;; *) cp "$dir/$debug" release-stage/ ;; esac
             fi
           }
+          # Native Windows jq emits CRLF; a trailing CR is not an empty debug field.
+          jq -er '(.data.packages[], .data.product) | [.archive, .name, .target, .archive_digest, (.debug_archive // "")] | @tsv' \
+            .ost-ci/package.json | tr -d '\r' > .ost-ci/release-artifacts.tsv
           while IFS=$'\t' read -r archive name target digest debug; do
             stage "$archive" "$name" "$target" "$digest" "$debug"
-          done < <(jq -r '.data.packages[] | [.archive, .name, .target, .archive_digest, (.debug_archive // "")] | @tsv' .ost-ci/package.json)
-          stage "$(jq -er '.data.product.archive' .ost-ci/package.json)" \
-            "$(jq -er '.data.product.name' .ost-ci/package.json)" \
-            "$(jq -er '.data.product.target' .ost-ci/package.json)" \
-            "$(jq -er '.data.product.archive_digest' .ost-ci/package.json)" ""
+          done < .ost-ci/release-artifacts.tsv
       - name: Upload target artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -242,6 +241,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: diagnostics-${{ matrix.name }}
+          include-hidden-files: true
           path: |
             .ost-ci/*.json
             .ost-ci/digests-*.txt
