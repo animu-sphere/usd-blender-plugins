@@ -507,6 +507,38 @@ the normal-save `single_cube.blend`; L5 compares its flattened Mesh stage
 against the golden. The generated source comment has its
 path removed by `ost` normalization. USDA files must use LF endings.
 
+### Phase 2 closeout
+
+Use the seven fixed gates in
+[DESIGN_POLICY §14.2](../design/DESIGN_POLICY.md#142-phase-2-exit-criteria),
+not an open-ended search for additional Blender releases or Mesh fixtures.
+The commands below were exercised on Windows on 2026-10-05 against the
+implementation in commit `5661b2d` (merged in #59). They use the already
+configured root SDK build and standalone OpenStrata bundle described here;
+run the corresponding build/setup commands first on a fresh checkout.
+
+```powershell
+cmake --build build\usd-vs18 --config Release
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd --no-inject -- ctest --test-dir build\usd-vs18 -C Release --output-on-failure --no-tests=error
+ost library test libs\blendScene --target cy2026 --profile usd
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(authoring|units|importer|instances)$'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd --no-inject --plugin-path "$PWD\plugins\usdBlendFileFormat" -- python plugins\usdBlendFileFormat\tests\test_stage.py
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- python plugins\usdBlendFileFormat\tests\test_stage.py
+ost plugin doctor plugins\usdBlendFileFormat --target cy2026 --profile usd --json
+ost plugin test --workspace --graph-only
+ost plugin test plugins\usdBlendFileFormat --target cy2026 --profile usd
+ost plugin package plugins\usdBlendFileFormat --target cy2026 --profile usd
+ost plugin test plugins\usdBlendFileFormat --target cy2026 --profile usd --from-package
+```
+
+Committed oracles let these suites run without Blender. The existing dated
+[Windows Cube viewport verification](../../plugins/usdBlendFileFormat/tests/fixtures/README.md#cube-milestone-verification)
+satisfies P2-VIEWPORT; the local `test_usdview.py` procedure can refresh that
+evidence when viewport behavior changes, but is not a hosted Linux GPU gate.
+Check source and stage-contract CI for the exact implementation commit on
+both hosts, not just a successful local run. Newer releases/features need
+separate scoped compatibility work, not more conditions on this checklist.
+
 ### Scene IR USD authoring
 
 `usdBlend.authoring` exercises the bundle's internal authoring translation unit

@@ -121,9 +121,16 @@ not every 5.x release or scene.
 
 | Version | Support status | Fixture evidence |
 | --- | --- | --- |
-| 5.x | supported for tested uncompressed Mesh/Empty storage and diagnostic-bearing unsupported-data Xforms | `single_cube.blend`; `native-scene`, `native-transforms`, `native-units`: 5.2.2; `native-scene/fallbacks.blend` proves Camera/Light/text/Image Empty hierarchy only |
+| 5.2.2 | supported for tested Mesh/Empty storage and diagnostic-bearing unsupported-data Xforms; not release-wide scene compatibility | `single_cube.blend`; `native-scene`, `native-transforms`, `native-units`, `native-mesh`, `native-normals`: 5.2.2; the compressed corpus and generated encodings prove the bounded importer path; `native-scene/fallbacks.blend` proves Camera/Light/text/Image Empty hierarchy only |
+| other 5.x releases | unverified as Scene/Mesh compatibility targets; the 5.x design target is not a blanket support claim | no Blender-written release-specific Scene/Mesh oracle evidence |
 | 4.5 LTS | regression-only; no current version support guarantee | `native-scene`, `native-transforms`, `native-units`: 4.5.13 |
 | 3.3 | regression-only; no current version support guarantee | `native-mesh` and `native-normals`: 3.3.21 legacy Mesh storage and default/auto-smooth normals; no other 3.x–4.4 version claim |
+
+The finite [Phase 2 exit criteria](../design/DESIGN_POLICY.md#142-phase-2-exit-criteria)
+use the 5.2.2 fixture-proven scope. Completing that milestone does not upgrade
+the unverified releases above; later compatibility claims need their own
+bounded evidence. Existing synthetic byte-order/pointer-width and storage
+tests are retained without being promoted to Blender-written release proof.
 
 ## 3. Stage
 
