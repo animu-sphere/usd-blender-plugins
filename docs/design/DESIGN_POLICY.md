@@ -577,6 +577,13 @@ shared targets are not expanded twice. Objects discovered only through an
 instance target are validated but are not added to the selected Scene
 membership.
 
+The [5.2.2 saved graph oracle](../../tests/fixtures/native-scene/README.md#recursive-collection-instance-graph-oracle)
+adds Blender-written shared and multi-level instance targets and parent-only
+inactive references. Binary mutations of that fixture pin recursive
+missing/linked/invalid/cycle diagnostics and error precedence before native
+instance rejection, including registered-plugin full/metadata compressed reads.
+This is bounded validation evidence, not Collection-instance expansion.
+
 All failures are fatal with source context and no partial result. Existing
 reader, linked-ID, name and budget diagnostics retain their behavior. No
 production budgets, local/world transform construction, normalized geometry,

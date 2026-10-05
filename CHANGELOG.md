@@ -25,6 +25,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Blender-written 5.2.2 recursive Collection-instance graph oracle with
+    shared and multi-level targets, instance-only Objects and parent-only
+    inactive references. Native tests pin exact 23-visit/depth-3 budgets,
+    selected membership, repeated/reversed references and contextual failures.
+    The same 24 bounded variants exercise registered-plugin plain/gzip/Zstandard
+    full/metadata reads, error precedence, repeated failures and successful
+    source-only references in both build modes. Generator regressions verify
+    reproduction and non-destructive detection of saved graph mutations.
+    Existing decoding behavior is unchanged; instance expansion and completion
+    of general Scene support are not claimed.
 - Blender-written 5.2.2 source-only Scene oracle with saved animation,
     active constraints, subdivision modifiers and nonzero shape keys.
     Native IR and registered-plugin tests compare seven selected Objects and

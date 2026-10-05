@@ -76,6 +76,17 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(CTest)
 endif()
 if(BUILD_TESTING)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    if(TARGET blendSceneInstanceTests)
+        set(BLEND_INSTANCE_CASES_TARGET blendSceneInstanceTests)
+    else()
+        add_executable(usdBlendInstanceCases ../../libs/blendScene/tests/InstanceTests.cpp)
+        target_link_libraries(usdBlendInstanceCases PRIVATE blendScene::blendScene)
+        set(BLEND_INSTANCE_CASES_TARGET usdBlendInstanceCases)
+    endif()
+    add_test(NAME usdBlend.instances COMMAND Python3::Interpreter
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_instances.py"
+        --cases-executable $<TARGET_FILE:${BLEND_INSTANCE_CASES_TARGET}>)
     add_executable(usdBlendImporterTests tests/ReadSceneTests.cpp)
     target_link_libraries(usdBlendImporterTests PRIVATE usdBlendAuthoring)
     add_test(NAME usdBlend.importer COMMAND usdBlendImporterTests

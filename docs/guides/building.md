@@ -50,7 +50,7 @@ the existing bundle cells with `ost ci matrix`, without copying their SDK
 digests, runners or host Python/package requirements. It builds the standalone
 bundle on both hosts, runs explicit `ost plugin doctor` diagnostics and all
 ten stage-contract tests plus the standalone `usdBlend.authoring`,
-`usdBlend.units` and `usdBlend.importer` CTests, and
+`usdBlend.units`, `usdBlend.importer` and `usdBlend.instances` CTests, and
 uploads their reports and logs. These additional
 build jobs also use billed hosted infrastructure; they do not publish anything
 or use secrets. The resolver bootstrap is pinned to the matrix's `ost` version
@@ -767,6 +767,45 @@ For the root-built plugin use the same command with
 These checks pin four Object warnings and one shared-Mesh warning with exact
 source names/byte/block context, unchanged source geometry/transforms and
 absence of time samples. No dependency-graph or animation evaluation is added.
+
+### Recursive Collection-instance oracle
+
+The pinned Blender 5.2.2 generator saves shared and multi-level instance
+targets, instance-only Objects and parent-only inactive references. Graph
+records, provenance and exact traversal thresholds are in the
+[fixture record](../../tests/fixtures/native-scene/README.md#recursive-collection-instance-graph-oracle).
+Generation and regression commands were exercised on Windows on 2026-10-05:
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_instances.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_instances.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_instances.py
+
+cmake --build .\build\reader-vs18 --config Release --target blendSceneInstanceTests blendSceneTests
+ctest --test-dir .\build\reader-vs18 -C Release --output-on-failure --no-tests=error -R '^blendScene\.(instances|ir)$'
+
+ost plugin build plugins\usdBlendFileFormat --target cy2026 --profile usd
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(instances|authoring|importer)$'
+ctest --test-dir libs\blendScene\build\cy2026-windows-x86_64-py313-usd -C Release --output-on-failure --no-tests=error -R '^blendScene\.(instances|ir|sceneFixture|objectFallbacks|sourceEvaluation)$'
+
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd --no-inject --plugin-path "$PWD\plugins\usdBlendFileFormat" -- ctest --test-dir build\usd-vs18 -C Release --output-on-failure --no-tests=error -R '^(blendScene\.instances|usdBlend\.(instances|authoring|importer))$'
+```
+
+The root build directories above are the configured local Visual Studio
+builds described in this guide, not newly required presets. Plugin CMake
+tests discover a Python interpreter; `usdBlend.instances` needs `pxr` and
+plugin discovery from the activated SDK, so run it through `ost plugin run`.
+Reader-only and standalone Scene tests still require neither Python nor USD.
+
+`--output <path.blend>` redirects generator/check inputs. `--check` never
+rewrites the saved fixture or graph oracle. The native case writer supplies
+24 temporary variants to the registered-plugin test, including invalid nested
+references, linked-ID mutations, cycles, list errors and parent-only references.
+Full/metadata plain/gzip/Zstandard reads pin exact decoded-file error context,
+error precedence, repeated failures and successful source-only references.
+These are graph-validation regressions; instance expansion and broader
+Scene/Blender-version support are not added.
 
 ### Saved Mesh-domain oracles
 

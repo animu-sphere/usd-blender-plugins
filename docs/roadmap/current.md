@@ -52,6 +52,14 @@ hierarchy, source transforms, own visibility, metadata/repeats/references and
 exact warning context. Unknown types, linked/invalid references, active
 Collection instances and unsupported transforms remain fatal; this does not
 complete general Scene coverage or introduce Camera/Light data schemas.
+Task 2.3's bounded
+[5.2.2 recursive instance graph oracle](../../tests/fixtures/native-scene/README.md#recursive-collection-instance-graph-oracle)
+now pins shared/multi-level targets and parent-only inactive references.
+Native checks verify exact visit/depth thresholds, unchanged membership and
+caller-relative reordered indices. Registered-plugin tests cover 24 saved-graph
+variants in plain/gzip/Zstandard full/metadata reads, retaining fatal
+missing/linked/invalid/cycle context before unsupported expansion.
+This adds validation evidence, not instance expansion or general Scene completion.
 Separate [multi-scale fixtures](../../tests/fixtures/native-units/README.md)
 establish the unit and ASCII identifier policies through native-to-USD
 composition and registered-plugin reads. Tasks 2.4 and 2.7 have landed for
