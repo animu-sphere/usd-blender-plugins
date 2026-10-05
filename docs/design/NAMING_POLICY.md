@@ -132,8 +132,19 @@ Object/Mesh prims and UV properties carry exact raw
 `customData["blend:sourceName"]`, with repaired UTF-8 `displayName` when it
 differs from the identifier. The native decoder continues to retain UV source
 names and active flags, without storing or applying USD primvar identifiers.
-This does not introduce Material/Collection naming; those later mappings use
-the same frozen identifier policy.
+Collection naming uses the same frozen identifier policy when introduced.
+
+### 4.3 Material naming boundary
+
+`MaterialIdentifiers(scene)` shares the existing sanitization, unsigned
+source-byte ordering, collision allocator and display diagnostics. Results
+align with `Scene.materials`; names must be unique in the single `/Asset/mtl`
+scope, and `Material` is the fallback. No shader child name is reserved among
+Material siblings: fixed `preview` and `Surface` children live inside each
+Material. Authoring visits Materials in source-byte order and preserves raw
+source names and repaired display names just as it does for Objects.
+Permuting the IR material vector and remapping slots cannot change paths,
+bindings or serialized stage text.
 
 ## 5. Examples
 

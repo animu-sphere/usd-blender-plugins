@@ -48,9 +48,10 @@ runs `test_stage.py`. The hand-maintained companion workflow
 [stage-contract-ci.yml](../../.github/workflows/stage-contract-ci.yml) resolves
 the existing bundle cells with `ost ci matrix`, without copying their SDK
 digests, runners or host Python/package requirements. It builds the standalone
-bundle on both hosts, runs explicit `ost plugin doctor` diagnostics and all
-ten stage-contract tests plus the standalone `usdBlend.authoring`,
-`usdBlend.units`, `usdBlend.importer` and `usdBlend.instances` CTests, and
+bundle on both hosts, runs explicit `ost plugin doctor` diagnostics and the
+registered stage-contract suite plus the standalone `usdBlend.authoring`,
+`usdBlend.units`, `usdBlend.importer`, `usdBlend.instances` and
+`usdBlend.materials` CTests, and
 uploads their reports and logs. These additional
 build jobs also use billed hosted infrastructure; they do not publish anything
 or use secrets. The resolver bootstrap is pinned to the matrix's `ost` version
@@ -1113,3 +1114,39 @@ $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 4.5\blender.e
 $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
 & $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check --groups constant
 ```
+
+## Constant-material oracles
+
+[native-materials](../../tests/fixtures/native-materials/README.md) records
+the Blender 5.2.2 constant subset and effective per-Object bindings.
+The generator's `--check` regenerates only in a temporary directory and
+reopens the committed file; it does not rewrite the fixture or its JSON
+oracle. The Blender regression runner verifies semantic reproduction and
+rejects saved constant, Object-slot and face-index changes.
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests\fixtures\generate_materials.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests\fixtures\test_generate_materials.py
+```
+
+Root and standalone builds run `blendScene.materials` and
+`usdBlend.materials` without Blender. Registered `test_stage.py` compares the
+saved JSON oracle to constant shader values, NodeGraph output connections,
+effective slots and exact face subsets; it checks repeated reads, reference
+remapping, diagnostic context and typed metadata-only hierarchy without
+networks or bindings.
+
+```powershell
+ost library build libs\blendScene --target cy2026 --profile usd
+ost plugin build plugins\usdBlendFileFormat --target cy2026 --profile usd
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- python plugins\usdBlendFileFormat\tests\test_stage.py
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd -C Release -R '^usdBlend\.(authoring|units|importer|instances|materials)$' --output-on-failure
+```
+
+The standalone CTest directory above is the local Windows target directory;
+use the directory selected by your host/target on another platform. Root CMake
+uses the same material CTests alongside the existing geometry and dependency
+boundary tests. Alpha/Emission, textures and color attributes remain outside
+this constant-material verification scope; see the
+[capability matrix](../reference/CAPABILITY_MATRIX.md#3-stage).

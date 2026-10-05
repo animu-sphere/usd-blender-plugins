@@ -55,7 +55,7 @@ raw ID type/name records. These remain syntax-only operations inside
 added. Their [boundaries](../design/BLEND_CONTRACT.md#81-pointer-map-boundary)
 separate raw references from the ID graph owned by `blendScene`.
 
-`blendScene` exposes the owning object/mesh Scene IR and the single basis
+`blendScene` exposes the owning object/mesh/material Scene IR and the single basis
 conversion through `blendScene/Scene.h`, under the
 [IR contract](../design/DESIGN_POLICY.md#521-scene-ir-foundation).
 Its native saved-scene selection consumes reader syntax through the declared
@@ -80,6 +80,13 @@ library dependency or requiring Blender at test time.
 The normal-oracle executable also supplies `blendScene.polygonNormals` for
 Blender 5.2 concave/nonplanar polygon fans and source corner-angle weights.
 Its saved fixtures run in both build modes without Blender or OpenUSD.
+Constant Materials and per-Object effective slots are decoded into standard-C++
+IR values under the [material boundary](../design/MATERIAL_POLICY.md#71-native-constant-material-boundary).
+The `blendScene.materials` executable tests saved constants, shared-Mesh
+overrides, face indices and malformed storage. Material naming reuses the
+existing naming allocator. The plugin alone links `usdShade` to author
+encapsulated `preview` NodeGraphs and bindings; `usdBlend.materials` tests that
+boundary in root and standalone builds.
 The Mesh-boundary executable also supplies `blendScene.legacyMeshStorage`:
 unchanged Blender 3.3.21 raw storage/oracle checks and contextual failures for
 signed-index, unverified-version and unsupported-normal-mode mutations.

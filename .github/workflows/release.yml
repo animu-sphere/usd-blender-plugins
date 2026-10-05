@@ -178,7 +178,7 @@ jobs:
           ost plugin run "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE" -- python "$BUNDLE/tests/test_stage.py"
           mapfile -t test_files < <(find "$BUNDLE/build" -maxdepth 2 -type f -name CTestTestfile.cmake)
           test "${#test_files[@]}" -eq 1
-          ost plugin run "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE" -- ctest --test-dir "$(dirname "${test_files[0]}")" -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(authoring|units|importer|instances)$'
+          ost plugin run "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE" -- ctest --test-dir "$(dirname "${test_files[0]}")" -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(authoring|units|importer|instances|materials)$'
       - name: Package twice and verify reproducibility
         shell: bash
         run: |

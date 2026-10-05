@@ -379,11 +379,15 @@ When `Read` is called with `metadataOnly = true`, the layer holds:
 - the layer metadata of §5;
 - `/Asset` with its customData, and the scopes of §4;
 - every object prim, with its type, identifier and transform.
+- typed Material, `preview` NodeGraph, `Surface` Shader and material-subset
+  child prims, with source-name provenance where applicable.
 
 It does not hold mesh, curve or point data, material networks, texture
 references, or animation samples. The data child prims (`mesh`, …) are
 authored with their type and no attributes, so the hierarchy is the same as
-the full read.
+the full read. Material outputs, shader IDs/inputs, subset indices/family
+attributes and material-binding relationships are omitted too; type and
+hierarchy retention does not make a metadata-only surface renderable.
 
 ## 17. Validation checklist
 

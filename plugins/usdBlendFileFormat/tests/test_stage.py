@@ -1,4 +1,5 @@
 import gzip
+import json
 import math
 import shlex
 import struct
@@ -8,7 +9,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from pxr import Sdf, Tf, Usd, UsdGeom
+from pxr import Sdf, Tf, Usd, UsdGeom, UsdShade
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -24,6 +25,7 @@ POLYGON_NORMALS = [NATIVE / "native-normals" / "blender-5.2.2" / f"{group}.blend
                    for group in ("polygon_smooth", "polygon_split",
                                  "custom_polygon_smooth", "custom_polygon_split")]
 COMPRESSED_CORPUS = FIXTURES.parent / "corpus" / "blender-5.2.2" / "Untitled.blend"
+MATERIALS = NATIVE / "native-materials" / "blender-5.2.2" / "materials.blend"
 
 
 def raw_zstd_frame(data):
@@ -108,6 +110,99 @@ class StageContractTests(unittest.TestCase):
         uv = UsdGeom.PrimvarsAPI(mesh).GetPrimvar("st")
         self.assertEqual(uv.GetTypeName(), Sdf.ValueTypeNames.TexCoord2fArray)
         self.assertEqual(len(uv.ComputeFlattened()), 24)
+
+    def test_constant_materials_and_bindings(self):
+        oracle = json.loads(MATERIALS.with_suffix(".oracle.json").read_text(encoding="ascii"))
+        names = {"A/B": "A_B", "A_B": "A_B_1"}
+        first = Sdf.Layer.OpenAsAnonymous(str(MATERIALS))
+        self.assertEqual(first.ExportToString(), Sdf.Layer.OpenAsAnonymous(str(MATERIALS)).ExportToString())
+        for metadata_only in (False, True):
+            layer = Sdf.Layer.OpenAsAnonymous(str(MATERIALS), metadataOnly=metadata_only)
+            stage = Usd.Stage.Open(layer)
+            self._assert_contract(stage, "5.2", oracle["scene"])
+            self.assertEqual(len(stage.GetPrimAtPath("/Asset/mtl").GetChildren()), len(oracle["materials"]))
+            for name, expected in oracle["materials"].items():
+                path = f"/Asset/mtl/{names.get(name, name)}"
+                material = UsdShade.Material(stage.GetPrimAtPath(path))
+                graph = UsdShade.NodeGraph(stage.GetPrimAtPath(path + "/preview"))
+                shader = UsdShade.Shader(stage.GetPrimAtPath(path + "/preview/Surface"))
+                self.assertTrue(material)
+                self.assertTrue(graph)
+                self.assertEqual(material.GetPrim().GetCustomDataByKey("blend:sourceName"), name)
+                if metadata_only:
+                    for prim in (shader.GetPrim(), graph.GetPrim(), material.GetPrim()):
+                        self.assertEqual(prim.GetAuthoredAttributes(), [])
+                else:
+                    self.assertEqual(shader.GetIdAttr().Get(), "UsdPreviewSurface")
+                    self.assertEqual(material.GetSurfaceOutput().GetAttr().GetConnections(),
+                                     [Sdf.Path(path + "/preview.outputs:surface")])
+                    self.assertEqual(graph.GetOutput("surface").GetAttr().GetConnections(),
+                                     [Sdf.Path(path + "/preview/Surface.outputs:surface")])
+                    self.assertEqual(material.ComputeSurfaceSource()[0].GetPath(), shader.GetPath())
+                    self._assert_close(shader.GetInput("diffuseColor").Get(), expected["viewport"])
+                    for input_name in ("metallic", "roughness", "ior", "clearcoat", "clearcoatRoughness"):
+                        self._assert_close([shader.GetInput(input_name).Get()], [expected[input_name]], 1e-7)
+                    self.assertEqual(shader.GetInput("useSpecularWorkflow").Get(), 0)
+                for deferred in ("opacity", "opacityThreshold", "emissiveColor"):
+                    self.assertFalse(shader.GetInput(deferred))
+            for name, expected in oracle["objects"].items():
+                mesh = UsdGeom.Mesh(stage.GetPrimAtPath(f"/Asset/geo/{name}/mesh"))
+                api = UsdShade.MaterialBindingAPI(mesh)
+                self.assertEqual(mesh.GetPrim().GetCustomDataByKey("blend:sourceName"), expected["mesh"])
+                slots = expected["slots"]
+                subsets = api.GetMaterialBindSubsets()
+                if metadata_only:
+                    self.assertFalse(api.ComputeBoundMaterial()[0])
+                    self.assertEqual(mesh.GetPrim().GetAuthoredAttributes(), [])
+                    used = {slot for slot in expected["faces"] if slot < len(slots) and slots[slot]}
+                    expected_names = {f"material_{slot}" for slot in used} if len(slots) != 1 else set()
+                    self.assertEqual({str(prim.GetName()) for prim in mesh.GetPrim().GetChildren()}, expected_names)
+                    for prim in mesh.GetPrim().GetChildren():
+                        self.assertEqual(prim.GetTypeName(), "GeomSubset")
+                        self.assertEqual(prim.GetAuthoredAttributes(), [])
+                    continue
+                if len(slots) == 1 and slots[0]:
+                    self.assertEqual(subsets, [])
+                    self.assertEqual(str(api.ComputeBoundMaterial()[0].GetPath()),
+                                     f"/Asset/mtl/{names.get(slots[0], slots[0])}")
+                else:
+                    self.assertFalse(api.ComputeBoundMaterial()[0])
+                    used = {slot for slot in expected["faces"] if slot < len(slots) and slots[slot]}
+                    self.assertEqual({str(subset.GetPrim().GetName()) for subset in subsets},
+                                     {f"material_{slot}" for slot in used})
+                    for subset in subsets:
+                        slot = int(str(subset.GetPrim().GetName()).removeprefix("material_"))
+                        self.assertEqual(subset.GetFamilyNameAttr().Get(), "materialBind")
+                        self.assertEqual(subset.GetElementTypeAttr().Get(), "face")
+                        self.assertEqual(list(subset.GetIndicesAttr().Get()),
+                                         [i for i, value in enumerate(expected["faces"]) if value == slot])
+                        bound = UsdShade.MaterialBindingAPI(subset).ComputeBoundMaterial()[0]
+                        self.assertEqual(str(bound.GetPath()), f"/Asset/mtl/{names.get(slots[slot], slots[slot])}")
+                    if subsets:
+                        self.assertEqual(api.GetMaterialBindSubsetsFamilyType(), "nonOverlapping")
+            composed = Usd.Stage.CreateInMemory()
+            composed.DefinePrim("/Referenced").GetReferences().AddReference(layer.identifier)
+            bound = UsdShade.MaterialBindingAPI(composed.GetPrimAtPath("/Referenced/geo/Single/mesh")).ComputeBoundMaterial()[0]
+            if metadata_only:
+                self.assertFalse(bound)
+            else:
+                self.assertEqual(str(bound.GetPath()), "/Referenced/mtl/A_B")
+        for metadata_only in (False, True):
+            result = subprocess.run(
+                [sys.executable, "-c",
+                 "from pxr import Sdf; import sys; "
+                 "assert Sdf.Layer.OpenAsAnonymous(sys.argv[1], metadataOnly=sys.argv[2]=='True')",
+                 str(MATERIALS), str(metadata_only)],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            for name, expected in oracle["materials"].items():
+                for code in expected["diagnostics"]:
+                    warnings = [line for line in result.stderr.splitlines()
+                                if code in line and f"[datablock {name}]" in line]
+                    self.assertEqual(len(warnings), 1, result.stderr)
+                    self.assertIn("[byte ", warnings[0])
+                    self.assertIn("[block ", warnings[0])
 
     def test_input_failures(self):
         cases = {
@@ -300,6 +395,8 @@ class StageContractTests(unittest.TestCase):
                 for prim in full.Traverse():
                     other = partial.GetPrimAtPath(prim.GetPath())
                     if prim.IsA(UsdGeom.Mesh):
+                        self.assertEqual(other.GetAuthoredAttributes(), [])
+                    elif prim.IsA(UsdShade.Shader):
                         self.assertEqual(other.GetAuthoredAttributes(), [])
                     else:
                         for attr in prim.GetAuthoredAttributes():

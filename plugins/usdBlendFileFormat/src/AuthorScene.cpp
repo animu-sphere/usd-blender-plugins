@@ -12,11 +12,17 @@
 #include <pxr/usd/usdGeom/metrics.h>
 #include <pxr/usd/usdGeom/primvarsAPI.h>
 #include <pxr/usd/usdGeom/scope.h>
+#include <pxr/usd/usdGeom/subset.h>
 #include <pxr/usd/usdGeom/xform.h>
+#include <pxr/usd/usdShade/material.h>
+#include <pxr/usd/usdShade/materialBindingAPI.h>
+#include <pxr/usd/usdShade/nodeGraph.h>
+#include <pxr/usd/usdShade/shader.h>
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <numeric>
 #include <stdexcept>
 
@@ -117,6 +123,10 @@ struct PreparedMesh {
 };
 
 PreparedMesh PrepareMesh(const Mesh& mesh, std::vector<Diagnostic>& diagnostics) {
+  if (!mesh.faceMaterialIndices.empty() &&
+      mesh.faceMaterialIndices.size() != mesh.faceVertexCounts.size()) {
+    Fail("BLEND_USD_MATERIAL_INVALID", "Face material indices must have one entry per polygon", mesh.sourceName);
+  }
   std::size_t corners = 0;
   for (const auto count : mesh.faceVertexCounts) {
     if (count < 3 || static_cast<std::size_t>(count) > mesh.faceVertexIndices.size() - corners) {
@@ -209,6 +219,94 @@ void AuthorMesh(const UsdStageRefPtr& stage, const SdfPath& path,
   }
 }
 
+UsdShadeMaterial AuthorMaterial(const UsdStageRefPtr& stage, const SdfPath& path,
+    const Material& source, const std::string& identifier, bool metadataOnly) {
+  const auto material = UsdShadeMaterial::Define(stage, path);
+  Check(static_cast<bool>(material));
+  Provenance(material.GetPrim(), source.sourceName, identifier);
+  const auto preview = UsdShadeNodeGraph::Define(stage, path.AppendChild(TfToken("preview")));
+  auto surface = UsdShadeShader::Define(stage, preview.GetPath().AppendChild(TfToken("Surface")));
+  Check(static_cast<bool>(preview));
+  Check(static_cast<bool>(surface));
+  if (metadataOnly) {
+    return material;
+  }
+  Check(surface.CreateIdAttr().Set(TfToken("UsdPreviewSurface")));
+  const auto shaderOutput = surface.CreateOutput(TfToken("surface"), SdfValueTypeNames->Token);
+  const auto graphOutput = preview.CreateOutput(TfToken("surface"), SdfValueTypeNames->Token);
+  Check(graphOutput.ConnectToSource(shaderOutput));
+  Check(material.CreateSurfaceOutput().ConnectToSource(graphOutput));
+  if (!metadataOnly) {
+    Check(surface.CreateInput(TfToken("diffuseColor"), SdfValueTypeNames->Color3f).Set(GfVec3f(FloatValue(source.diffuseColor[0], source.sourceName), FloatValue(source.diffuseColor[1], source.sourceName), FloatValue(source.diffuseColor[2], source.sourceName))));
+    for (const auto& [name, value] : {
+             std::pair{"metallic", source.metallic}, {"roughness", source.roughness},
+             {"ior", source.ior}, {"clearcoat", source.clearcoat},
+             {"clearcoatRoughness", source.clearcoatRoughness}}) {
+      Check(surface.CreateInput(TfToken(name), SdfValueTypeNames->Float).Set(FloatValue(value, source.sourceName)));
+    }
+    Check(surface.CreateInput(TfToken("useSpecularWorkflow"), SdfValueTypeNames->Int).Set(0));
+  }
+  return material;
+}
+
+void AuthorBindings(const UsdStageRefPtr& stage, const SdfPath& meshPath,
+    const Object& object, const Mesh& mesh, const std::vector<UsdShadeMaterial>& materials,
+    bool metadataOnly, std::vector<Diagnostic>& diagnostics) {
+  for (const auto slot : object.materialSlots) {
+    if (slot && *slot >= materials.size()) {
+      Fail("BLEND_USD_MATERIAL_INVALID", "Effective material slots must reference a valid Material", object.sourceName);
+    }
+  }
+  std::map<std::size_t, VtIntArray> faces;
+  bool invalid = false;
+  bool empty = false;
+  for (std::size_t face = 0; face < mesh.faceVertexCounts.size(); ++face) {
+    const auto slot = mesh.faceMaterialIndices.empty() ? 0 : mesh.faceMaterialIndices[face];
+    if (slot < 0 || static_cast<std::size_t>(slot) >= object.materialSlots.size()) {
+      invalid = invalid || !object.materialSlots.empty() || slot != 0;
+    } else if (!object.materialSlots[static_cast<std::size_t>(slot)]) {
+      empty = true;
+    } else {
+      if (face > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        Fail("BLEND_USD_MATERIAL_INVALID", "Material subset face indices exceed the USD int range", object.sourceName);
+      }
+      faces[static_cast<std::size_t>(slot)].push_back(static_cast<int>(face));
+    }
+  }
+  if (invalid) {
+    diagnostics.push_back({"BLEND_MATERIAL_SLOT_INVALID", Severity::Unsupported,
+        "Faces outside the effective material slot range are left unbound", {}, {}, object.sourceName, true});
+  }
+  if (empty) {
+    diagnostics.push_back({"BLEND_MATERIAL_SLOT_EMPTY", Severity::Unsupported,
+        "Faces using empty material slots are left unbound", {}, {}, object.sourceName, true});
+  }
+  if (object.materialSlots.empty()) {
+    return;
+  }
+  if (metadataOnly) {
+    if (object.materialSlots.size() != 1 || !object.materialSlots[0] || invalid) {
+      for (const auto& [slot, indices] : faces) {
+        Check(static_cast<bool>(UsdGeomSubset::Define(stage,
+            meshPath.AppendChild(TfToken("material_" + std::to_string(slot))))));
+      }
+    }
+    return;
+  }
+  auto api = UsdShadeMaterialBindingAPI::Apply(stage->GetPrimAtPath(meshPath));
+  Check(static_cast<bool>(api));
+  if (object.materialSlots.size() == 1 && object.materialSlots[0] && !invalid) {
+    Check(api.Bind(materials[*object.materialSlots[0]]));
+  } else {
+    for (const auto& [slot, indices] : faces) {
+      const auto subset = api.CreateMaterialBindSubset(TfToken("material_" + std::to_string(slot)), indices);
+      Check(static_cast<bool>(subset));
+      Check(UsdShadeMaterialBindingAPI::Apply(subset.GetPrim()).Bind(materials[*object.materialSlots[slot]]));
+    }
+    Check(api.SetMaterialBindSubsetsFamilyType(UsdGeomTokens->nonOverlapping));
+  }
+}
+
 GfMatrix4d LocalTransform(const Scene& scene, const Object& object) {
   Matrix4 local;
   try {
@@ -262,6 +360,13 @@ Result<pxr::SdfLayerRefPtr> AuthorScene(const Scene& scene, bool metadataOnly) {
   return TryAuthor<pxr::SdfLayerRefPtr>([&] {
     std::vector<Diagnostic> diagnostics;
     const auto identifiers = Take(ObjectIdentifiers(scene), diagnostics);
+    const auto materialIdentifiers = Take(MaterialIdentifiers(scene), diagnostics);
+    for (const auto& material : scene.materials) {
+      for (const auto value : {material.diffuseColor[0], material.diffuseColor[1], material.diffuseColor[2],
+               material.metallic, material.roughness, material.ior, material.clearcoat, material.clearcoatRoughness}) {
+        FloatValue(value, material.sourceName);
+      }
+    }
     std::vector<std::vector<std::size_t>> children(scene.objects.size() + 1);
     for (std::size_t index = 0; index < scene.objects.size(); ++index) {
       const auto& object = scene.objects[index];
@@ -300,6 +405,17 @@ Result<pxr::SdfLayerRefPtr> AuthorScene(const Scene& scene, bool metadataOnly) {
       }
     }
     const auto stage = Take(CreateAssetStage(scene.metadata.sourceVersion, scene.metadata.sourceScene), diagnostics);
+    std::vector<std::size_t> materialOrder(scene.materials.size());
+    std::iota(materialOrder.begin(), materialOrder.end(), 0);
+    std::sort(materialOrder.begin(), materialOrder.end(), [&](auto left, auto right) {
+      return SourceNameLess(scene.materials[left].sourceName, scene.materials[right].sourceName);
+    });
+    std::vector<UsdShadeMaterial> materials(scene.materials.size());
+    for (const auto index : materialOrder) {
+      materials[index] = AuthorMaterial(stage,
+          SdfPath("/Asset/mtl").AppendChild(TfToken(materialIdentifiers[index])),
+          scene.materials[index], materialIdentifiers[index], metadataOnly);
+    }
     std::vector<pxr::SdfPath> paths(scene.objects.size());
     for (const auto index : order) {
       const auto& object = scene.objects[index];
@@ -312,8 +428,11 @@ Result<pxr::SdfLayerRefPtr> AuthorScene(const Scene& scene, bool metadataOnly) {
       Check(xform.CreateVisibilityAttr().Set(
           object.hiddenForRender ? pxr::UsdGeomTokens->invisible : pxr::UsdGeomTokens->inherited));
       if (object.mesh) {
-        AuthorMesh(stage, paths[index].AppendChild(pxr::TfToken("mesh")),
+        const auto meshPath = paths[index].AppendChild(pxr::TfToken("mesh"));
+        AuthorMesh(stage, meshPath,
             scene.meshes[*object.mesh], *meshes[*object.mesh], metadataOnly);
+        AuthorBindings(stage, meshPath, object, scene.meshes[*object.mesh],
+            materials, metadataOnly, diagnostics);
       }
     }
     return Result<pxr::SdfLayerRefPtr>(stage->GetRootLayer(), std::move(diagnostics));

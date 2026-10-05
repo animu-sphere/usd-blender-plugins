@@ -1,0 +1,246 @@
+{
+  "materials": {
+    "A/B": {
+      "clearcoat": 0.0,
+      "clearcoatRoughness": 0.029999999329447746,
+      "diagnostics": [],
+      "ior": 1.5,
+      "metallic": 0.25,
+      "roughness": 0.75,
+      "viewport": [
+        0.125,
+        0.25,
+        0.5
+      ]
+    },
+    "A_B": {
+      "clearcoat": 0.4000000059604645,
+      "clearcoatRoughness": 0.10000000149011612,
+      "diagnostics": [],
+      "ior": 1.7000000476837158,
+      "metallic": 0.800000011920929,
+      "roughness": 0.20000000298023224,
+      "viewport": [
+        0.6000000238418579,
+        0.30000001192092896,
+        0.15000000596046448
+      ]
+    },
+    "Deferred": {
+      "clearcoat": 0.0,
+      "clearcoatRoughness": 0.029999999329447746,
+      "diagnostics": [
+        "BLEND_MATERIAL_DEFERRED_INPUT"
+      ],
+      "ior": 1.5,
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "viewport": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929
+      ]
+    },
+    "Fallback": {
+      "clearcoat": 0.0,
+      "clearcoatRoughness": 0.03,
+      "diagnostics": [
+        "BLEND_MATERIAL_UNSUPPORTED_NODE"
+      ],
+      "ior": 1.5,
+      "metallic": 0.25,
+      "roughness": 0.75,
+      "viewport": [
+        0.125,
+        0.25,
+        0.5
+      ]
+    },
+    "Linked": {
+      "clearcoat": 0.0,
+      "clearcoatRoughness": 0.029999999329447746,
+      "diagnostics": [
+        "BLEND_MATERIAL_UNSUPPORTED_NODE"
+      ],
+      "ior": 1.5,
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "viewport": [
+        0.20000000298023224,
+        0.4000000059604645,
+        0.6000000238418579
+      ]
+    },
+    "Muted": {
+      "clearcoat": 0.0,
+      "clearcoatRoughness": 0.03,
+      "diagnostics": [
+        "BLEND_MATERIAL_UNSUPPORTED_NODE"
+      ],
+      "ior": 1.5,
+      "metallic": 0.25,
+      "roughness": 0.75,
+      "viewport": [
+        0.125,
+        0.25,
+        0.5
+      ]
+    },
+    "MutedLink": {
+      "clearcoat": 0.0,
+      "clearcoatRoughness": 0.03,
+      "diagnostics": [
+        "BLEND_MATERIAL_UNSUPPORTED_NODE"
+      ],
+      "ior": 1.5,
+      "metallic": 0.25,
+      "roughness": 0.75,
+      "viewport": [
+        0.125,
+        0.25,
+        0.5
+      ]
+    },
+    "Unsupported": {
+      "clearcoat": 0.0,
+      "clearcoatRoughness": 0.029999999329447746,
+      "diagnostics": [
+        "BLEND_MATERIAL_UNSUPPORTED_INPUT"
+      ],
+      "ior": 1.5,
+      "metallic": 0.0,
+      "roughness": 0.5,
+      "viewport": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929
+      ]
+    }
+  },
+  "objects": {
+    "Deferred": {
+      "faces": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "mesh": "DeferredData",
+      "slots": [
+        "Deferred"
+      ]
+    },
+    "EmptySlot": {
+      "faces": [
+        0,
+        1,
+        2,
+        1
+      ],
+      "mesh": "EmptySlotData",
+      "slots": [
+        "A/B",
+        null,
+        "A_B"
+      ]
+    },
+    "Fallback": {
+      "faces": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "mesh": "FallbackData",
+      "slots": [
+        "Fallback"
+      ]
+    },
+    "Multi": {
+      "faces": [
+        0,
+        1,
+        1,
+        0
+      ],
+      "mesh": "MultiData",
+      "slots": [
+        "A/B",
+        "A_B"
+      ]
+    },
+    "Muted": {
+      "faces": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "mesh": "MutedData",
+      "slots": [
+        "Muted"
+      ]
+    },
+    "MutedLink": {
+      "faces": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "mesh": "MutedLinkData",
+      "slots": [
+        "MutedLink"
+      ]
+    },
+    "Override": {
+      "faces": [
+        0,
+        1,
+        1,
+        0
+      ],
+      "mesh": "MultiData",
+      "slots": [
+        "Linked",
+        null
+      ]
+    },
+    "Single": {
+      "faces": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "mesh": "SingleData",
+      "slots": [
+        "A/B"
+      ]
+    },
+    "Unbound": {
+      "faces": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "mesh": "UnboundData",
+      "slots": []
+    },
+    "Unsupported": {
+      "faces": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "mesh": "UnsupportedData",
+      "slots": [
+        "Unsupported"
+      ]
+    }
+  },
+  "scene": "Materials",
+  "version": "5.2.2 LTS"
+}

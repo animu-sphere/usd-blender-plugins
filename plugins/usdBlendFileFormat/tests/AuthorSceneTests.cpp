@@ -11,6 +11,10 @@
 #include <pxr/usd/usdGeom/primvarsAPI.h>
 #include <pxr/usd/usdGeom/xformCache.h>
 #include <pxr/usd/usdGeom/xform.h>
+#include <pxr/usd/usdGeom/subset.h>
+#include <pxr/usd/usdShade/material.h>
+#include <pxr/usd/usdShade/materialBindingAPI.h>
+#include <pxr/usd/usdShade/shader.h>
 
 #include <algorithm>
 #include <cmath>
@@ -750,10 +754,89 @@ void CheckUnitFixtures(const std::filesystem::path& first, const std::filesystem
   }
 }
 
+void CheckMaterials(const std::filesystem::path& path) {
+  auto scene = Decode(path);
+  const auto layer = Take(blend::AuthorScene(scene));
+  const auto stage = UsdStage::Open(layer);
+  const auto material = UsdShadeMaterial(stage->GetPrimAtPath(SdfPath("/Asset/mtl/A_B_1")));
+  const auto shader = UsdShadeShader(stage->GetPrimAtPath(SdfPath("/Asset/mtl/A_B_1/preview/Surface")));
+  Require(material && shader && Get<TfToken>(shader.GetIdAttr()) == TfToken("UsdPreviewSurface"),
+      "Principled realization is nested below the preview NodeGraph");
+  Require(stage->GetPrimAtPath(SdfPath("/Asset/mtl/A_B_1/preview")).GetTypeName() == TfToken("NodeGraph"),
+      "preview is a typed NodeGraph, not a Scope");
+  SdfPathVector targets;
+  Require(material.GetSurfaceOutput().GetAttr().GetConnections(&targets) &&
+              targets == SdfPathVector{SdfPath("/Asset/mtl/A_B_1/preview.outputs:surface")},
+      "Material connects through the encapsulated preview output");
+  Require(std::abs(Get<float>(shader.GetInput(TfToken("metallic")).GetAttr()) - 0.8f) < 1e-7f,
+      "Material scalar values match saved socket constants");
+  const auto single = stage->GetPrimAtPath(SdfPath("/Asset/geo/Single/mesh"));
+  Require(UsdShadeMaterialBindingAPI(single).ComputeBoundMaterial().GetPath() == SdfPath("/Asset/mtl/A_B"),
+      "One effective slot binds on the Mesh");
+  const auto multi = stage->GetPrimAtPath(SdfPath("/Asset/geo/Multi/mesh"));
+  const auto subsets = UsdShadeMaterialBindingAPI(multi).GetMaterialBindSubsets();
+  Require(subsets.size() == 2 &&
+              Get<VtIntArray>(subsets[0].GetIndicesAttr()) == VtIntArray{0, 3} &&
+              Get<VtIntArray>(subsets[1].GetIndicesAttr()) == VtIntArray{1, 2},
+      "Multiple slots author exact per-face material subsets");
+  Require(Text(layer) == Text(Take(blend::AuthorScene(Decode(path, true)))),
+      "Saved block enumeration cannot change material paths or stage text");
+  std::reverse(scene.materials.begin(), scene.materials.end());
+  for (auto& object : scene.objects) {
+    for (auto& slot : object.materialSlots) {
+      if (slot) {
+        slot = scene.materials.size() - 1 - *slot;
+      }
+    }
+  }
+  Require(Text(layer) == Text(Take(blend::AuthorScene(scene))),
+      "Material enumeration cannot change names, child order or binding targets");
+  const auto metadata = UsdStage::Open(Take(blend::AuthorScene(scene, true)));
+  for (const auto& prim : stage->Traverse()) {
+    const auto other = metadata->GetPrimAtPath(prim.GetPath());
+    Require(other && other.GetTypeName() == prim.GetTypeName(), "Material metadata retains typed hierarchy");
+    if (!prim.IsA<UsdGeomXform>()) {
+      Require(other.GetAuthoredAttributes().empty() && other.GetAuthoredRelationships().empty(),
+          "Metadata omits geometry, material networks and bindings");
+    }
+  }
+  scene = Decode(path);
+  scene.objects.front().materialSlots = {scene.materials.size()};
+  Failure(scene, "BLEND_USD_MATERIAL_INVALID", scene.objects.front().sourceName);
+  scene = Decode(path);
+  scene.meshes.front().faceMaterialIndices.pop_back();
+  Failure(scene, "BLEND_USD_MATERIAL_INVALID", scene.meshes.front().sourceName);
+  scene = Decode(path);
+  scene.materials.front().roughness = std::numeric_limits<double>::quiet_NaN();
+  Failure(scene, "BLEND_USD_VALUE_INVALID", scene.materials.front().sourceName);
+  scene = Decode(path);
+  scene.materials[1].sourceName = scene.materials[0].sourceName;
+  Failure(scene, "BLEND_NAME_DUPLICATE", scene.materials[0].sourceName);
+  scene = Decode(path);
+  const auto object = std::find_if(scene.objects.begin(), scene.objects.end(),
+      [](const auto& value) { return value.sourceName == "Single"; });
+  scene.meshes[*object->mesh].faceMaterialIndices[0] = 5;
+  const auto partialResult = blend::AuthorScene(scene);
+  const auto partial = UsdStage::Open(Take(partialResult));
+  const auto partialMesh = partial->GetPrimAtPath(SdfPath("/Asset/geo/Single/mesh"));
+  Require(!UsdShadeMaterialBindingAPI(partialMesh).ComputeBoundMaterial() &&
+              UsdShadeMaterialBindingAPI(partialMesh).GetMaterialBindSubsets().size() == 1 &&
+              Get<VtIntArray>(UsdShadeMaterialBindingAPI(partialMesh).GetMaterialBindSubsets()[0].GetIndicesAttr()) == VtIntArray{1, 2, 3},
+      "An invalid face slot stays unbound instead of inheriting a whole-Mesh binding");
+  Require(std::any_of(partialResult.Diagnostics().begin(), partialResult.Diagnostics().end(),
+              [](const auto& value) { return value.code == "BLEND_MATERIAL_SLOT_INVALID" && value.datablock == "Single"; }),
+      "Invalid face slots have a recoverable diagnostic");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
   try {
+    if (argc == 3 && std::string(argv[1]) == "--materials") {
+      CheckMaterials(argv[2]);
+      std::cout << "Constant material authoring, bindings, metadata and determinism passed\n";
+      return 0;
+    }
     if (argc == 4 && std::string(argv[1]) == "--units") {
       CheckUnitFixtures(argv[2], argv[3]);
       std::cout << "Blender-written multi-scale native-to-USD unit and ASCII naming policies passed\n";

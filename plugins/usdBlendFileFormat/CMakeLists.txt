@@ -27,7 +27,7 @@ target_compile_features(usdBlendAuthoring PUBLIC cxx_std_20)
 set_target_properties(usdBlendAuthoring PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_EXTENSIONS OFF)
 target_include_directories(usdBlendAuthoring PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src" ${PXR_INCLUDE_DIRS})
 target_link_libraries(usdBlendAuthoring PUBLIC blendScene::blendScene)
-openstrata_link_openusd(TARGET usdBlendAuthoring VISIBILITY PUBLIC COMPONENTS tf gf vt sdf usd usdGeom)
+openstrata_link_openusd(TARGET usdBlendAuthoring VISIBILITY PUBLIC COMPONENTS tf gf vt sdf usd usdGeom usdShade)
 
 set(PLUGIN_NAME UsdBlendFileFormatFileFormat)
 
@@ -53,7 +53,7 @@ endif()
 
 openstrata_link_openusd(
     TARGET ${PLUGIN_NAME}
-    COMPONENTS arch tf gf vt ar sdf usd usdGeom)
+    COMPONENTS arch tf gf vt ar sdf usd usdGeom usdShade)
 
 # The copied helper keeps output/install mechanics identical in standalone and
 # add_subdirectory workspace builds. This file still owns the target, OpenUSD
@@ -118,4 +118,6 @@ if(BUILD_TESTING)
     add_test(NAME usdBlend.units COMMAND usdBlendAuthoringTests --units
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-units/blender-4.5.13"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-units/blender-5.2.2")
+    add_test(NAME usdBlend.materials COMMAND usdBlendAuthoringTests --materials
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-materials/blender-5.2.2/materials.blend")
 endif()

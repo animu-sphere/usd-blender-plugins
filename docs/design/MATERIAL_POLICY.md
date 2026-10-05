@@ -39,8 +39,9 @@ Blender nodes
 
 ```text
 /Asset/mtl/<Material>             UsdShadeMaterial
-   outputs:surface  → preview/Surface.outputs:surface
+   outputs:surface  → preview.outputs:surface
    └─ preview                     UsdShadeNodeGraph
+      outputs:surface → Surface.outputs:surface
       ├─ Surface                  UsdPreviewSurface
       ├─ <Texture>                UsdUVTexture, one per used image input
       └─ StReader                 UsdPrimvarReader_float2, varname "st" (or the node's UV map)
@@ -52,6 +53,10 @@ from. The realization name `preview` is fixed; `mtlx` is reserved for §8.
 Shader prim names inside `preview` are derived from the input they feed
 (`BaseColorTexture`, `NormalTexture`, …), not from Blender node names, so they
 are stable when a user renames a node.
+
+The Material connects through the NodeGraph's `outputs:surface`, not directly
+to an internal shader. `Surface` has shader ID `UsdPreviewSurface`; nesting is
+a standard USD NodeGraph boundary, not a Blender-specific schema.
 
 ## 4. Principled BSDF mapping
 
@@ -134,6 +139,47 @@ resolver concern, not the file format's, and is not taken on early
   and a diagnostic.
 - Every binding target is under `/Asset/mtl`
   ([STAGE_CONTRACT.md §10](STAGE_CONTRACT.md#10-materials)).
+
+### 7.1 Native constant-material boundary
+
+The owning Scene IR carries `Scene.materials`, constant `Material` values,
+`Object.materialSlots` (optional indices into that material vector), and
+`Mesh.faceMaterialIndices`. Slots are resolved independently for each Object,
+even when several Objects share one Mesh. A missing face-index attribute means
+slot zero; a Mesh with no slots is normally unbound. A nonempty IR face-index
+vector must contain exactly one index per polygon.
+
+Saved Mesh and Object slot counts must agree and be nonnegative. Material
+pointer arrays and Object ownership bytes are exact-length raw DATA blocks;
+ownership is zero for Mesh data and one for Object data. A null Object override
+stays null, rather than falling back to the Mesh's slot. Nonzero references
+must resolve exactly to Material IDs; linked Materials are diagnosed and not
+followed. Only Materials reached through effective slots enter this boundary.
+
+For Blender 5.x node constants, select the active all-renderers Material Output
+and a direct Principled BSDF Surface link by saved node type and socket
+identifier, never by editable node names. Unsupported, muted, renderer-specific
+or absent surface graphs use viewport constants with a diagnostic. Linked
+Principled inputs use their saved socket constants with a diagnostic.
+Muted links do not enter the effective graph; invalid links use diagnosed
+viewport fallback.
+Non-default unsupported inputs and deferred Alpha/Emission are reported.
+Older node-tree layouts use diagnosed viewport fallback; this is not expanded
+older-version compatibility.
+
+Graph lists are iterative and bounded by the supplied block sequence. Their
+endpoints, backlinks, cycles, socket ownership and link endpoints are checked.
+Typed defaults must have the required shapes and finite float values.
+Malformed references, arrays, lists and values fail without a partial Scene.
+Schemas with no Material definition expose no material feature only when
+there are no Material IDs or nonempty slots; otherwise decoding fails.
+
+One valid slot binds on the Mesh only if every face index is valid. Otherwise
+only valid, nonempty used slots get `material_<slot>` face subsets; invalid or
+empty-slot faces remain unbound. The `materialBind` family is `nonOverlapping`,
+not `partition`, so incomplete coverage is legal. All subset and whole-Mesh
+bindings use `UsdShadeMaterialBindingAPI`. Material names and ordering follow
+[NAMING §4.3](NAMING_POLICY.md#43-material-naming-boundary).
 
 ## 8. MaterialX
 

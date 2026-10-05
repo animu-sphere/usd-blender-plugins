@@ -120,6 +120,19 @@ public:
     }
     ReadNormals(mesh, source, faces);
     ReadUvs(mesh, source, corners);
+    mesh.faceMaterialIndices.assign(faces, 0);
+    if (const auto attribute = Find("material_index", 2, Kind::Integer, false)) {
+      const auto values = Values(*attribute, faces);
+      for (std::uint32_t face = 0; face < faces; ++face) {
+        mesh.faceMaterialIndices[face] = Integer(values, face);
+      }
+    } else if (legacyPolygons_) {
+      for (std::uint32_t face = 0; face < faces; ++face) {
+        const auto polygon = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, *legacyPolygons_, face));
+        mesh.faceMaterialIndices[face] = static_cast<std::int32_t>(
+            Scalar(polygon, "mat_nr", "short", 2, *legacyPolygons_));
+      }
+    }
     if (mesh.faceVertexCounts.empty()) {
       diagnostics_.push_back({"BLEND_MESH_EMPTY", Severity::Warning,
           "Source Mesh has no polygons; points and empty topology are retained",

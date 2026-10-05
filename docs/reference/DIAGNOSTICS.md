@@ -143,12 +143,24 @@ Fixture paths are relative to
 | `BLEND_SCENE_UNIT_VALUE_INVALID` | Fatal | no | a source distance is nonfinite or its conversion to meters overflows | scalar, position and translation cases in `blendScene.ir` |
 | `BLEND_SCENE_UNIT_TRANSFORM_INVALID` | Fatal | no | unit conversion receives a non-affine mesh/empty world matrix | projective matrix in `blendScene.ir` |
 | `BLEND_HEADER_OPEN_FAILED` | Fatal | no | ArResolver cannot open the resolved asset | implemented; fixture unverified |
+| `BLEND_MATERIAL_STORAGE_INVALID` | Fatal | no | material slot counts, ownership bytes, raw array sizes, flags or typed defaults are invalid, or saved material data has no SDNA definition | negative count, wrong-size ownership array, invalid ownership/use-nodes bytes and missing Material definition in `blendScene.materials` |
+| `BLEND_MATERIAL_REFERENCE_INVALID` | Fatal | no | a nonzero material storage reference is absent/interior or a slot does not target a Material ID | null/missing arrays, absent tree/default pointers and an Object ID in a slot in `blendScene.materials` |
+| `BLEND_MATERIAL_GRAPH_INVALID` | Fatal | no | saved graph list endpoints/backlinks/cycles, socket ownership or link endpoints disagree | cyclic node chain and mismatched link owner in `blendScene.materials` |
+| `BLEND_MATERIAL_VALUE_INVALID` | Fatal | no | a material constant is nonfinite | infinite viewport roughness and NaN socket color in `blendScene.materials` |
+| `BLEND_MATERIAL_UNSUPPORTED_NODE` | Unsupported | yes | a surface graph cannot use the constant Principled subset, a link is invalid, or an input is linked | Diffuse BSDF, linked RGB, muted Principled and muted Surface link in the 5.2.2 material fixture; invalid-link fallback unverified |
+| `BLEND_MATERIAL_UNSUPPORTED_INPUT` | Unsupported | yes | a non-default unsupported Principled input or socket type is omitted | nonzero Transmission Weight in the 5.2.2 material fixture |
+| `BLEND_MATERIAL_DEFERRED_INPUT` | Unsupported | yes | non-default Alpha or Emission is omitted pending the mapping decisions | Alpha 0.25 and Emission Strength 3 in the 5.2.2 material fixture |
+| `BLEND_MATERIAL_SLOT_EMPTY` | Unsupported | yes | an effective saved material slot is null; its faces stay unbound | empty Mesh slot and null Object override in the 5.2.2 material fixture |
+| `BLEND_MATERIAL_SLOT_INVALID` | Unsupported | yes | a face material index is outside the effective slots; those faces stay unbound | invalid face index in `usdBlend.materials` |
+| `BLEND_MATERIAL_LINKED_UNSUPPORTED` | Unsupported | yes | a reached Material has nonzero ID.lib; it is not followed or bound | implemented; fixture unverified |
+| `BLEND_MATERIAL_VERSION_UNSUPPORTED` | Unsupported | yes | a node Material lies outside the Blender 5.x constant-node scope; viewport constants are used | retained 4.5.13 corpus in `blendScene.ir` |
 | `BLEND_USD_AUTHORING_FAILED` | Fatal | no | a temporary stage or requested USD schema/value cannot be authored, or OpenUSD reports an authoring error | success-path schema/setter checks implemented; failure injection unverified |
 | `BLEND_USD_ALLOCATION` | Fatal | no | authoring storage cannot be allocated or exceeds container capacity | implemented; allocation failure injection unverified |
 | `BLEND_USD_IDENTIFIER_INVALID` | Fatal | no | a supplied Object identifier differs from the native naming contract | malformed identifier in `usdBlend.authoring` |
 | `BLEND_USD_TOPOLOGY_INVALID` | Fatal | no | IR polygon counts, corner indices, point references or face-varying normal lengths disagree | short polygons, negative indices and normal-size mismatch in `usdBlend.authoring` |
 | `BLEND_USD_UV_INVALID` | Fatal | no | IR face-varying UV index count or value references are invalid | short indices and out-of-range UV references in `usdBlend.authoring` |
-| `BLEND_USD_VALUE_INVALID` | Fatal | no | a point, normal or UV component is nonfinite or outside finite float range | nonfinite/oversized geometry and the exact/one-above float maximum in `usdBlend.authoring` |
+| `BLEND_USD_MATERIAL_INVALID` | Fatal | no | IR material indices, face-index shape or USD subset integer range are invalid | invalid effective slot and short face-index vector in `usdBlend.materials`; excessive subset integer range unverified |
+| `BLEND_USD_VALUE_INVALID` | Fatal | no | a point, normal, UV or Material component is nonfinite or outside finite float range | nonfinite/oversized geometry and the exact/one-above float maximum in `usdBlend.authoring`; nonfinite Material in `usdBlend.materials` |
 | `BLEND_USD_READ_FAILED` | Fatal | no | a C++ exception reaches the importer boundary | implemented; fixture unverified |
 | `BLEND_IO_OPEN` | Fatal | no | the tool cannot open its input path | missing file in `blendInspect.cli` |
 | `BLEND_INSPECT_USAGE` | Fatal | no | CLI arguments are invalid or incomplete | invalid options, decimal values and argument counts in `blendInspect.cli`; exit status 2 |
