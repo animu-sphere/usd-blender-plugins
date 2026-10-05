@@ -440,13 +440,14 @@ void CheckFixture(const std::filesystem::path& path) {
   Require(Text(layer) == Text(Take(blend::AuthorScene(Decode(path, true)))),
       "Reversed native block enumeration authors an identical stage");
   if (path.stem() != "transforms") {
-    const auto objectCount = path.stem().string().starts_with("auto_") ? 1 : path.stem() == "mesh"      ? 5
-                                                                         : path.stem() == "scene"       ? 7
-                                                                         : path.stem() == "single_cube" ? 1
-                                                                                                        : 2;
-    const auto meshCount = path.stem().string().starts_with("auto_") ? 1 : path.stem() == "mesh"      ? 4
-                                                                       : path.stem() == "single_cube" ? 1
-                                                                                                      : 2;
+    const auto singleNormal = path.stem().string().starts_with("auto_") || path.stem().string().starts_with("polygon_");
+    const auto objectCount = singleNormal ? 1 : path.stem() == "mesh"      ? 5
+                                            : path.stem() == "scene"       ? 7
+                                            : path.stem() == "single_cube" ? 1
+                                                                           : 2;
+    const auto meshCount = singleNormal ? 1 : path.stem() == "mesh"      ? 4
+                                          : path.stem() == "single_cube" ? 1
+                                                                         : 2;
     Require(scene.objects.size() == objectCount && scene.meshes.size() == meshCount, "Native fixture Object/Mesh counts");
     return;
   }
@@ -755,7 +756,7 @@ int main(int argc, char** argv) {
       std::cout << "Blender-written multi-scale native-to-USD unit and ASCII naming policies passed\n";
       return 0;
     }
-    Require(argc == 13, "Expected transform, independent Mesh, integrated Scene, cube, legacy Mesh and auto-smooth fixtures");
+    Require(argc == 15, "Expected transform, independent Mesh, integrated Scene, cube, legacy Mesh, auto-smooth and polygon fixtures");
     CheckSynthetic();
     CheckFailures();
     for (int index = 1; index < argc; ++index) {

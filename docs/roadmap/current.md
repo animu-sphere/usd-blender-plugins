@@ -26,6 +26,11 @@ transforms and mesh data under the
 
 The [Scene IR boundary](../design/DESIGN_POLICY.md#521-scene-ir-foundation)
 keeps basis conversion separate from binary decoding and USD authoring.
+Task 2.5's additional
+[5.2 polygon-fan evidence](../../tests/fixtures/native-normals/README.md#blender-52-polygon-fans-and-corner-angles)
+pins modern corner-angle weights on concave/nonplanar polygons and point/split
+fans through native decoding and registered-plugin reads. This is another
+bounded fixture-backed Mesh boundary, not completion of general 5.x coverage.
 Task 2.3's native boundary now has an
 [integrated Blender-written Scene oracle](../../tests/fixtures/native-scene/README.md)
 combining Mesh/Empty hierarchy, shared Meshes, a parent-only Mesh outside

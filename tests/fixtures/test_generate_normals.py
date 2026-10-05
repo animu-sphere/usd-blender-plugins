@@ -9,6 +9,7 @@ import bpy
 
 GENERATOR = Path(__file__).with_name("generate_normals.py")
 GROUPS = ("smooth", "flat", "split", "custom", "custom_fans", "custom_split_fans", "custom_angles", "multi", "constant")
+POLYGON_GROUPS = ("polygon_smooth", "polygon_split")
 
 
 class NormalFixtureTests(unittest.TestCase):
@@ -41,7 +42,7 @@ class NormalFixtureTests(unittest.TestCase):
             self.assertIn((216, 9), differing, "Attribute records collide with differing payloads")
             self.assertIn((32, 1), differing, "AttributeArray records collide with differing payloads")
 
-    def run_generator(self, fixture, check=False, success=True):
+    def run_generator(self, fixture, check=False, success=True, groups=()):
         command = [
             bpy.app.binary_path,
             "--background", "--factory-startup", "--disable-autoexec",
@@ -50,6 +51,8 @@ class NormalFixtureTests(unittest.TestCase):
         ]
         if check:
             command.append("--check")
+        if groups:
+            command.extend(("--groups", *groups))
         result = subprocess.run(command, capture_output=True, text=True, timeout=120)
         output = result.stdout + result.stderr
         if success:
@@ -66,7 +69,8 @@ class NormalFixtureTests(unittest.TestCase):
             self.run_generator(second)
             self.check_multi_addresses(first / "multi.blend")
             self.check_multi_addresses(second / "multi.blend")
-            files = [first / f"{group}{suffix}" for group in GROUPS
+            groups = GROUPS + POLYGON_GROUPS if bpy.app.version >= (5, 0, 0) else GROUPS
+            files = [first / f"{group}{suffix}" for group in groups
                      for suffix in (".blend", ".oracle.txt")]
             saved = {path: path.read_bytes() for path in files}
             for path, contents in saved.items():
@@ -158,6 +162,25 @@ class NormalFixtureTests(unittest.TestCase):
             self.assertIn("Normal oracle values differ",
                           self.run_generator(output, check=True, success=False))
             self.assertEqual(expected, fixture.read_bytes())
+
+    @unittest.skipUnless(bpy.app.version >= (5, 0, 0), "Blender 5.x polygon evidence")
+    def test_check_inspects_saved_polygon_geometry_and_domain(self):
+        with TemporaryDirectory(prefix="blend-normal-polygons-") as directory:
+            output = Path(directory)
+            self.run_generator(output, groups=POLYGON_GROUPS)
+            for group in POLYGON_GROUPS:
+                fixture = output / f"{group}.blend"
+                bpy.ops.wm.open_mainfile(filepath=str(fixture), load_ui=False, use_scripts=False)
+                mesh = bpy.data.objects[group.capitalize()].data
+                if group == "polygon_smooth":
+                    mesh.vertices[6].co.z += 0.5
+                else:
+                    mesh.polygons[-1].use_smooth = True
+                bpy.ops.wm.save_as_mainfile(filepath=str(fixture), compress=False, check_existing=False)
+                saved = {path: path.read_bytes() for path in output.iterdir()}
+                self.assertIn("Normal oracle values differ",
+                              self.run_generator(output, check=True, success=False, groups=(group,)))
+                self.assertEqual(saved, {path: path.read_bytes() for path in output.iterdir()})
 
 
 if __name__ == "__main__":

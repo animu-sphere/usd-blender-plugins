@@ -400,7 +400,8 @@ The same normal test compares both independent two-Mesh fixtures and four
 packed custom-normal fixtures per version. Shared/open/closed and mixed
 packed-pair fans, automatic values, signed-short minima and 199 angle-sweep
 triangles cover 1,588 custom corners at the same `2e-5` threshold; maximum
-measured component error is below `6.25e-6`. `blendScene.meshBoundaries`
+measured component error is below `3e-7` after sharing modern corner-angle
+weights. `blendScene.meshBoundaries`
 retains exact saved-short/RNA comparisons and global `BuildPointerMap`
 rejection for non-identical 5.2.2 Attribute/AttributeArray collisions.
 Scene selection/decoding resolve only validated Mesh-owned occurrences.
@@ -487,7 +488,7 @@ ost plugin test plugins\usdBlendFileFormat --target cy2026 --profile usd --from-
 The manifest declares the `blendFile` and `blendScene` edges; `ost` builds and
 installs both libraries into its workspace prefix before configuring the standalone bundle.
 The nine stage tests assert the registered cube, integrated Scene,
-Mesh-domain and legacy auto-smooth oracles, multi-scale imports, metadata-only hierarchy, contextual fatal/recoverable
+Mesh-domain, legacy auto-smooth and 5.2 polygon-fan oracles, multi-scale imports, metadata-only hierarchy, contextual fatal/recoverable
 diagnostics, repeat-read determinism and referenced geometry.
 Compressed input is rejected; the accepted full-stream policy does not add
 compressed scene importing.
@@ -852,6 +853,8 @@ Run with each pinned Blender installation (4.5.13 or 5.2.2). The default
 output directory holds `smooth.blend`, `flat.blend`, `split.blend`,
 `custom.blend`, `custom_fans.blend`, `custom_split_fans.blend`,
 `custom_angles.blend`, `multi.blend`, `constant.blend` and adjacent `.oracle.txt` files.
+Blender 5.2 additionally generates `polygon_smooth.blend` and
+`polygon_split.blend`; the older-version defaults are unchanged.
 Provenance, cases, comparison thresholds and ownership/reconstruction evidence are in the
 [normal fixture record](../../tests/fixtures/native-normals/README.md).
 
@@ -876,6 +879,25 @@ $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 4.5\blender.e
 $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
 & $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check --groups custom_fans custom_split_fans custom_angles
 ```
+
+To generate or check only the Blender 5.2 polygon-fan evidence, then run its
+native comparison without requiring Blender at test time:
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --groups polygon_smooth polygon_split
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_normals.py -- --check --groups polygon_smooth polygon_split
+ctest --preset reader -R '^blendScene\.polygonNormals$' --output-on-failure
+```
+
+`polygon_smooth` and `polygon_split` share concave/nonplanar polygon pairs,
+unequal-area triangles, disconnected vertex fans and 35 angle-sweep wedges.
+An additional flat triangle selects connected split fans in the second file.
+The normal-oracle executable compares 495 corners at the unchanged `2e-5`
+threshold and pins exact reversed-block equality in both build modes.
+Registered-plugin tests compare those saved normals and preserve metadata,
+repeat and referenced reads. The generator regression suite rejects saved
+polygon-coordinate and flat-face-selector mutations without rewriting files.
 
 The generator constructs source geometry without modifiers. All `custom*`
 groups record Blender's resulting corner normals and packed short pairs.

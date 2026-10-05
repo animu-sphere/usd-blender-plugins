@@ -506,6 +506,14 @@ void CheckLegacyVersion(const Fixture& fixture) {
     smooth.Bits(smooth.legacyPolygons, face * smooth.Size("MPoly") + smooth.Member("MPoly", "flag").offset, 1, 1);
   }
   const auto smoothNormals = Take(smooth.Decode()).meshes[0].cornerNormals;
+  const auto angle = std::acos(9 / std::sqrt(13.0 * 18.0));
+  const blend::Vector3 expectedNormal = {3 / std::sqrt(17.0) * angle,
+      std::atan2(3.0, 2.0) + 2 / std::sqrt(17.0) * angle, 2 / std::sqrt(17.0) * angle};
+  const auto length = std::hypot(expectedNormal[0], expectedNormal[1], expectedNormal[2]);
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    Require(std::abs(smoothNormals[0][axis] - expectedNormal[axis] / length) < 1e-12,
+        "Blender 3.3 retains mathematical corner angles rather than the modern approximation");
+  }
   smooth.Bits(smooth.legacyPolygons, smooth.Size("MPoly") + smooth.Member("MPoly", "flag").offset, 0, 1);
   const auto mixed = Take(smooth.Decode()).meshes[0];
   Require(std::equal(mixed.cornerNormals.begin(), mixed.cornerNormals.begin() + 3, smoothNormals.begin()) &&
@@ -1310,16 +1318,10 @@ void CheckNativeMeshes(const std::vector<std::byte>& bytes,
     changed.Float(changed.points, 11 * 4, 3);
     const auto smooth = Take(changed.Decode()).meshes[0];
     const blend::Vector3 faceNormal = {3 / std::sqrt(17.0), 2 / std::sqrt(17.0), 2 / std::sqrt(17.0)};
-    const auto angle0 = std::atan2(3.0, 2.0);
-    const auto angle1 = std::acos(9 / std::sqrt(13.0 * 18.0));
-    blend::Vector3 expected = {faceNormal[0] * angle1, angle0 + faceNormal[1] * angle1,
-        faceNormal[2] * angle1};
-    const auto length = std::hypot(expected[0], expected[1], expected[2]);
-    for (auto& component : expected) {
-      component /= length;
-    }
+    // Blender 5.2 RNA for the same two source triangles, rotated into the USD basis.
+    const blend::Vector3 expected = {0.41316384077072144, 0.8680016994476318, 0.27544254064559937};
     for (std::size_t axis = 0; axis < 3; ++axis) {
-      Require(std::abs(smooth.cornerNormals[0][axis] - expected[axis]) < 1e-12 &&
+      Require(std::abs(smooth.cornerNormals[0][axis] - expected[axis]) <= 2e-5 &&
                   smooth.cornerNormals[0] == smooth.cornerNormals[3],
           "Smooth point normals weight unit face normals by corner angle, not polygon area");
     }
