@@ -44,6 +44,10 @@ if(BUILD_TESTING)
     target_link_libraries(blendSceneMeshBoundaryTests PRIVATE blendScene::blendScene)
     add_executable(blendSceneNamingTests tests/NamingTests.cpp)
     target_link_libraries(blendSceneNamingTests PRIVATE blendScene::blendScene)
+    add_executable(blendSceneInstanceTests tests/InstanceTests.cpp)
+    target_link_libraries(blendSceneInstanceTests PRIVATE blendScene::blendScene)
+    add_test(NAME blendScene.instances COMMAND blendSceneInstanceTests
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-scene/blender-5.2.2/instances.blend)
     add_test(NAME blendScene.naming COMMAND blendSceneNamingTests)
     add_test(NAME blendScene.meshBoundaries COMMAND blendSceneMeshBoundaryTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/native-normals/blender-4.5.13

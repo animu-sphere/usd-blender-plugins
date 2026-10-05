@@ -200,3 +200,69 @@ animation decoding or general Scene compatibility. Support and incomplete
 milestone scope remain in the
 [capability matrix](../../../docs/reference/CAPABILITY_MATRIX.md#5-scene-ir)
 and [roadmap](../../../docs/roadmap/current.md).
+
+## Recursive Collection-instance graph oracle
+
+`blender-5.2.2/instances.blend` is an uncompressed normal-save fixture,
+generated and reopened on Windows on 2026-10-05 by
+[generate_instances.py](../generate_instances.py), using Blender 5.2.2 LTS
+build `d13f752e3b9c`. It has 515473 bytes and SHA-256
+`4faddf09033995a5ac82ea8b6a6ddb7b878f87801c236b020f22264fd7ebf664`.
+It is repository-generated test data under the same license as the fixtures
+above; no Blender source or contributed assets are included.
+
+The active `Instances` Scene selects three data-less Empties:
+`RootInstance` and `SharedInstance` both actively reference `TargetA`;
+`Child` has a parent outside membership. `TargetA` contains `NestedInstance`,
+which actively references `TargetB`. Both targets contain the same child
+Collection, `SharedTarget`. Two parent-only Objects, reached through selected
+and instance-only Objects respectively, retain inactive references to
+`ParentTarget`. In total the reached graph has five Collections, nine Objects
+and nine list nodes. The target-only Objects never join selected membership.
+
+The adjacent `instances.oracle.txt` uses `BLEND_INSTANCE_ORACLE 1`. It records
+the Blender version and Scene name, each Collection's ordered direct child
+and Object lists, and each Object's parent, instance target, active-instance
+bit and selected-membership bit. Names and references are exact, not numeric
+approximations. Generation checks the graph again after reopening the file.
+`--check` regenerates only into a temporary directory, compares the graph
+oracle, then reopens and checks the committed file without rewriting it.
+[test_generate_instances.py](../test_generate_instances.py) checks independent
+process/path reproduction, home-path exclusion, non-destructive success and
+failure, modified oracles and saved target/active-bit/parent/membership mutations.
+
+[InstanceTests.cpp](../../../libs/blendScene/tests/InstanceTests.cpp) implements
+`blendScene.instances`. It reads the unchanged file through SDNA and compares
+all saved graph records to the oracle. Generic selection needs eight visits
+and depth two; recursive value selection succeeds at exactly 23 visits and
+depth three, rejecting immediately smaller budgets with exact source context.
+Depth bounds active unfinished expansion, not the longest complete graph
+path: `SharedTarget` is completed before `TargetB` reaches it again.
+Repeated and reversed-block reads retain discovery order and caller-relative
+indices. Valid active selected instances fail decoding with
+`BLEND_SCENE_INSTANCE_UNSUPPORTED`, rather than authoring invented Empties.
+
+The same test generates 24 bounded in-memory cases: one successful inactive
+selected-instance variant, the unchanged active-instance failure, and nested
+null/absent/interior/wrong-kind/linked references, self/master cycles,
+malformed list endpoints and invalid parent-only instance references.
+Each corrupt graph is checked with selected instancing both inactive and
+active: graph validation errors must precede unsupported expansion.
+All failures publish no partial selection or Scene and preserve exact
+fatal code, payload offset and block index. The successful variant retains
+only the three selected Objects and the parent-only transform contribution.
+
+The case writer also supplies temporary inputs to registered-plugin
+[test_instances.py](../../../plugins/usdBlendFileFormat/tests/test_instances.py),
+run as `usdBlend.instances` in both CMake modes. Every case is read as plain,
+generated gzip and raw Zstandard bytes, in full and metadata-only modes.
+Failures retain decoded-file context across repeated reads; success preserves
+hierarchy, normalized transforms, metadata, repeats and references without
+instance expansion. The committed fixture itself is not a compressed oracle.
+No Blender-written linked-library or cyclic fixture is claimed: invalid
+inputs are explicitly identified binary mutations of the saved graph.
+
+Commands are in the
+[build guide](../../../docs/guides/building.md#recursive-collection-instance-oracle).
+This adds bounded graph-validation evidence, not Collection-instance expansion,
+dependency-graph evaluation or completion of general Scene compatibility.

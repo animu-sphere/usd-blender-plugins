@@ -1,0 +1,16 @@
+BLEND_INSTANCE_ORACLE 1
+"5.2.2 LTS" "Instances" 5 9
+COLLECTION "ParentTarget" 0 1 "ParentLeaf"
+COLLECTION "Scene Collection" 0 3 "RootInstance" "SharedInstance" "Child"
+COLLECTION "SharedTarget" 0 1 "SharedLeaf"
+COLLECTION "TargetA" 1 1 "SharedTarget" "NestedInstance"
+COLLECTION "TargetB" 1 1 "SharedTarget" "NestedLeaf"
+OBJECT "Child" "OutsideParent" "" 0 1
+OBJECT "InstanceParent" "" "ParentTarget" 0 0
+OBJECT "NestedInstance" "" "TargetB" 1 0
+OBJECT "NestedLeaf" "InstanceParent" "" 0 0
+OBJECT "OutsideParent" "" "ParentTarget" 0 0
+OBJECT "ParentLeaf" "" "" 0 0
+OBJECT "RootInstance" "" "TargetA" 1 1
+OBJECT "SharedInstance" "" "TargetA" 1 1
+OBJECT "SharedLeaf" "" "" 0 0
