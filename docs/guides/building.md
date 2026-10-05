@@ -274,12 +274,15 @@ parent mapping, render visibility, block reordering, Euler/Quaternion/Axis-Angle
 channels, nonuniform/negative scales, column-first parent inverses and
 single-pass normalization at four unit scales. Deep 256-parent chains succeed
 at exact visit/depth budgets and fail at one smaller; source-matrix and
-meter-conversion overflow return fatal context. Unsupported kinds, Image
-Empty data, enabled instances, unknown rotation/non-ordinary parenting modes, malformed
+meter-conversion overflow return fatal context. Unmapped kinds,
+enabled instances, unknown rotation/non-ordinary parenting modes, malformed
 storage and nonfinite inputs fail without a partial Scene. Animation and
 constraint presence emit recoverable source-only diagnostics. Both real corpus
 SDNA layouts are exercised through in-memory Empty-kind/data mutations;
-the original files retain unsupported Camera/Light objects, and the
+the unchanged corpus Scenes now decode Camera/Light as diagnostic-bearing
+Empty Objects alongside the Cube Mesh. All mapped non-Mesh kinds and Image
+Empty have four-layout fallback coverage, without relaxing fatal reference,
+linked-ID, transform or instance validation. The
 Scene-only library retains its missing-active-Scene error.
 
 `blendScene.transforms` reads separate unmodified Blender-written 4.5.13 and
@@ -488,7 +491,8 @@ ost plugin test plugins\usdBlendFileFormat --target cy2026 --profile usd --from-
 The manifest declares the `blendFile` and `blendScene` edges; `ost` builds and
 installs both libraries into its workspace prefix before configuring the standalone bundle.
 The nine stage tests assert the registered cube, integrated Scene,
-Mesh-domain, legacy auto-smooth and 5.2 polygon-fan oracles, multi-scale imports, metadata-only hierarchy, contextual fatal/recoverable
+unsupported-data fallback, Mesh-domain, legacy auto-smooth and 5.2 polygon-fan
+oracles, multi-scale imports, metadata-only hierarchy, contextual fatal/recoverable
 diagnostics, repeat-read determinism and referenced geometry.
 Compressed input is rejected; the accepted full-stream policy does not add
 compressed scene importing.
@@ -667,6 +671,31 @@ Mesh-sharing and UV mutations. Full-file bytes are not reproducible; there
 is no `--check-bytes` claim. The native `blendScene.sceneFixture` regression
 runs with the regular root and standalone Scene CTests above. Registered-plugin
 stage tests now compare these same saved oracles against the authored stage.
+
+### Unsupported-data fallback oracle
+
+The pinned Blender 5.2.2 generator extends the integrated Scene with
+Camera/Light/text/Image Empty data and a parent-only Camera. Provenance,
+scope and thresholds are in the
+[fixture record](../../tests/fixtures/native-scene/README.md#unsupported-data-fallback-oracle).
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_fallbacks.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_fallbacks.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_fallbacks.py
+```
+
+`--check` regenerates into a temporary directory, compares the semantic
+oracle, then reopens and validates the saved source kinds/data and matrices
+without rewriting either committed file. `--output <path.blend>` redirects
+generation or checking. Generator regressions cover independent-process/path
+reproduction, home-path exclusion, non-destructive checks/failures, modified
+oracles, removed Image data and changed Camera transforms.
+`blendScene.objectFallbacks` and `usdBlend.authoring` run in both root and
+standalone builds. The registered-plugin oracle, diagnostic, repeat/metadata
+and reference tests use the same saved fixture. No schema for unsupported
+data, instance expansion or older-version support extension is introduced.
 
 ### Saved Mesh-domain oracles
 

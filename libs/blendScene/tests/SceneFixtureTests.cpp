@@ -83,7 +83,8 @@ blend::Matrix4 Multiply(const blend::Matrix4& left, const blend::Matrix4& right)
   return result;
 }
 
-blend::Scene LoadScene(const std::filesystem::path& path, bool reverse = false, bool meshDomains = false) {
+blend::Scene LoadScene(const std::filesystem::path& path, bool reverse = false,
+    bool meshDomains = false, bool fallbacks = false) {
   blend::FileByteSource source(path);
   const auto bytes = Take(blend::ReadFileBytes(source, {4 * 1024 * 1024, 4 * 1024 * 1024, 16, 23}));
   blend::MemoryByteSource memory(bytes);
@@ -112,6 +113,21 @@ blend::Scene LoadScene(const std::filesystem::path& path, bool reverse = false, 
     }
     std::sort(names.begin(), names.end());
     Require(names == std::vector<std::string>{"Empty", "Loose"}, "Each empty Mesh warns exactly once");
+  } else if (fallbacks) {
+    std::vector<std::string> names;
+    for (const auto& diagnostic : decoded.Diagnostics()) {
+      Require(diagnostic.code == "BLEND_SCENE_OBJECT_DATA_UNSUPPORTED" &&
+                  diagnostic.severity == blend::Severity::Unsupported && diagnostic.recoverable &&
+                  diagnostic.blockIndex && *diagnostic.blockIndex < blocks.size() &&
+                  diagnostic.byteOffset == blocks[*diagnostic.blockIndex].offset &&
+                  blocks[*diagnostic.blockIndex].code == std::array<char, 4>{'O', 'B', 0, 0},
+          "Unsupported data reports exact Object context, including parent-only Objects");
+      names.push_back(diagnostic.datablock);
+    }
+    std::sort(names.begin(), names.end());
+    Require(names == std::vector<std::string>{
+                "CameraFallback", "ImageFallback", "LightFallback", "OutsideParent", "TextFallback"},
+        "Each decoded unsupported Object reports once, even with shared Camera data");
   } else {
     Require(decoded.Diagnostics().empty(), "Integrated source fixture needs no evaluation or repair");
   }
@@ -153,10 +169,11 @@ void CompareScenes(const blend::Scene& left, const blend::Scene& right) {
   }
 }
 
-void CheckFixture(const std::filesystem::path& path, bool meshDomains) {
-  const auto scene = LoadScene(path, false, meshDomains);
-  Require(scene.metadata.sourceScene == (meshDomains ? "MeshDomains" : "Integrated") &&
-              scene.objects.size() == (meshDomains ? 5 : 7) && scene.meshes.size() == (meshDomains ? 4 : 2),
+void CheckFixture(const std::filesystem::path& path, bool meshDomains, bool fallbacks) {
+  const auto scene = LoadScene(path, false, meshDomains, fallbacks);
+  Require(scene.metadata.sourceScene == (meshDomains ? "MeshDomains" : fallbacks ? "Fallbacks" : "Integrated") &&
+              scene.objects.size() == (meshDomains ? 5 : fallbacks ? 11 : 7) &&
+              scene.meshes.size() == (meshDomains ? 4 : 2),
       "Only selected membership and its two unique Meshes are published");
   std::unordered_map<std::string, std::size_t> objects, meshes;
   for (std::size_t index = 0; index < scene.objects.size(); ++index) {
@@ -192,6 +209,13 @@ void CheckFixture(const std::filesystem::path& path, bool meshDomains) {
         "Three Mesh Objects share one IR index, independently of hierarchy");
     Require(scene.objects[objects.at("mesh")].identifier == "mesh_1",
         "Mesh parent's fixed child name is reserved for its Empty child");
+    if (fallbacks) {
+      for (const auto name : {"CameraFallback", "LightFallback", "TextFallback", "ImageFallback"}) {
+        Require(!scene.objects[objects.at(name)].mesh, "Unsupported data has no fabricated Mesh index");
+      }
+      Require(scene.objects[objects.at("SharedRoot")].parent == objects.at("TextFallback"),
+          "Supported Mesh children retain unsupported parents");
+    }
   }
   auto oraclePath = path;
   oraclePath.replace_extension(".oracle.txt");
@@ -297,8 +321,8 @@ void CheckFixture(const std::filesystem::path& path, bool meshDomains) {
   }
   oracle >> std::ws;
   Require(oracle.eof(), "Scene oracle has no trailing records");
-  CompareScenes(scene, LoadScene(path, false, meshDomains));
-  CompareScenes(scene, LoadScene(path, true, meshDomains));
+  CompareScenes(scene, LoadScene(path, false, meshDomains, fallbacks));
+  CompareScenes(scene, LoadScene(path, true, meshDomains, fallbacks));
 }
 
 } // namespace
@@ -306,9 +330,10 @@ void CheckFixture(const std::filesystem::path& path, bool meshDomains) {
 int main(int argc, char** argv) {
   try {
     const bool meshDomains = argc >= 3 && std::string(argv[1]) == "--mesh-domains";
-    Require(argc == 3 || meshDomains, "Blender-written Scene fixtures and an optional --mesh-domains are required");
-    for (int index = meshDomains ? 2 : 1; index < argc; ++index) {
-      CheckFixture(argv[index], meshDomains);
+    const bool fallbacks = argc >= 3 && std::string(argv[1]) == "--fallbacks";
+    Require(argc == 3 || meshDomains, "Blender-written Scene fixtures and an optional mode are required");
+    for (int index = meshDomains || fallbacks ? 2 : 1; index < argc; ++index) {
+      CheckFixture(argv[index], meshDomains, fallbacks);
     }
     return 0;
   } catch (const std::exception& error) {

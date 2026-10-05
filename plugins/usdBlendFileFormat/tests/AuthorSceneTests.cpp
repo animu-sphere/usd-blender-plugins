@@ -443,6 +443,7 @@ void CheckFixture(const std::filesystem::path& path) {
     const auto singleNormal = path.stem().string().starts_with("auto_") || path.stem().string().starts_with("polygon_");
     const auto objectCount = singleNormal ? 1 : path.stem() == "mesh"      ? 5
                                             : path.stem() == "scene"       ? 7
+                                            : path.stem() == "fallbacks"   ? 11
                                             : path.stem() == "single_cube" ? 1
                                                                            : 2;
     const auto meshCount = singleNormal ? 1 : path.stem() == "mesh"      ? 4
@@ -756,7 +757,7 @@ int main(int argc, char** argv) {
       std::cout << "Blender-written multi-scale native-to-USD unit and ASCII naming policies passed\n";
       return 0;
     }
-    Require(argc == 15, "Expected transform, independent Mesh, integrated Scene, cube, legacy Mesh, auto-smooth and polygon fixtures");
+    Require(argc == 16, "Expected transform, independent Mesh, integrated Scene, cube, legacy Mesh, auto-smooth, polygon and fallback fixtures");
     CheckSynthetic();
     CheckFailures();
     for (int index = 1; index < argc; ++index) {

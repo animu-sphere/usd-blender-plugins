@@ -36,6 +36,15 @@ Task 2.3's native boundary now has an
 combining Mesh/Empty hierarchy, shared Meshes, a parent-only Mesh outside
 membership, visibility, identifiers, transforms and geometry. Registered-plugin
 tests now compare this composed stage against the saved oracle.
+Task 2.3 also has a bounded
+[5.2.2 unsupported-data fallback oracle](../../tests/fixtures/native-scene/README.md#unsupported-data-fallback-oracle):
+known Camera/Light/text/Image Empty data retains diagnostic-bearing Empty
+Objects, including unsupported parents of supported Meshes and a parent-only
+Camera outside membership. Native and registered-plugin tests preserve
+hierarchy, source transforms, own visibility, metadata/repeats/references and
+exact warning context. Unknown types, linked/invalid references, active
+Collection instances and unsupported transforms remain fatal; this does not
+complete general Scene coverage or introduce Camera/Light data schemas.
 Separate [multi-scale fixtures](../../tests/fixtures/native-units/README.md)
 establish the unit and ASCII identifier policies through native-to-USD
 composition and registered-plugin reads. Tasks 2.4 and 2.7 have landed for

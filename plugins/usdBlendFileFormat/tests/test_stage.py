@@ -14,6 +14,7 @@ from pxr import Sdf, Tf, Usd, UsdGeom
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 NATIVE = Path(__file__).resolve().parents[3] / "tests" / "fixtures"
 SCENES = [NATIVE / "native-scene" / version / "scene.blend" for version in ("blender-4.5.13", "blender-5.2.2")]
+FALLBACKS = [NATIVE / "native-scene" / "blender-5.2.2" / "fallbacks.blend"]
 MESHES = [NATIVE / "native-mesh" / version / "mesh.blend"
           for version in ("blender-3.3.21", "blender-4.5.13", "blender-5.2.2")]
 LEGACY_NORMALS = [NATIVE / "native-normals" / "blender-3.3.21" / f"{group}.blend"
@@ -111,9 +112,13 @@ class StageContractTests(unittest.TestCase):
                     Usd.Stage.Open(str(FIXTURES / fixture))
                 self.assertIn(code, str(error.exception))
         corpus = FIXTURES.parent / "corpus" / "blender-4.5.13" / "Untitled.blend"
-        with self.assertRaises(Tf.ErrorException) as error:
-            Usd.Stage.Open(str(corpus))
-        self.assertIn("BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED", str(error.exception))
+        stage = Usd.Stage.Open(str(corpus))
+        self._assert_contract(stage, "4.5", "Scene")
+        for name in ("Camera", "Light"):
+            prim = stage.GetPrimAtPath(f"/Asset/geo/{name}")
+            self.assertEqual(prim.GetTypeName(), "Xform")
+            self.assertEqual(prim.GetChildren(), [])
+        self.assertTrue(stage.GetPrimAtPath("/Asset/geo/Cube/mesh").IsA(UsdGeom.Mesh))
 
     def test_container_failures_and_compression(self):
         data = (FIXTURES / "single_cube.blend").read_bytes()
@@ -163,8 +168,25 @@ class StageContractTests(unittest.TestCase):
             self.assertIn("BLEND_BLOCK_UNKNOWN_CODE", result.stderr)
             self.assertIn("block ", result.stderr)
 
+        for metadata_only in (False, True):
+            result = subprocess.run(
+                [sys.executable, "-c",
+                 "from pxr import Sdf; import sys; "
+                 "layer=Sdf.Layer.OpenAsAnonymous(sys.argv[1], metadataOnly=sys.argv[2]=='True'); "
+                 "assert layer.GetPrimAtPath('/Asset/geo/Root/CameraFallback')",
+                 str(FALLBACKS[0]), str(metadata_only)],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            warnings = [line for line in result.stderr.splitlines()
+                        if "BLEND_SCENE_OBJECT_DATA_UNSUPPORTED" in line]
+            self.assertEqual(len(warnings), 5, result.stderr)
+            for name in ("CameraFallback", "ImageFallback", "LightFallback", "OutsideParent", "TextFallback"):
+                self.assertEqual(sum(f"datablock {name}" in line for line in warnings), 1, result.stderr)
+            self.assertTrue(all("byte " in line and "block " in line for line in warnings), result.stderr)
+
     def test_repeat_read_and_metadata(self):
-        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
+        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *FALLBACKS, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
             with self.subTest(fixture=str(fixture)):
                 path = str(fixture)
                 first = Sdf.Layer.OpenAsAnonymous(path)
@@ -188,7 +210,7 @@ class StageContractTests(unittest.TestCase):
                                  Sdf.Layer.OpenAsAnonymous(path, metadataOnly=True).ExportToString())
 
     def test_contract_survives_reference(self):
-        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
+        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *FALLBACKS, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
             with self.subTest(fixture=str(fixture)):
                 stage = Usd.Stage.CreateInMemory()
                 root = stage.DefinePrim("/Referenced")
@@ -199,11 +221,12 @@ class StageContractTests(unittest.TestCase):
                 self.assertTrue(any(prim.IsA(UsdGeom.Mesh) for prim in stage.Traverse()))
 
     def test_integrated_scene_oracles(self):
-        for fixture in [*SCENES, *MESHES]:
+        for fixture in [*SCENES, *FALLBACKS, *MESHES]:
             with self.subTest(fixture=str(fixture)):
                 stage = Usd.Stage.Open(str(fixture))
                 self._assert_contract(stage, fixture.parent.name.removeprefix("blender-").rsplit(".", 1)[0],
-                                      "Integrated" if fixture in SCENES else "MeshDomains")
+                                      "Integrated" if fixture in SCENES else
+                                      "Fallbacks" if fixture in FALLBACKS else "MeshDomains")
                 records = iter(shlex.split(line) for line in fixture.with_suffix(".oracle.txt").read_text().splitlines())
                 self.assertEqual(next(records), ["BLEND_SCENE_ORACLE", "1"])
                 next(records)
@@ -235,6 +258,8 @@ class StageContractTests(unittest.TestCase):
                         mesh_objects.setdefault(mesh_name, []).append(
                             UsdGeom.Mesh(stage.GetPrimAtPath(prim.GetPath().AppendChild("mesh")))
                         )
+                    else:
+                        self.assertFalse(any(child.IsA(UsdGeom.Mesh) for child in prim.GetChildren()))
                 for _ in range(int(mesh_count)):
                     tag, name, points, faces, corners, uv_count = next(records)
                     self.assertEqual(tag, "MESH")
@@ -274,10 +299,14 @@ class StageContractTests(unittest.TestCase):
                             self._assert_close(primvar.Get(), expected_values, tolerance=0)
                             self._assert_close(primvar.ComputeFlattened(), values, tolerance=0)
                 self.assertEqual(list(records), [])
-                if fixture in SCENES:
+                if fixture in [*SCENES, *FALLBACKS]:
                     self.assertEqual(len(mesh_objects["SharedGeometry"]), 3)
                     self.assertEqual(objects["mesh"].GetName(), "mesh_1")
                     self.assertNotIn("OutsideParent", objects)
+                    if fixture in FALLBACKS:
+                        for name in ("CameraFallback", "LightFallback", "TextFallback", "ImageFallback"):
+                            self.assertEqual(objects[name].GetTypeName(), "Xform")
+                        self.assertEqual(objects["SharedRoot"].GetParent(), objects["TextFallback"])
                 else:
                     self.assertEqual(len(mesh_objects["Seams"]), 2)
                     self.assertEqual(len(objects), 5)

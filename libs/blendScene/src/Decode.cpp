@@ -305,13 +305,7 @@ private:
   SourceObject ReadObject(std::uint32_t index) {
     const auto object = Take(ViewDnaBlock(bytes_, blocks_, schema_, header_, index));
     const auto type = Short(object, "type", index);
-    if (type != 0 && type != 1) {
-      Fail("BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED", "Native Scene decoding currently supports Mesh and Empty objects", index);
-    }
     const auto data = Take(Take(object.Member("data")).Pointer());
-    if (type == 0 && data != 0) {
-      Fail("BLEND_SCENE_OBJECT_DATA_UNSUPPORTED", "Image Empty data is not decoded", index);
-    }
     const auto flags = Short(object, "transflag", index);
     if ((flags & (1 << 8)) != 0) {
       Fail("BLEND_SCENE_INSTANCE_UNSUPPORTED", "Collection instances are validated, not expanded into the IR", index);
@@ -344,6 +338,15 @@ private:
     }
     ValidateMatrix(local, index);
     ReportEvaluation(object, index);
+    if (type != 1 && data != 0) {
+      const auto name = Take(Take(object.Member("id")).Member("name")).Bytes();
+      const auto end = std::find(name.begin() + 2, name.end(), std::byte{0});
+      diagnostics_.push_back({"BLEND_SCENE_OBJECT_DATA_UNSUPPORTED", Severity::Unsupported,
+          "Object data is not decoded; source hierarchy, transforms and visibility are preserved as an Empty",
+          blocks_[index].offset, index,
+          std::string(reinterpret_cast<const char*>(name.data() + 2),
+              static_cast<std::size_t>(end - name.begin() - 2)), true});
+    }
     return {parent, local, parent ? ParentInverse(object, index) : IdentityMatrix};
   }
 

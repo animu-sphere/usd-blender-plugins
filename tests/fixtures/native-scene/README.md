@@ -91,3 +91,53 @@ STAGE-O1's multi-scale evidence is recorded separately.
 Current capability and incomplete milestone scope remain in the
 [capability matrix](../../../docs/reference/CAPABILITY_MATRIX.md#5-scene-ir)
 and [roadmap](../../../docs/roadmap/current.md).
+
+## Unsupported-data fallback oracle
+
+`blender-5.2.2/fallbacks.blend` is a separate, uncompressed normal-save
+fixture generated and reopened on Windows on 2026-10-05 by
+[generate_fallbacks.py](../generate_fallbacks.py), using Blender 5.2.2 LTS
+build `d13f752e3b9c`. It has 540724 bytes and SHA-256
+`dd65f2fecdaf78ee97217d0fecc212c7ab7023b9136bfe702defb7afb57b71e0`.
+It is repository-generated, redistributable test data under the same license
+as the integrated fixtures above; no Blender source or contributed assets
+are included.
+
+The active `Fallbacks` Scene extends the integrated fixture at unit scale
+`0.01`, retaining 11 selected Objects and two unique Meshes:
+
+- `Root` parents `CameraFallback`, then render-hidden `LightFallback`,
+  then `TextFallback`, then the supported shared-Mesh Object `SharedRoot`.
+- `ImageFallback` is an Image Empty parented to `MeshParent`.
+- `OutsideParent` is now an unselected Camera parenting `Independent`;
+  it shares Camera data with `CameraFallback` but never joins membership.
+- The existing three shared-Mesh users, nested/shared Collection membership,
+  render-hidden root/child, reflected/nonuniform transforms, sheared parent
+  inverses, fixed-child reservation, topology, normals and indexed UVs remain.
+
+The adjacent `fallbacks.oracle.txt` reuses `BLEND_SCENE_ORACLE 1` and the
+matrix/geometry thresholds above. Non-Mesh records have no Mesh name; that
+does not mean their source data is absent. Generation and checking explicitly
+verify saved Camera/Light/text/Image source kinds and nonnull data, including
+the parent-only Camera.
+
+`blendScene.objectFallbacks` compares every owning IR value to the saved
+oracle and requires exact repeated/reversed-block equality. It pins five
+recoverable `Unsupported` `BLEND_SCENE_OBJECT_DATA_UNSUPPORTED` diagnostics,
+each with the source Object name and exact payload offset/block index.
+Shared unsupported data still reports each affected Object once.
+`usdBlend.authoring` checks native-to-layer composition, stage hierarchy,
+geometry, metadata-only output and deterministic repeated/reversed reads in
+both build modes. Registered-plugin tests independently compare saved
+world/local matrices, visibility and geometry, verify the same five warnings
+in full and metadata-only reads, and retain reference/repeat behavior.
+
+The fallback preserves Xforms, not Camera/Light schemas, text geometry or
+Image data. Unmapped Object kinds, linked/invalid references, enabled
+Collection instances and unsupported/invalid transforms remain fatal.
+Other mapped kinds have synthetic fallback coverage only.
+[test_generate_fallbacks.py](../test_generate_fallbacks.py) verifies
+independent-process/path reproduction, home-path exclusion, non-destructive
+checks and failures, modified-oracle rejection, removed Image data and
+changed Camera transforms. Commands are in the
+[build guide](../../../docs/guides/building.md#unsupported-data-fallback-oracle).

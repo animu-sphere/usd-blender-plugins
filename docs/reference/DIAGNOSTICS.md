@@ -111,8 +111,8 @@ Fixture paths are relative to
 | `BLEND_SCENE_GLOBAL_INVALID` | Fatal | no | GLOB is missing, duplicated or not one FileGlobal | synthetic GLOB absence/count/type cases in `blendScene.ir` |
 | `BLEND_SCENE_ACTIVE_MISSING` | Fatal | no | FileGlobal.curscene is null; no implicit Scene fallback | Scene-only `empty.blend` and synthetic null pointers in `blendScene.ir` |
 | `BLEND_SCENE_REFERENCE_INVALID` | Fatal | no | a required Scene/Collection/list/Object reference, nonzero Object parent/data/instance, target code/type/count or semantic member shape is incompatible; opt-in Object values also reject missing type-required data or a null enabled instance | null/absent/interior/metadata pointers, wrong pointer types and targets, synthetic parent/data/value/instance errors and corpus pointer/flag mutations in `blendScene.ir` |
-| `BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED` | Fatal | no | opt-in Object value reading finds a source type without a verified data mapping, or native decoding reaches a kind other than Mesh/Empty | positive unmapped and negative short types, native Camera/Light rejection in both corpus files in `blendScene.ir` |
-| `BLEND_SCENE_OBJECT_DATA_UNSUPPORTED` | Fatal | no | native decoding reaches an Image Empty | Image ID target across four synthetic layouts in `blendScene.ir` |
+| `BLEND_SCENE_OBJECT_TYPE_UNSUPPORTED` | Fatal | no | opt-in Object value reading finds a source type without a verified data mapping | positive unmapped and negative short types in `blendScene.ir`; native decoding preserves selection failures |
+| `BLEND_SCENE_OBJECT_DATA_UNSUPPORTED` | Unsupported | yes | native decoding preserves a known Object's unsupported data as an Empty, without decoding or fabricating geometry | all mapped non-Mesh kinds and Image Empty across four synthetic layouts in `blendScene.ir`; unchanged Camera/Light corpus inputs; Blender 5.2.2 mixed-kind oracle in `blendScene.objectFallbacks` and registered-plugin tests |
 | `BLEND_SCENE_INSTANCE_UNSUPPORTED` | Fatal | no | native decoding reaches enabled Collection instancing after graph validation | valid instance target across four synthetic layouts in `blendScene.ir`; graph cycles retain `BLEND_SCENE_CYCLE` |
 | `BLEND_SCENE_TRANSFORM_UNSUPPORTED` | Fatal | no | native decoding reaches an unknown rotation mode, transform flags other than cached negative-handedness bit 2, or non-ordinary parenting | unknown modes, every other non-instance flag with/without bit 2, and parenting mode across four synthetic layouts in `blendScene.ir`; bit 2 does not override channels |
 | `BLEND_SCENE_TRANSFORM_INVALID` | Fatal | no | native source transform storage has an incompatible scalar/array shape, nonfinite active channels, non-affine parent inverse or construction overflow; parent-relative construction receives nonfinite/non-affine worlds or overflows | malformed shapes, NaN/infinity in Euler/Quaternion/Axis-Angle channels, projective parent inverse and overflowing source parent matrices across four synthetic layouts; helper input and initial/elimination/translation overflow cases in `blendScene.ir`; inactive rotation channels are not interpreted |
@@ -234,7 +234,12 @@ payload offset and block index; unit failures also carry its source name.
 Source-evaluation presence diagnostics identify each decoded Object once,
 including parent-only Objects, without following evaluation pointers. Mesh
 Objects also report modifier presence; each shared decoded Mesh reports
-shape-key presence once. Mesh semantic failures identify the referring or
+shape-key presence once. Unsupported-data diagnostics likewise identify each
+decoded Object once, with source name and exact Object block context, even
+for parent-only Objects or shared data. Unknown types, linked or malformed
+references, active instances and invalid/unsupported transforms remain fatal;
+the Empty fallback cannot turn them into a successful Scene.
+Mesh semantic failures identify the referring or
 invalid storage target's payload offset and block index; source numeric arrays
 and record counts are validated without publishing partial IR. Reader errors
 retain their original codes and value-view offsets.
