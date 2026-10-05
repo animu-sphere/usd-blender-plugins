@@ -84,7 +84,7 @@ blend::Matrix4 Multiply(const blend::Matrix4& left, const blend::Matrix4& right)
 }
 
 blend::Scene LoadScene(const std::filesystem::path& path, bool reverse = false,
-    bool meshDomains = false, bool fallbacks = false) {
+    bool meshDomains = false, bool fallbacks = false, bool evaluation = false) {
   blend::FileByteSource source(path);
   const auto bytes = Take(blend::ReadFileBytes(source, {4 * 1024 * 1024, 4 * 1024 * 1024, 16, 23}));
   blend::MemoryByteSource memory(bytes);
@@ -126,8 +126,28 @@ blend::Scene LoadScene(const std::filesystem::path& path, bool reverse = false,
     }
     std::sort(names.begin(), names.end());
     Require(names == std::vector<std::string>{
-                "CameraFallback", "ImageFallback", "LightFallback", "OutsideParent", "TextFallback"},
+                         "CameraFallback", "ImageFallback", "LightFallback", "OutsideParent", "TextFallback"},
         "Each decoded unsupported Object reports once, even with shared Camera data");
+  } else if (evaluation) {
+    const auto datablocks = Take(blend::ListDatablocks(bytes, blocks, schema));
+    std::vector<std::string> names;
+    for (const auto& diagnostic : decoded.Diagnostics()) {
+      const bool mesh = diagnostic.code == "BLEND_MESH_EVALUATION_UNAPPLIED";
+      Require((mesh || diagnostic.code == "BLEND_SCENE_EVALUATION_UNAPPLIED") &&
+                  diagnostic.severity == blend::Severity::Unsupported && diagnostic.recoverable &&
+                  diagnostic.blockIndex && *diagnostic.blockIndex < blocks.size() &&
+                  diagnostic.byteOffset == blocks[*diagnostic.blockIndex].offset &&
+                  blocks[*diagnostic.blockIndex].code == (mesh ? std::array<char, 4>{'M', 'E', 0, 0} : std::array<char, 4>{'O', 'B', 0, 0}),
+          "Unapplied evaluation retains exact Object or Mesh block context");
+      const auto sourceId = std::find_if(datablocks.begin(), datablocks.end(),
+          [&](const auto& id) { return id.blockIndex == *diagnostic.blockIndex; });
+      Require(sourceId != datablocks.end() && sourceId->name.substr(2) == diagnostic.datablock,
+          "Unapplied evaluation identifies the referring source datablock");
+      names.push_back(diagnostic.datablock);
+    }
+    std::sort(names.begin(), names.end());
+    Require(names == std::vector<std::string>{"EmptyRoot", "MeshParent", "OutsideParent", "Root", "SharedGeometry"},
+        "Combined Object dependencies and shared Mesh keys warn once; parent-only geometry is not decoded");
   } else {
     Require(decoded.Diagnostics().empty(), "Integrated source fixture needs no evaluation or repair");
   }
@@ -169,10 +189,13 @@ void CompareScenes(const blend::Scene& left, const blend::Scene& right) {
   }
 }
 
-void CheckFixture(const std::filesystem::path& path, bool meshDomains, bool fallbacks) {
-  const auto scene = LoadScene(path, false, meshDomains, fallbacks);
-  Require(scene.metadata.sourceScene == (meshDomains ? "MeshDomains" : fallbacks ? "Fallbacks" : "Integrated") &&
-              scene.objects.size() == (meshDomains ? 5 : fallbacks ? 11 : 7) &&
+void CheckFixture(const std::filesystem::path& path, bool meshDomains, bool fallbacks, bool evaluation) {
+  const auto scene = LoadScene(path, false, meshDomains, fallbacks, evaluation);
+  Require(scene.metadata.sourceScene == (meshDomains ? "MeshDomains" : fallbacks ? "Fallbacks"
+                                                                   : evaluation  ? "SourceOnly"
+                                                                                 : "Integrated") &&
+              scene.objects.size() == (meshDomains ? 5 : fallbacks ? 11
+                                                                   : 7) &&
               scene.meshes.size() == (meshDomains ? 4 : 2),
       "Only selected membership and its two unique Meshes are published");
   std::unordered_map<std::string, std::size_t> objects, meshes;
@@ -321,8 +344,8 @@ void CheckFixture(const std::filesystem::path& path, bool meshDomains, bool fall
   }
   oracle >> std::ws;
   Require(oracle.eof(), "Scene oracle has no trailing records");
-  CompareScenes(scene, LoadScene(path, false, meshDomains, fallbacks));
-  CompareScenes(scene, LoadScene(path, true, meshDomains, fallbacks));
+  CompareScenes(scene, LoadScene(path, false, meshDomains, fallbacks, evaluation));
+  CompareScenes(scene, LoadScene(path, true, meshDomains, fallbacks, evaluation));
 }
 
 } // namespace
@@ -331,9 +354,10 @@ int main(int argc, char** argv) {
   try {
     const bool meshDomains = argc >= 3 && std::string(argv[1]) == "--mesh-domains";
     const bool fallbacks = argc >= 3 && std::string(argv[1]) == "--fallbacks";
+    const bool evaluation = argc >= 3 && std::string(argv[1]) == "--evaluation";
     Require(argc == 3 || meshDomains, "Blender-written Scene fixtures and an optional mode are required");
-    for (int index = meshDomains || fallbacks ? 2 : 1; index < argc; ++index) {
-      CheckFixture(argv[index], meshDomains, fallbacks);
+    for (int index = meshDomains || fallbacks || evaluation ? 2 : 1; index < argc; ++index) {
+      CheckFixture(argv[index], meshDomains, fallbacks, evaluation);
     }
     return 0;
   } catch (const std::exception& error) {

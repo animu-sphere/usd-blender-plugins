@@ -728,6 +728,46 @@ standalone builds. The registered-plugin oracle, diagnostic, repeat/metadata
 and reference tests use the same saved fixture. No schema for unsupported
 data, instance expansion or older-version support extension is introduced.
 
+### Source-only evaluation oracle
+
+The pinned Blender 5.2.2 generator extends the integrated Scene with location
+animation, active Copy Location constraints, subdivision and nonzero shape
+keys, including combined dependencies and a parent-only Mesh. Its oracle
+uses source-channel matrices and original Mesh data, not evaluated results.
+Provenance, source/evaluated distinction and comparison thresholds are in the
+[fixture record](../../tests/fixtures/native-scene/README.md#source-only-evaluation-oracle).
+
+The following commands were exercised on Windows on 2026-10-05:
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_evaluation.py
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\generate_evaluation.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python .\tests\fixtures\test_generate_evaluation.py
+```
+
+`--check` regenerates only in a temporary directory, compares source oracles,
+then reopens and validates saved dependency settings and source values without
+rewriting the fixture or oracle. `--output <path.blend>` redirects either mode.
+Generator regressions cover cross-process/path reproduction, non-destructive
+checks/failures, modified oracles and mutations of each dependency kind,
+parent-only evaluation data and source transforms.
+
+`blendScene.sourceEvaluation` runs with root and standalone Scene CTests;
+`usdBlend.authoring` runs with both root and standalone plugin builds.
+The existing registered-plugin selectors include source-only oracle,
+full/metadata diagnostics, repeated reads and references:
+
+```powershell
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- python plugins\usdBlendFileFormat\tests\test_stage.py StageContractTests.test_integrated_scene_oracles StageContractTests.test_recoverable_diagnostics StageContractTests.test_repeat_read_and_metadata StageContractTests.test_contract_survives_reference
+```
+
+For the root-built plugin use the same command with
+`--no-inject --plugin-path "$PWD\plugins\usdBlendFileFormat"` before `--`.
+These checks pin four Object warnings and one shared-Mesh warning with exact
+source names/byte/block context, unchanged source geometry/transforms and
+absence of time samples. No dependency-graph or animation evaluation is added.
+
 ### Saved Mesh-domain oracles
 
 Run with each pinned Blender installation (4.5.13 or 5.2.2). The default

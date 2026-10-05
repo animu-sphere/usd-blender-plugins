@@ -15,6 +15,7 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 NATIVE = Path(__file__).resolve().parents[3] / "tests" / "fixtures"
 SCENES = [NATIVE / "native-scene" / version / "scene.blend" for version in ("blender-4.5.13", "blender-5.2.2")]
 FALLBACKS = [NATIVE / "native-scene" / "blender-5.2.2" / "fallbacks.blend"]
+EVALUATION = [NATIVE / "native-scene" / "blender-5.2.2" / "evaluation.blend"]
 MESHES = [NATIVE / "native-mesh" / version / "mesh.blend"
           for version in ("blender-3.3.21", "blender-4.5.13", "blender-5.2.2")]
 LEGACY_NORMALS = [NATIVE / "native-normals" / "blender-3.3.21" / f"{group}.blend"
@@ -251,8 +252,38 @@ class StageContractTests(unittest.TestCase):
                 self.assertEqual(sum(f"datablock {name}" in line for line in warnings), 1, result.stderr)
             self.assertTrue(all("byte " in line and "block " in line for line in warnings), result.stderr)
 
+        data = EVALUATION[0].read_bytes()
+        blocks = list(cube_blocks(data))
+        for metadata_only in (False, True):
+            result = subprocess.run(
+                [sys.executable, "-c",
+                 "from pxr import Sdf; import sys; "
+                 "layer=Sdf.Layer.OpenAsAnonymous(sys.argv[1], metadataOnly=sys.argv[2]=='True'); "
+                 "assert layer.GetPrimAtPath('/Asset/geo/Root/MeshParent/mesh')",
+                 str(EVALUATION[0]), str(metadata_only)],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            warnings = [line for line in result.stderr.splitlines() if "EVALUATION_UNAPPLIED" in line]
+            self.assertEqual(len(warnings), 5, result.stderr)
+            for code, names in (
+                ("BLEND_SCENE_EVALUATION_UNAPPLIED", ("EmptyRoot", "MeshParent", "OutsideParent", "Root")),
+                ("BLEND_MESH_EVALUATION_UNAPPLIED", ("SharedGeometry",)),
+            ):
+                for name in names:
+                    matches = [line for line in warnings if code in line and f"[datablock {name}]" in line]
+                    self.assertEqual(len(matches), 1, result.stderr)
+                    kind = b"ME" if code == "BLEND_MESH_EVALUATION_UNAPPLIED" else b"OB"
+                    contexts = [(index, payload) for index, (block_code, _, payload, length) in enumerate(blocks)
+                                if block_code == kind + b"\0\0" and
+                                kind + name.encode("ascii") + b"\0" in data[payload:payload + length]]
+                    self.assertEqual(len(contexts), 1, name)
+                    index, payload = contexts[0]
+                    self.assertIn(f"[byte {payload}]", matches[0])
+                    self.assertIn(f"[block {index}]", matches[0])
+
     def test_repeat_read_and_metadata(self):
-        for fixture in [FIXTURES / "single_cube.blend", COMPRESSED_CORPUS, *SCENES, *FALLBACKS, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
+        for fixture in [FIXTURES / "single_cube.blend", COMPRESSED_CORPUS, *SCENES, *FALLBACKS, *EVALUATION, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
             with self.subTest(fixture=str(fixture)):
                 path = str(fixture)
                 first = Sdf.Layer.OpenAsAnonymous(path)
@@ -276,7 +307,7 @@ class StageContractTests(unittest.TestCase):
                                  Sdf.Layer.OpenAsAnonymous(path, metadataOnly=True).ExportToString())
 
     def test_contract_survives_reference(self):
-        for fixture in [FIXTURES / "single_cube.blend", COMPRESSED_CORPUS, *SCENES, *FALLBACKS, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
+        for fixture in [FIXTURES / "single_cube.blend", COMPRESSED_CORPUS, *SCENES, *FALLBACKS, *EVALUATION, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
             with self.subTest(fixture=str(fixture)):
                 stage = Usd.Stage.CreateInMemory()
                 root = stage.DefinePrim("/Referenced")
@@ -287,12 +318,13 @@ class StageContractTests(unittest.TestCase):
                 self.assertTrue(any(prim.IsA(UsdGeom.Mesh) for prim in stage.Traverse()))
 
     def test_integrated_scene_oracles(self):
-        for fixture in [*SCENES, *FALLBACKS, *MESHES]:
+        for fixture in [*SCENES, *FALLBACKS, *EVALUATION, *MESHES]:
             with self.subTest(fixture=str(fixture)):
                 stage = Usd.Stage.Open(str(fixture))
                 self._assert_contract(stage, fixture.parent.name.removeprefix("blender-").rsplit(".", 1)[0],
                                       "Integrated" if fixture in SCENES else
-                                      "Fallbacks" if fixture in FALLBACKS else "MeshDomains")
+                                      "Fallbacks" if fixture in FALLBACKS else
+                                      "SourceOnly" if fixture in EVALUATION else "MeshDomains")
                 records = iter(shlex.split(line) for line in fixture.with_suffix(".oracle.txt").read_text().splitlines())
                 self.assertEqual(next(records), ["BLEND_SCENE_ORACLE", "1"])
                 next(records)
@@ -365,7 +397,10 @@ class StageContractTests(unittest.TestCase):
                             self._assert_close(primvar.Get(), expected_values, tolerance=0)
                             self._assert_close(primvar.ComputeFlattened(), values, tolerance=0)
                 self.assertEqual(list(records), [])
-                if fixture in [*SCENES, *FALLBACKS]:
+                if fixture in EVALUATION:
+                    self.assertTrue(all(not attr.GetTimeSamples()
+                                        for prim in stage.Traverse() for attr in prim.GetAuthoredAttributes()))
+                if fixture in [*SCENES, *FALLBACKS, *EVALUATION]:
                     self.assertEqual(len(mesh_objects["SharedGeometry"]), 3)
                     self.assertEqual(objects["mesh"].GetName(), "mesh_1")
                     self.assertNotIn("OutsideParent", objects)
