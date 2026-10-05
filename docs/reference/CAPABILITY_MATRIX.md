@@ -151,8 +151,13 @@ tests are retained without being promoted to Blender-written release proof.
 | material Alpha and Emission | unsupported | `Deferred` in the same 5.2.2 oracle produces `BLEND_MATERIAL_DEFERRED_INPUT`; opaque, non-emissive constants are authored until MAT-O1/MAT-O4 are resolved | Phase 3 |
 | effective Object/Mesh material slots, face subsets and binding | supported | same 5.2.2 oracle: one slot, multiple slots, shared Mesh with Object and null overrides, empty slots and no-slot Mesh; exact face subsets and remapped reference targets in `test_stage.py`; invalid-face recovery and invalid IR failures in `usdBlend.materials` | Phase 3 |
 | metadata-only Material and subset hierarchy | supported | same oracle and `usdBlend.materials`: identical typed hierarchy/provenance without material networks, shader inputs, subset arrays or binding relationships | Phase 3 |
-| external image textures | — | | Phase 3 |
-| packed images | — | | — |
+| external Image Texture Color to Base Color; Alpha to Metallic/Roughness/IOR/Coat inputs | supported | [Blender 5.2.2 texture oracle](../../tests/fixtures/native-textures/README.md), `blendScene.textures`, `usdBlend.textures`, registered `test_stage.py`: standard `UsdUVTexture` networks inside `preview`, sRGB/raw, four wrap modes, relative/drive/UNC paths, repeats/references and actual relative-asset resolution; cross-type socket coercions remain unsupported | Phase 3 |
+| UV Map selection for textures | supported | same oracle: default and explicitly named render map read `st`; colliding non-render `Detail_UV` reads `Detail_UV_1`, with an existing indexed Mesh primvar; missing/shared-Mesh-inconsistent/tangent-mismatched UV recovery has synthetic authoring evidence | Phase 3 |
+| strength-one OpenGL tangent Normal Map networks | supported | same oracle: default/named UV selection, `normal` connection, raw texture color space, standard `(2,2,2,1)` scale and `(-1,-1,-1,0)` bias, flat-normal fallback and typed metadata children; no generic-renderer equivalence claim | Phase 3 |
+| non-linear Image Texture interpolation | approximated | `Closest` in the same oracle retains its texture with `BLEND_IMAGE_INTERPOLATION_UNSUPPORTED`; USD has no filter input | Phase 3 |
+| packed/generated/movie/sequence/tiled/missing images | unsupported | same oracle and contextual diagnostics: no texture is authored; packed payloads are not decoded, and no resolver identity is introduced | Phase 3 |
+| unsupported texture graphs and color/scalar coercions | approximated | same oracle: mapped vectors, Box projection, muted images, non-unit normal strength, Object-space normal maps and Color-to-Roughness use diagnosed constants/geometric normals; convention/base/color-space/alpha-mode/embedded-mapping/linked-image/path mutations in `blendScene.textures` | Phase 3 |
+| metadata-only texture and UV-reader hierarchy | supported | same oracle, `usdBlend.textures` and registered `test_stage.py`: identical Shader child types/paths without assets, IDs, inputs or networks | Phase 3 |
 | camera schema and data | — | | Phase 4 |
 | light schema and data | — | | Phase 4 |
 | collections | — | | Phase 4 |
@@ -196,6 +201,7 @@ itself does not choose compression or fixed production resource budgets.
 | deterministic names, ordering and provenance | supported | fixed `st` reservation, UV source-name collisions, malformed UTF-8 display repair, Object/UV permutations, repeated native reads and reversed native blocks produce identical layer text; root metadata and geometry survive references in `usdBlend.authoring`; fallback/no-active-map UV cases in `blendScene.naming` | Phase 2 |
 | no-partial-layer input diagnostics | supported | invalid graph indices/cycles/identifiers, projective/nonfinite/singular-parent transforms, topology/normal/UV shape/index errors, multiple render maps and exact/one-above float maximum checks in `usdBlend.authoring`; singular roots without children and zero-scale leaves succeed | Phase 2 |
 | constant Material authoring and effective-slot binding | supported | `usdBlend.materials`: unchanged 5.2.2 fixture, material-vector and block permutations, typed metadata hierarchy, graph output encapsulation, exact subsets, invalid slot/face shape/nonfinite Material/name failures, and partial invalid-face recovery | Phase 3 |
+| external-texture authoring and UV selection | supported | `usdBlend.textures`: unchanged 5.2.2 fixture, material/block/texture-vector permutations, shared readers, typed metadata, standard normal decode/fallback, duplicate/empty/invalid-enum IR rejection and diagnosed missing/inconsistent/tangent UV recovery; registered-plugin JSON oracle verifies actual shader inputs and connections | Phase 3 |
 
 ## 4. Backends
 

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <map>
 #include <set>
+#include <tuple>
 
 namespace blend::detail {
 namespace {
@@ -12,6 +13,9 @@ constexpr std::int64_t NodeActiveOutput = 1 << 6;
 constexpr std::int64_t NodeMuted = 1 << 9;
 constexpr std::int64_t LinkValid = 1 << 1;
 constexpr std::int64_t LinkMuted = 1 << 4;
+
+using NodeInputs = std::map<std::uint32_t, std::vector<std::uint32_t>>;
+using IncomingLinks = std::map<std::uint32_t, std::pair<std::uint32_t, std::uint32_t>>;
 
 class MaterialDecoder {
 public:
@@ -247,6 +251,190 @@ private:
     return View(Resolve(Pointer(socket, "default_value", "void")), type);
   }
 
+  std::uint32_t Socket(std::uint32_t node, std::string_view identifier,
+      const NodeInputs& inputs) const {
+    std::optional<std::uint32_t> found;
+    for (const auto index : inputs.at(node)) {
+      if (String(Take(View(index, "bNodeSocket").Member("identifier"))) == identifier) {
+        if (found) {
+          Fail("BLEND_MATERIAL_GRAPH_INVALID", "Node input identifiers must be unique");
+        }
+        found = index;
+      }
+    }
+    if (!found) {
+      Fail("BLEND_MATERIAL_STORAGE_INVALID", "Texture graph node is missing a required socket");
+    }
+    return *found;
+  }
+
+  bool NodeIs(std::uint32_t index, std::string_view type) const {
+    const auto node = View(index, "bNode");
+    return String(Take(node.Member("idname"))) == type &&
+           (Integer(node, "flag", "int") & NodeMuted) == 0;
+  }
+
+  std::string SocketName(std::uint32_t index) const {
+    return String(Take(View(index, "bNodeSocket").Member("identifier")));
+  }
+
+  bool DefaultTextureMapping(const DnaValueView& storage) const {
+    const auto base = Take(storage.Member("base"));
+    const auto mapping = Take(base.Member("tex_mapping"));
+    const auto color = Take(base.Member("color_mapping"));
+    for (const auto& [value, type] : {
+             std::pair{base, "NodeTexBase"}, {mapping, "TexMapping"}, {color, "ColorMapping"}}) {
+      if (value.Type().name != type || value.PointerLevel() != 0 || !value.ArrayDimensions().empty()) {
+        Fail("BLEND_MATERIAL_STORAGE_INVALID", "Texture mappings must be embedded records of the expected type");
+      }
+    }
+    bool standard = Integer(mapping, "flag", "int") == 0 && Integer(mapping, "type", "int") == 0 &&
+                    Byte(mapping, "mapping") == 0 && Byte(mapping, "projx") == 1 &&
+                    Byte(mapping, "projy") == 2 && Byte(mapping, "projz") == 3 &&
+                    Pointer(mapping, "ob", "Object") == 0;
+    for (const auto member : {"loc", "rot", "size"}) {
+      const auto components = Take(mapping.Member(member));
+      if (components.ArrayDimensions().size() != 1 || components.ArrayDimensions()[0] != 3) {
+        Fail("BLEND_MATERIAL_STORAGE_INVALID", "Texture mapping vectors must contain three float components");
+      }
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        const auto value = Float(Take(components.Element(axis)));
+        standard = (value == (std::string_view(member) == "size" ? 1 : 0)) && standard;
+      }
+    }
+    for (const auto member : {"bright", "contrast", "saturation"}) {
+      const auto value = Float(Take(color.Member(member)));
+      standard = (value == 1) && standard;
+    }
+    const auto factor = Float(Take(color.Member("blend_factor")));
+    return factor == 0 && Integer(color, "flag", "int") == 0 &&
+           Integer(color, "blend_type", "int") == 0 && standard;
+  }
+
+  std::optional<MaterialTexture> Texture(TextureInput input, std::uint32_t socket,
+      const NodeInputs& inputs, const IncomingLinks& incoming) {
+    auto [nodeIndex, output] = incoming.at(socket);
+    MaterialTexture texture;
+    texture.input = input;
+    const auto unsupported = [&]() -> std::optional<MaterialTexture> {
+      Warn("BLEND_MATERIAL_UNSUPPORTED_NODE", "Linked input is outside the external-image/UV/tangent-normal subset; its constant fallback is used");
+      return {};
+    };
+    if (input == TextureInput::Normal) {
+      if (!NodeIs(nodeIndex, "ShaderNodeNormalMap") || SocketName(output) != "Normal") {
+        return unsupported();
+      }
+      const auto normal = View(nodeIndex, "bNode");
+      const auto storage = View(Resolve(Pointer(normal, "storage", "void")), "NodeShaderNormalMap");
+      const auto strength = Socket(nodeIndex, "Strength", inputs);
+      const auto value = Float(Take(Default(View(strength, "bNodeSocket"), "bNodeSocketValueFloat").Member("value")));
+      if (Integer(storage, "space", "int") != 0 || Byte(storage, "convention") != 0 ||
+          Byte(storage, "base") != 1 || value != 1 || incoming.contains(strength)) {
+        return unsupported();
+      }
+      texture.normalUvMap = String(Take(storage.Member("uv_map")));
+      const auto color = Socket(nodeIndex, "Color", inputs);
+      if (!incoming.contains(color)) {
+        return unsupported();
+      }
+      std::tie(nodeIndex, output) = incoming.at(color);
+    }
+    if (!NodeIs(nodeIndex, "ShaderNodeTexImage") ||
+        SocketName(output) != (input == TextureInput::BaseColor || input == TextureInput::Normal ? "Color" : "Alpha")) {
+      return unsupported();
+    }
+    const auto node = View(nodeIndex, "bNode");
+    const auto storage = View(Resolve(Pointer(node, "storage", "void")), "NodeTexImage");
+    if (Integer(storage, "projection", "int") != 0 || !DefaultTextureMapping(storage)) {
+      return unsupported();
+    }
+    const auto vector = Socket(nodeIndex, "Vector", inputs);
+    if (incoming.contains(vector)) {
+      const auto [uvIndex, uvOutput] = incoming.at(vector);
+      if (!NodeIs(uvIndex, "ShaderNodeUVMap") || SocketName(uvOutput) != "UV" ||
+          Integer(View(uvIndex, "bNode"), "custom1", "short") != 0) {
+        return unsupported();
+      }
+      const auto uv = View(Resolve(Pointer(View(uvIndex, "bNode"), "storage", "void")), "NodeShaderUVMap");
+      texture.uvMap = String(Take(uv.Member("uv_map")));
+    }
+    const auto address = Pointer(node, "id", "ID");
+    if (address == 0) {
+      Warn("BLEND_IMAGE_MISSING", "Image Texture has no Image; its constant fallback is used");
+      return {};
+    }
+    const auto imageIndex = Resolve(address);
+    if (blocks_[imageIndex].code != std::array<char, 4>{'I', 'M', 0, 0}) {
+      Fail("BLEND_MATERIAL_REFERENCE_INVALID", "Image Texture must reference an Image ID");
+    }
+    const auto image = View(imageIndex, "Image");
+    const auto id = Take(image.Member("id"));
+    if (!String(Take(id.Member("name"))).starts_with("IM")) {
+      Fail("BLEND_MATERIAL_STORAGE_INVALID", "Image ID name must carry its IM prefix");
+    }
+    if (Pointer(id, "lib", "Library") != 0) {
+      Warn("BLEND_IMAGE_LINKED_UNSUPPORTED", "Linked Images are not followed; the constant fallback is used");
+      return {};
+    }
+    const auto packed = List(image, "packedfiles", "ImagePackedFile");
+    if (Pointer(image, "packedfile", "PackedFile") != 0 || !packed.empty()) {
+      Warn("BLEND_IMAGE_PACKED", "Packed images need an asset resolver and are not authored as textures");
+      return {};
+    }
+    if (Integer(image, "source", "short") != 1) {
+      Warn("BLEND_IMAGE_SOURCE_UNSUPPORTED", "Only external file Images are translated; generated/movie/sequence/tiled images use constants");
+      return {};
+    }
+    if (Byte(image, "alpha_mode") != 0) {
+      Warn("BLEND_IMAGE_ALPHA_UNSUPPORTED", "Only straight image alpha is translated; other alpha interpretations use constants");
+      return {};
+    }
+    const auto colorSpace = String(Take(Take(image.Member("colorspace_settings")).Member("name")));
+    if (colorSpace == "sRGB") {
+      texture.colorSpace = TextureColorSpace::SRgb;
+    } else if (colorSpace == "Non-Color") {
+      texture.colorSpace = TextureColorSpace::Raw;
+    } else {
+      Warn("BLEND_IMAGE_COLORSPACE_UNSUPPORTED", "Image color space is outside the sRGB/Non-Color subset");
+      return {};
+    }
+    switch (Integer(storage, "extension", "int")) {
+    case 0:
+      texture.wrap = TextureWrap::Repeat;
+      break;
+    case 1:
+      texture.wrap = TextureWrap::Clamp;
+      break;
+    case 2:
+      texture.wrap = TextureWrap::Black;
+      break;
+    case 3:
+      texture.wrap = TextureWrap::Mirror;
+      break;
+    default:
+      return unsupported();
+    }
+    auto path = String(Take(image.Member("name")));
+    if (path.empty()) {
+      Warn("BLEND_IMAGE_MISSING", "Image has no file path; its constant fallback is used");
+      return {};
+    }
+    if (path.starts_with("//")) {
+      path = "./" + path.substr(2);
+    } else if (path[0] == '/' || path[0] == '\\' || (path.size() > 1 && path[1] == ':')) {
+      Warn("BLEND_IMAGE_ABSOLUTE_PATH", "Absolute Image path is kept as stored, without probing or rewriting");
+    } else {
+      Warn("BLEND_IMAGE_PATH_UNSUPPORTED", "Image path is neither Blender-relative nor absolute; its constant fallback is used");
+      return {};
+    }
+    std::replace(path.begin(), path.end(), '\\', '/');
+    texture.assetPath = std::move(path);
+    if (Integer(storage, "interpolation", "int") != 0) {
+      Warn("BLEND_IMAGE_INTERPOLATION_UNSUPPORTED", "USD has no texture filter input; non-linear interpolation is not reproduced");
+    }
+    return texture;
+  }
+
   std::optional<Material> Decode() {
     const auto source = View(context_, "Material");
     const auto id = Take(source.Member("id"));
@@ -282,7 +470,7 @@ private:
     const auto nodes = List(tree, "nodes", "bNode");
     const auto links = List(tree, "links", "bNodeLink");
     std::map<std::uint32_t, std::uint32_t> socketOwners;
-    std::map<std::uint32_t, std::vector<std::uint32_t>> inputs;
+    NodeInputs inputs;
     std::set<std::uint32_t> outputs;
     std::optional<std::uint32_t> active;
     for (const auto nodeIndex : nodes) {
@@ -308,7 +496,7 @@ private:
         active = nodeIndex;
       }
     }
-    std::map<std::uint32_t, std::pair<std::uint32_t, std::uint32_t>> incoming;
+    IncomingLinks incoming;
     std::set<std::uint32_t> destinations;
     for (const auto linkIndex : links) {
       const auto link = View(linkIndex, "bNodeLink");
@@ -352,6 +540,11 @@ private:
     bool unsupported = false;
     bool deferred = false;
     bool linked = false;
+    const std::map<std::string_view, TextureInput> textureInputs = {
+        {"Base Color", TextureInput::BaseColor}, {"Metallic", TextureInput::Metallic},
+        {"Roughness", TextureInput::Roughness}, {"IOR", TextureInput::Ior},
+        {"Coat Weight", TextureInput::Clearcoat}, {"Coat Roughness", TextureInput::ClearcoatRoughness},
+        {"Normal", TextureInput::Normal}};
     for (const auto socketIndex : inputs.at(*surface)) {
       const auto socket = View(socketIndex, "bNodeSocket");
       const auto identifier = String(Take(socket.Member("identifier")));
@@ -359,7 +552,14 @@ private:
         Fail("BLEND_MATERIAL_GRAPH_INVALID", "Principled socket identifiers must be unique");
       }
       const auto isLinked = incoming.contains(socketIndex);
-      linked = linked || isLinked;
+      if (isLinked && textureInputs.contains(identifier)) {
+        const auto texture = Texture(textureInputs.at(identifier), socketIndex, inputs, incoming);
+        if (texture) {
+          material.textures.push_back(*texture);
+        }
+      } else {
+        linked = linked || isLinked;
+      }
       deferred = deferred || (identifier == "Emission Color" && isLinked);
       if (identifier == "Base Color") {
         const auto color = Take(Default(socket, "bNodeSocketValueRGBA").Member("value"));
@@ -437,7 +637,7 @@ private:
       }
     }
     if (linked) {
-      Warn("BLEND_MATERIAL_UNSUPPORTED_NODE", "Linked Principled inputs use socket constants; textures and other nodes are not translated");
+      Warn("BLEND_MATERIAL_UNSUPPORTED_NODE", "Linked inputs outside the supported subset use socket constants");
     }
     if (unsupported) {
       Warn("BLEND_MATERIAL_UNSUPPORTED_INPUT", "Non-default unsupported Principled inputs are not authored");

@@ -41,6 +41,31 @@ struct Mesh {
   std::vector<std::int32_t> faceMaterialIndices;
 };
 
+enum class TextureInput { BaseColor,
+  Metallic,
+  Roughness,
+  Ior,
+  Clearcoat,
+  ClearcoatRoughness,
+  Normal };
+enum class TextureColorSpace { SRgb,
+  Raw };
+enum class TextureWrap { Repeat,
+  Clamp,
+  Black,
+  Mirror };
+
+struct MaterialTexture {
+  TextureInput input = TextureInput::BaseColor;
+  std::string assetPath;
+  TextureColorSpace colorSpace = TextureColorSpace::SRgb;
+  TextureWrap wrap = TextureWrap::Repeat;
+  std::string uvMap;
+  std::string normalUvMap;
+
+  bool operator==(const MaterialTexture&) const = default;
+};
+
 struct Material {
   std::string sourceName;
   Vector3 diffuseColor = {0.8, 0.8, 0.8};
@@ -49,6 +74,7 @@ struct Material {
   double ior = 1.5;
   double clearcoat = 0;
   double clearcoatRoughness = 0.03;
+  std::vector<MaterialTexture> textures;
 };
 
 struct Object {

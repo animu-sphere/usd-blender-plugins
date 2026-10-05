@@ -87,6 +87,13 @@ overrides, face indices and malformed storage. Material naming reuses the
 existing naming allocator. The plugin alone links `usdShade` to author
 encapsulated `preview` NodeGraphs and bindings; `usdBlend.materials` tests that
 boundary in root and standalone builds.
+`Material.textures` adds owning standard-C++ external-image/UV/tangent-normal
+values under the [texture boundary](../design/MATERIAL_POLICY.md#72-native-external-texture-boundary).
+`blendScene.textures` reuses the material executable for saved image/node
+storage and contextual failures. `usdBlend.textures` reuses the authoring
+executable for standard texture/primvar-reader networks, UV naming, metadata and
+invalid IR in both build modes. The native library still does not read pixels,
+link imaging/USD libraries or use Blender at test time.
 The Mesh-boundary executable also supplies `blendScene.legacyMeshStorage`:
 unchanged Blender 3.3.21 raw storage/oracle checks and contextual failures for
 signed-index, unverified-version and unsupported-normal-mode mutations.

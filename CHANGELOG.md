@@ -20,7 +20,21 @@ All notable changes to this project are recorded here. The format follows
     repeat/reordered reads, reference composition and typed metadata-only
     hierarchy. Unsupported/muted surfaces use diagnosed viewport fallback,
     linked inputs use diagnosed socket constants, and Alpha/Emission remain
-    explicitly deferred. No texture or full older-version support is claimed.
+    explicitly deferred. Full older-version support is not claimed.
+- Bounded Blender 5.x external-image networks below `preview`, using only
+    `UsdUVTexture` and `UsdPrimvarReader_float2`: Color to Base Color, Alpha
+    to supported scalar inputs, sRGB/raw color space, four wrap modes and
+    actual active/named UV identifiers. Strength-one OpenGL tangent Normal
+    Maps use standard scale/bias and flat-normal fallback. Stored relative,
+    drive and UNC paths are normalized without probing or rewriting to
+    machine-local guesses. Unsupported images/graphs/settings use explicit
+    diagnostics and existing constants/geometric normals.
+- A Blender-written 5.2.2 external-texture/normal-map oracle with an original
+    PNG, native malformed-storage checks, root/standalone USD authoring and
+    registered-plugin network, asset-resolution, metadata, repeat/reference
+    checks. Shared-Material UV conflicts are diagnosed rather than silently
+    reading another primvar. Cross-type socket coercion, Alpha/Emission and
+    generic-renderer acceptance remain incomplete Phase 3 work.
 
 ## [0.1.0] - 2026-10-05
 

@@ -51,7 +51,7 @@ digests, runners or host Python/package requirements. It builds the standalone
 bundle on both hosts, runs explicit `ost plugin doctor` diagnostics and the
 registered stage-contract suite plus the standalone `usdBlend.authoring`,
 `usdBlend.units`, `usdBlend.importer`, `usdBlend.instances` and
-`usdBlend.materials` CTests, and
+`usdBlend.materials` and `usdBlend.textures` CTests, and
 uploads their reports and logs. These additional
 build jobs also use billed hosted infrastructure; they do not publish anything
 or use secrets. The resolver bootstrap is pinned to the matrix's `ost` version
@@ -1141,12 +1141,50 @@ networks or bindings.
 ost library build libs\blendScene --target cy2026 --profile usd
 ost plugin build plugins\usdBlendFileFormat --target cy2026 --profile usd
 ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- python plugins\usdBlendFileFormat\tests\test_stage.py
-ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd -C Release -R '^usdBlend\.(authoring|units|importer|instances|materials)$' --output-on-failure
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd -C Release -R '^usdBlend\.(authoring|units|importer|instances|materials|textures)$' --output-on-failure
 ```
 
 The standalone CTest directory above is the local Windows target directory;
 use the directory selected by your host/target on another platform. Root CMake
 uses the same material CTests alongside the existing geometry and dependency
-boundary tests. Alpha/Emission, textures and color attributes remain outside
-this constant-material verification scope; see the
+boundary tests. Alpha/Emission and color attributes remain outside
+this verification scope; texture verification is below. See the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#3-stage).
+
+## External-texture and normal-map oracles
+
+[native-textures](../../tests/fixtures/native-textures/README.md) records the
+bounded Blender 5.2.2 image/UV/tangent-normal subset, unsupported-source cases
+and the original generated PNG. No Blender or image decoder is required by
+native/authoring tests. The generator checks its semantic oracle after reopening
+the saved file; `--check` only regenerates in temporary storage. Generator
+regressions check reproduction, home-path exclusion, non-destructive success/
+failure and saved path, wrap, UV, strength, Image and normal-space changes.
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests\fixtures\generate_textures.py -- --check
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests\fixtures\test_generate_textures.py
+```
+
+`blendScene.textures` validates owning texture IR, saved graph/storage failures
+and contextual diagnostics. `usdBlend.textures` validates network authoring,
+normal scale/bias/fallback, actual collision-allocated UV identifiers,
+metadata-only Shader hierarchy, material/block/texture permutations, invalid IR
+and missing/shared/tangent UV fallback. Registered `test_stage.py` compares
+all supported inputs and connections to the JSON oracle, resolves an actual
+relative asset, preserves reference remapping and checks exact diagnostic
+families/context on full and metadata reads.
+
+```powershell
+ost library test libs\blendScene --target cy2026 --profile usd --filter 'blendScene\.textures'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest --test-dir plugins\usdBlendFileFormat\build\cy2026-windows-x86_64-py313-usd -C Release -R '^usdBlend\.(materials|textures)$' --output-on-failure
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- python plugins\usdBlendFileFormat\tests\test_stage.py StageContractTests.test_external_textures_and_normal_maps StageContractTests.test_constant_materials_and_bindings
+```
+
+Build the updated library/bundle with the commands in the preceding section
+before these checks. The companion stage-contract and release workflows select
+the new CTest alongside existing authoring tests. Local Windows checks do not
+establish hosted Windows/Linux success or generic-renderer equivalence.
+Color/scalar socket coercions, material Alpha/Emission and broader renderer
+acceptance remain separate roadmap work.
