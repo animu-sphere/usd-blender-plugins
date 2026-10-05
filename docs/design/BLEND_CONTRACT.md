@@ -584,6 +584,13 @@ Phase 8 will select an older-version range and the storage/normal modes to
 support, then require independent fixture evidence before expanding the
 guarantee. There is no current minimum older-version target.
 
+The Phase 2 exit decision is narrower than the long-term 5.x target:
+[DESIGN_POLICY §14.2](DESIGN_POLICY.md#142-phase-2-exit-criteria) fixes it to
+the committed Blender 5.2.2 source Mesh/Empty evidence. Another 5.x release
+is separate post-milestone compatibility work, not an unbounded requirement
+for closing Phase 2. This does not remove existing decoding paths or change
+runtime version admission.
+
 This is a support-policy change, not a runtime version rejection or removal of
 existing decoders, fixtures or regression tests. Header recognition remains
 independent of scene-version policy: it validates syntax and
@@ -612,10 +619,10 @@ and source names, never SDNA structs or old pointers.
 | --- | --- | --- |
 | `GLOB` current scene | the scene to read | 0 |
 | file version, SDNA | `SceneMetadata` provenance | 0 |
-| `Scene` | `SceneMetadata`: frame range, fps, unit settings | 2 (5 for time) |
+| `Scene` | `SceneMetadata`: source identity and unit settings; frame range and fps added with animation | 2 (5 for frame range/fps) |
 | scene collection hierarchy | the set of objects to author; `Collection` | 2 (4 for collections) |
 | `Object` | `Object`: identifier, source name, type, parent, world matrix, visibility, data reference | 2 |
-| `Mesh` | `Mesh`: points, face counts, corner indices, normals, UV sets, material indices | 2 |
+| `Mesh` | `Mesh`: points, face counts, corner indices, normals and UV sets; material indices added with binding | 2 (3 for material indices) |
 | `Material`, its node tree | `Material`: the Principled BSDF subset ([MATERIAL_POLICY.md](MATERIAL_POLICY.md)) | 3 |
 | `Image` | `Image`: source path, color space, packed flag | 3 |
 | `Camera` | `Camera` | 4 |

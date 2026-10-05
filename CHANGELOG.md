@@ -29,6 +29,21 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- Finite Phase 2 exit criteria and milestone closeout for the committed
+    Blender 5.2.2 source Mesh/Empty scope. Seven behavior/evidence/quality
+    gates replace open-ended general 5.x coverage as the closure requirement.
+    Additional 5.x releases and later-Phase material, animation,
+    instance-expansion and performance work do not block that milestone;
+    runtime decoding and existing regression coverage are unchanged.
+    Closeout verification on Windows passed all 27 root CTests, 17 standalone
+    Scene CTests, four standalone USD CTests, all ten registered stage tests
+    in each build mode, plugin diagnostics, the workspace graph, L0-L5 and
+    packaged discovery/golden checks. Both hosts passed
+    [source CI](https://github.com/animu-sphere/usd-blender-plugins/actions/runs/37274601686)
+    and [stage-contract CI](https://github.com/animu-sphere/usd-blender-plugins/actions/runs/37274601778)
+    for implementation `5661b2d` (merged in #59). Existing dated Windows Cube
+    viewport evidence supplies the display gate; no Linux viewport or
+    general 5.x compatibility claim is added.
 - Blender-written 5.2.2 packed-custom polygon normal oracles add 495 corners
     on concave/nonplanar polygons, shared sharp edges, flat boundaries and
     angle-sweep wedges, with automatic values and mixed signed-short pairs.

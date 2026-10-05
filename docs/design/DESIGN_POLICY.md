@@ -1224,7 +1224,7 @@ carries a phase is decided in the
 | --- | --- | --- |
 | **0 — workspace skeleton** | Root CMake, `VERSION`, OpenStrata configuration, CI on Windows and Linux, the `usdBlendFileFormat` bundle from `usd-fileformat-cpp`, `.blend` registration, a `blendFile` scaffold that recognizes the header, the diagnostic record, a minimal `/Asset` stage. | `Usd.Stage.Open("empty.blend")` returns a stage whose default prim is `/Asset` with `geo` and `mtl`; non-`.blend` bytes fail with a diagnostic; `ost plugin test` passes L0–L5. |
 | **1 — container and SDNA** | `ByteSource`, compression, legacy and Blender 5 containers, block headers, DNA1 and SDNA, raw datablock enumeration, `blend_inspect`. | `blend_inspect` reports version, blocks, SDNA and datablock counts for fixtures from every supported Blender version; malformed fixtures produce diagnostics and never crash; `blendFile` links no OpenUSD. |
-| **2 — objects and meshes** | `blendScene`; objects, parenting, transforms, meshes, topology, normals, UVs, identifiers; `/Asset/geo`. | `single_cube.blend` opens in `usdview` as `UsdGeomMesh` at `/Asset/geo/Cube/mesh`; hierarchy and transforms match the oracle; the same file always authors the same stage. |
+| **2 — objects and meshes** | `blendScene`; objects, parenting, transforms, meshes, topology, normals, UVs, identifiers; `/Asset/geo`. | All finite Blender 5.2.2 Mesh/Empty acceptance gates in [§14.2](#142-phase-2-exit-criteria) pass; this includes direct Cube display in `usdview`, saved-oracle equivalence and deterministic stages, not general Blender 5.x compatibility. |
 | **3 — materials and images** | `/Asset/mtl`, material slots, `GeomSubset`, the Principled BSDF subset as `UsdPreviewSurface`, external image textures, alpha, normal maps. | Base color, textures, alpha and normal maps visible in generic renderers; every binding targets `/Asset/mtl`. |
 | **4 — cameras, lights and collections** | `UsdGeomCamera`, `UsdLux`, collection metadata, improved hierarchy. | Camera framing and light placement match fixtures; conversions for lens and intensity are fixed by fixtures. |
 | **5 — object animation** | Actions, F-Curves on object transforms, frame rate and time metadata. | Transform animation plays in `usdview` with Blender's timing. |
@@ -1252,6 +1252,63 @@ The first release that claims a stable reader contract is done when:
 That is Phases 0–6 and the performance/robustness work in Phase 8;
 deferred older-version compatibility is not part of this release gate.
 The [roadmap](../roadmap/README.md) decides the version.
+
+### 14.2 Phase 2 exit criteria
+
+**Accepted 2026-10-05.** Phase 2 is the native, source-only, static Mesh/Empty
+milestone proven by the committed Blender **5.2.2** fixtures. Its completion
+does not require every file, storage family or release in Blender 5.x to work.
+The broader 5.x design target remains unchanged under
+[BLEND_CONTRACT §9](BLEND_CONTRACT.md#9-version-support); actual version and
+feature claims remain owned by the
+[capability matrix](../reference/CAPABILITY_MATRIX.md).
+This fixes the milestone's acceptance scope, not runtime version admission.
+
+These seven gates are the complete exit checklist. The evidence column names
+the existing verification surfaces, not a requirement for a new fixture for
+every possible combination. A reproducible failure of an in-scope gate blocks
+closure; an untested additional release or out-of-scope feature does not.
+
+| Gate | Required result | Verification surface |
+| --- | --- | --- |
+| P2-SCENE | Select the saved active Scene and Collection membership without a first-Scene fallback; publish owning Mesh/Empty IR, selected parenting, shared Mesh data, own render visibility and source transforms. Parent-only Objects affect world space without joining membership. Units and ASCII identifiers are normalized once and remain deterministic. | `blendScene.ir`, `blendScene.sceneFixture`, `blendScene.transforms`, `blendScene.naming`, `usdBlend.authoring`, `usdBlend.units`; the saved Scene, transform and unit oracles |
+| P2-MESH | Publish source points, polygon counts/corner indices, face-varying normals and indexed named/render UVs. The committed 5.2.2 Mesh-domain, ordinary/custom normal, polygon-fan, constant and multi-Mesh cases retain their storage/ownership validation. Empty/loose-point Meshes retain empty topology and contextual warnings. | `blendScene.meshFixture`, `blendScene.normals`, `blendScene.polygonNormals`, `blendScene.meshBoundaries`, `blendScene.ir`; the saved Mesh/normal oracles, including custom polygon fans |
+| P2-STAGE | Author the version-1 `/Asset` stage, `geo`/`mtl`, per-Object Xforms and typed `mesh` children, Y-up/meters, source provenance, transforms, own visibility, extent and indexed UVs. Shared Meshes use the existing duplicated geometry policy. Repeat/reordered reads and reference composition preserve meaning. `metadataOnly` retains typed hierarchy/transforms/provenance without geometry attributes. | `usdBlend.authoring`, `usdBlend.units`, registered `test_stage.py`, Cube golden; [STAGE_CONTRACT](STAGE_CONTRACT.md) and [NAMING_POLICY](NAMING_POLICY.md) |
+| P2-INPUT | Compose uncompressed, gzip and Zstandard byte/container/SDNA decoding with Scene selection and USD authoring. Enforce the accepted full-stream policy, decoded-size block bounds and explicit graph budgets. Corrupt, truncated and over-budget inputs fail without retry or partial layers; full/metadata reads retain their diagnostic context. | `blendFile.header`, `usdBlend.importer`, registered container/compression tests; [compression policy](BLEND_CONTRACT.md#42-standard-full-stream-limit-policy) |
+| P2-DIAGNOSTICS | Missing, linked, invalid and cyclic graph/storage references, unsupported transform modes and invalid Mesh values fail with stable fatal codes and applicable byte/block context, without partial IR/layers. Validate recursive Collection-instance references before rejecting active expansion. Known unsupported Object data retains diagnostic-bearing Empty Xforms. Animation, constraints, modifiers and shape keys report source-only behavior rather than being evaluated or sampled. | `blendScene.ir`, `blendScene.instances`, `blendScene.objectFallbacks`, `blendScene.sourceEvaluation`, `usdBlend.instances`, authoring/importer failure cases and registered diagnostic tests; [DIAGNOSTICS](../reference/DIAGNOSTICS.md) |
+| P2-VIEWPORT | Open the committed Cube `.blend` directly in `usdview` as `/Asset/geo/Cube/mesh`, with a visible converged viewport and Mesh pick. The recorded Windows Storm verification satisfies this gate; Linux GPU/Qt evidence is not required or claimed. | [Cube milestone verification](../../plugins/usdBlendFileFormat/tests/fixtures/README.md#cube-milestone-verification) and `test_usdview.py` |
+| P2-QUALITY | Root plain-CMake and standalone bundle builds/tests pass on the existing Windows/Linux CI matrix, including reader/Scene dependency gates, the registered stage tests, standalone authoring/unit/importer/instance tests, plugin diagnostics and the L0-L5/package checks. Retain existing older-version regressions; do not require new older-version fixtures. | Generated source CI plus companion stage-contract CI, local root/standalone suites; [build guide](../guides/building.md#phase-2-closeout) |
+
+Preserve the existing measurable oracle criteria: exact topology, stored short
+pairs and UV values/indices (including tested zero signs); absolute `2e-5`
+normal-component tolerance with native unit length within `1e-12`; native
+matrix/point comparisons within `2e-5 * (1 + abs(expected))`; and exact
+repeat/reordered IR arrays and authored layer text where the tests require
+them. Individual fixture records own any stricter comparisons. Do not weaken
+those checks merely to close the phase.
+
+The following are explicitly **not** Phase 2 exit requirements:
+
+- New 5.0/5.1 or other 5.x release fixtures, every SDNA/storage combination,
+  new normal representations, or blanket compatibility for Blender 5.x.
+  Additional 5.x compatibility is separately bounded post-milestone work;
+  it does not automatically reopen Phase 2.
+- Material slots, per-face material indices, binding, color attributes and
+  image textures (Phase 3).
+- Camera/Light data schemas, authored Collection metadata, instance expansion
+  and non-ordinary parenting beyond the current rejection policy (Phase 4
+  scope or a separately accepted extension).
+- Animation time samples, frame-range/fps metadata (Phase 5), skeletons/shape-key
+  evaluation (Phase 6), or dependency-graph/evaluated geometry (Phase 7).
+- A fast/lazy `metadataOnly` path, performance targets, sanitizer/fuzz lanes,
+  or expanded older-Blender compatibility (Phase 8).
+
+Closure is an integration decision: verify the gates against the candidate
+implementation and land the required implementation/evidence. The closeout
+change integrates this accepted scope, updates the roadmap's phase status and
+removes the completed Phase 2 task detail; merging it closes the milestone.
+A version tag or release publication is not required. Delivery state lives
+only in the roadmap, not in this checklist.
 
 ## 15. Decisions frozen early
 

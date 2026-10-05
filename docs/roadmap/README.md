@@ -31,7 +31,7 @@ Completion does not imply that the planned release has been tagged.
 | --- | --- | --- | --- |
 | 0 | workspace skeleton, minimal file format | ✅ | v0.1.0 (planned) |
 | 1 | container and SDNA, `blend_inspect` | ✅ | v0.2.0 (planned) |
-| 2 | objects and meshes | 🚧 | v0.3.0 (planned) |
+| 2 | objects and meshes | ✅ | v0.3.0 (planned) |
 | 3 | materials and images | ⬜ | v0.4.0 (planned) |
 | 4 | cameras, lights and collections | ⬜ | v0.5.0 (planned) |
 | 5 | object animation | ⬜ | v0.6.0 (planned) |
@@ -46,6 +46,12 @@ re-decided when a Phase is ready to ship.
 
 See the [current tasks](current.md) for upcoming work and the
 [capability matrix](../reference/CAPABILITY_MATRIX.md) for implemented behavior.
+
+Phase 2 has a finite
+[exit checklist](../design/DESIGN_POLICY.md#142-phase-2-exit-criteria),
+accepted on 2026-10-05. Additional Blender 5.x release compatibility is
+post-milestone work, not an open-ended requirement for closing that phase.
+Passing local tests alone does not replace its hosted and integration gates.
 
 ## Open decisions
 
