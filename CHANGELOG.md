@@ -6,6 +6,8 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-05
+
 ### Fixed
 
 - Registered instance-graph CTests now explicitly prepend the built plugin's
@@ -29,6 +31,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- First public release packaging for Windows/Linux x86_64 against the pinned
+    CY2026 OpenUSD 26.08 / Python 3.13 SDKs. A tag-gated workflow verifies both
+    build modes, plugin diagnostics, stage-contract tests, L0-L5, extracted
+    packages and a repository-free aggregate install; two packaging runs must
+    have identical archive digests. Draft release assets include the plugin,
+    inspection CLI, aggregate product, manifest/SPDX sidecars, source archive
+    and SHA256SUMS. Manual dispatch exercises the same gates without publishing.
+    Release, installation and maintainer documentation record the bounded
+    Blender 5.2.2 source Mesh/Empty scope rather than claiming general Blender
+    compatibility.
 - Finite Phase 2 exit criteria and milestone closeout for the committed
     Blender 5.2.2 source Mesh/Empty scope. Seven behavior/evidence/quality
     gates replace open-ended general 5.x coverage as the closure requirement.

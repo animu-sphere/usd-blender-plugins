@@ -1,0 +1,294 @@
+# Hand-maintained: resolve SDK, runner and host-package pins from the PR matrix.
+# Tag pushes assemble a draft; workflow_dispatch verifies without publishing.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_release: ${{ steps.version.outputs.is_release }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      bootstrap: ${{ steps.matrix.outputs.bootstrap }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Validate the version and finalized release records
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(sed -nE 's/^version = "([^"]+)"$/\1/p' openstrata.toml)" = "$version"
+          while IFS= read -r descriptor; do
+            test "$(sed -nE 's/^[[:space:]]+version: ([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' "$descriptor")" = "$version"
+          done < <(git ls-files 'libs/*/openstrata.library.yaml' 'plugins/*/openstrata.plugin.yaml' 'tools/*/openstrata.tool.yaml')
+          grep -Eq "^## \[$version\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md
+          test -s "docs/releases/v${version}.md"
+          is_release=false
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "::error title=release preflight::tag $GITHUB_REF_NAME does not match VERSION ($version)"
+              exit 1
+            fi
+            is_release=true
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "is_release=$is_release" >> "$GITHUB_OUTPUT"
+      - name: Bootstrap the matrix resolver
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset=ost-cli-x86_64-unknown-linux-musl.tar.xz
+          base=https://github.com/animu-sphere/open-strata/releases/download/v0.23.14
+          curl -fsSLo "$asset" "$base/$asset"
+          curl -fsSLo "$asset.sha256" "$base/$asset.sha256"
+          test "$(sha256sum "$asset" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$asset.sha256")"
+          mkdir -p .ost-ci/bootstrap-bin
+          tar -xf "$asset" -C .ost-ci/bootstrap-bin
+          bin="$(find .ost-ci/bootstrap-bin -type f -name ost | head -n 1)"
+          test -n "$bin"
+          chmod +x "$bin"
+          echo "$(cd "$(dirname "$bin")" && pwd)" >> "$GITHUB_PATH"
+      - name: Resolve the existing bundle cells
+        id: matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          ost ci validate
+          ost ci matrix --lane pull_request --json > .ost-ci/matrix.json
+          test "$(ost --version)" = "ost $(jq -r '.data.bootstrap.version' .ost-ci/matrix.json)"
+          matrix="$(jq -c '{include: [.data.cells[] | select(.kind == "bundle" and .bundle == "plugins/usdBlendFileFormat")]}' .ost-ci/matrix.json)"
+          test "$(printf '%s' "$matrix" | jq '.include | length')" -gt 0
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "bootstrap=$(jq -c '.data.bootstrap' .ost-ci/matrix.json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: preflight
+    name: release-${{ matrix.name }}
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.preflight.outputs.matrix) }}
+    env:
+      OST_HOME: ${{ github.workspace }}/.ost-ci-home
+      OST_VERSION: ${{ fromJSON(needs.preflight.outputs.bootstrap).version }}
+      OST_REPOSITORY: ${{ fromJSON(needs.preflight.outputs.bootstrap).repository }}
+      OST_CHECKSUMS: ${{ toJSON(fromJSON(needs.preflight.outputs.bootstrap).sha256) }}
+      BUNDLE: ${{ matrix.bundle }}
+      PLATFORM: ${{ matrix.platform }}
+      PROFILE: ${{ matrix.profile }}
+      RUNTIME_ARTIFACT: ${{ matrix.runtime_artifact }}
+      RUNTIME_REMOTE: ${{ matrix.runtime_remote }}
+      OPENUSD: ${{ matrix.require_openusd }}
+      OPENUSD_VERSION: ${{ matrix.require_openusd_version }}
+      MINIMUM_TRUST: ${{ matrix.minimum_trust }}
+      VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Hosted runner billing notice
+        shell: bash
+        run: echo "::notice title=OpenStrata hosted-runner usage::Release verification uses billed GitHub-hosted infrastructure."
+      - name: Bootstrap the pinned ost release
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${RUNNER_OS}-${RUNNER_ARCH}" in
+            Linux-X64) triple=x86_64-unknown-linux-musl; ext=tar.xz ;;
+            Windows-X64) triple=x86_64-pc-windows-msvc; ext=zip ;;
+            *) echo "Unsupported host: ${RUNNER_OS}-${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+          asset="ost-cli-${triple}.${ext}"
+          base="https://github.com/${OST_REPOSITORY}/releases/download/v${OST_VERSION}"
+          curl -fsSLo "$asset" "$base/$asset"
+          curl -fsSLo "$asset.sha256" "$base/$asset.sha256"
+          actual="$(sha256sum "$asset" | cut -d' ' -f1)"
+          test "$actual" = "$(cut -d' ' -f1 "$asset.sha256")"
+          pinned="$(printf '%s' "$OST_CHECKSUMS" | jq -r --arg triple "$triple" '.[$triple] // empty')"
+          if [ -n "$pinned" ]; then test "$actual" = "$pinned"; fi
+          mkdir -p .ost-ci/bootstrap-bin
+          if [ "$ext" = zip ]; then
+            powershell -NoProfile -Command "Expand-Archive -LiteralPath '$asset' -DestinationPath '.ost-ci/bootstrap-bin' -Force"
+          else
+            tar -xf "$asset" -C .ost-ci/bootstrap-bin
+          fi
+          bin="$(find .ost-ci/bootstrap-bin -type f \( -name ost -o -name ost.exe \) | head -n 1)"
+          test -n "$bin"
+          chmod +x "$bin"
+          bin_dir="$(cd "$(dirname "$bin")" && pwd)"
+          if [ "$RUNNER_OS" = Windows ]; then bin_dir="$(cygpath -w "$bin_dir")"; fi
+          echo "$bin_dir" >> "$GITHUB_PATH"
+      - name: Verify ost version
+        shell: bash
+        run: test "$(ost --version | tr -d '\r')" = "ost ${OST_VERSION}"
+      - name: Set up host Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.host_python }}
+      - name: Install declared Linux host packages
+        if: runner.os == 'Linux' && matrix.host_packages != null
+        shell: bash
+        env:
+          HOST_PACKAGES: ${{ join(matrix.host_packages.apt, ' ') }}
+        run: |
+          set -euo pipefail
+          test -n "$HOST_PACKAGES"
+          read -r -a packages <<< "$HOST_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "${packages[@]}"
+      - name: Pull and verify the pinned runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          ost artifact pull "$RUNTIME_REMOTE" --expect-artifact "$RUNTIME_ARTIFACT" --require-kind runtime --require-openusd "$OPENUSD" --require-openusd-version "$OPENUSD_VERSION"
+          ost artifact verify "$RUNTIME_ARTIFACT" --minimum-trust "$MINIMUM_TRUST" --require-sbom --require-provenance --require-openusd "$OPENUSD" --require-openusd-version "$OPENUSD_VERSION"
+          ost runtime pull "$PLATFORM" --profile "$PROFILE" --from-artifact "$RUNTIME_ARTIFACT" --force
+          ost library pull --target "$PLATFORM" --profile "$PROFILE"
+          ost runtime validate "$PLATFORM" --profile "$PROFILE"
+      # Root builds rewrite bundle outputs; the managed bundle build must be last.
+      - name: Build and test the workspace root
+        shell: bash
+        run: |
+          set -euo pipefail
+          ost plugin test --workspace --graph-only
+          ost build --target "$PLATFORM" --profile "$PROFILE" --progress plain
+          ost test --target "$PLATFORM" --profile "$PROFILE" --progress plain
+      - name: Build and test the standalone bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          ost plugin build "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE"
+          ost plugin doctor "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE" --json | tee .ost-ci/doctor.json
+          jq -e '.ok == true and .data.passed == true and .data.summary.fail == 0' .ost-ci/doctor.json
+          ost plugin test --workspace --target "$PLATFORM" --profile "$PROFILE" --up-to 5 --json
+          ost plugin run "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE" -- python "$BUNDLE/tests/test_stage.py"
+          mapfile -t test_files < <(find "$BUNDLE/build" -maxdepth 2 -type f -name CTestTestfile.cmake)
+          test "${#test_files[@]}" -eq 1
+          ost plugin run "$BUNDLE" --target "$PLATFORM" --profile "$PROFILE" -- ctest --test-dir "$(dirname "${test_files[0]}")" -C Release --output-on-failure --no-tests=error -R '^usdBlend\.(authoring|units|importer|instances)$'
+      - name: Package twice and verify reproducibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          ost plugin package --workspace --product --target "$PLATFORM" --profile "$PROFILE" --json | tee .ost-ci/package.json
+          ost plugin package --workspace --product --target "$PLATFORM" --profile "$PROFILE" --json > .ost-ci/package-second.json
+          digests() {
+            jq -er '(.data.packages[] | "\(.name) \(.archive_digest)"), ("product:\(.data.product.name) \(.data.product.archive_digest)")' "$1" | sort
+          }
+          digests .ost-ci/package.json > .ost-ci/digests-first.txt
+          digests .ost-ci/package-second.json > .ost-ci/digests-second.txt
+          diff -u .ost-ci/digests-first.txt .ost-ci/digests-second.txt
+          ost plugin test --workspace --from-package --target "$PLATFORM" --profile "$PROFILE" --up-to 5 --json
+      - name: Verify the aggregate in a repository-free install
+        shell: pwsh
+        run: .\scripts\Test-ReleaseProduct.ps1 -PackageReport .ost-ci/package.json -Platform $env:PLATFORM -Profile $env:PROFILE
+      - name: Stage archives and evidence sidecars
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-stage
+          jq -e --arg version "$VERSION" '
+            .ok == true and
+            (.data.release_members | sort) == (.data.packages | map(.name) | sort) and
+            .data.product.members == (.data.release_members | length) and
+            .data.product.version == $version and
+            all(.data.packages[]; .version == $version)
+          ' .ost-ci/package.json
+          want_bundles="$(git ls-files 'plugins/*/openstrata.plugin.yaml' | wc -l | tr -d ' ')"
+          want_tools="$(git ls-files 'tools/*/openstrata.tool.yaml' | wc -l | tr -d ' ')"
+          test "$(jq '[.data.packages[] | select(.member == "bundle")] | length' .ost-ci/package.json)" -eq "$want_bundles"
+          test "$(jq '[.data.packages[] | select(.member == "tool")] | length' .ost-ci/package.json)" -eq "$want_tools"
+          stage() {
+            local archive="$1" name="$2" target="$3" digest="$4" debug="$5" dir
+            if command -v cygpath > /dev/null; then archive="$(cygpath -u "$archive")"; fi
+            dir="$(dirname "$archive")"
+            test "sha256:$(sha256sum "$archive" | cut -d' ' -f1)" = "$digest"
+            cp "$archive" release-stage/
+            cp "$dir/manifest.json" "release-stage/${name}-${VERSION}-${target}.manifest.json"
+            cp "$dir/sbom.spdx.json" "release-stage/${name}-${VERSION}-${target}.sbom.spdx.json"
+            if [ -n "$debug" ]; then
+              if command -v cygpath > /dev/null; then debug="$(cygpath -u "$debug")"; fi
+              case "$debug" in */*) cp "$debug" release-stage/ ;; *) cp "$dir/$debug" release-stage/ ;; esac
+            fi
+          }
+          while IFS=$'\t' read -r archive name target digest debug; do
+            stage "$archive" "$name" "$target" "$digest" "$debug"
+          done < <(jq -r '.data.packages[] | [.archive, .name, .target, .archive_digest, (.debug_archive // "")] | @tsv' .ost-ci/package.json)
+          stage "$(jq -er '.data.product.archive' .ost-ci/package.json)" \
+            "$(jq -er '.data.product.name' .ost-ci/package.json)" \
+            "$(jq -er '.data.product.target' .ost-ci/package.json)" \
+            "$(jq -er '.data.product.archive_digest' .ost-ci/package.json)" ""
+      - name: Upload target artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release-${{ matrix.name }}
+          path: release-stage/
+          if-no-files-found: error
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: diagnostics-${{ matrix.name }}
+          path: |
+            .ost-ci/*.json
+            .ost-ci/digests-*.txt
+            ${{ matrix.bundle }}/.strata/reports/
+
+  release:
+    needs: [preflight, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Download target artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          pattern: release-*
+          path: dist-release
+          merge-multiple: true
+      - name: Add source, checksums and release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar.gz --prefix="usd-blender-plugins-${VERSION}/" \
+            -o "dist-release/usd-blender-plugins-${VERSION}-src.tar.gz" HEAD
+          (cd dist-release && sha256sum * > SHA256SUMS && sha256sum -c SHA256SUMS)
+          base="https://github.com/${GITHUB_REPOSITORY}/blob/v${VERSION}"
+          sed -e "s@](../../@](${base}/@g" -e "s@](../@](${base}/docs/@g" \
+            "docs/releases/v${VERSION}.md" > release-notes.md
+      - name: Create the draft GitHub release
+        if: needs.preflight.outputs.is_release == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "v${VERSION}" --verify-tag --draft \
+            --title "usd-blender-plugins v${VERSION}" \
+            --notes-file release-notes.md dist-release/*
+      - name: Upload the dry-run bundle
+        if: needs.preflight.outputs.is_release != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release-dry-run
+          path: |
+            dist-release/
+            release-notes.md
+          if-no-files-found: error
