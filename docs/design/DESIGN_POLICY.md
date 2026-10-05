@@ -859,6 +859,9 @@ source byte order. Custom data always constructs split fans, including when
 all faces are smooth or flat. Flat faces have isolated spaces. Within a fan,
 the saved pairs are averaged as signed integers with division toward zero;
 an averaged zero first component requests that fan's automatic normal.
+The [5.2 custom polygon-fan oracles](../../tests/fixtures/native-normals/README.md#blender-52-custom-polygon-fans)
+pin this same policy on concave/nonplanar polygons, shared sharp edges,
+flat faces and mixed signed pairs; they do not introduce another normal mode.
 
 Reference spaces use the angle-weighted source normal, the projected outgoing
 boundary ray and its cross-product tangent, and the incoming boundary ray.

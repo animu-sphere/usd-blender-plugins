@@ -10,7 +10,7 @@ import bpy
 VERSIONS = {(3, 3, 21), (4, 5, 13), (5, 2, 2)}
 ROOT = Path(__file__).resolve().parent / "native-normals"
 GROUPS = ("smooth", "flat", "split", "custom", "custom_fans", "custom_split_fans", "custom_angles", "multi", "constant")
-POLYGON_GROUPS = ("polygon_smooth", "polygon_split")
+POLYGON_GROUPS = ("polygon_smooth", "polygon_split", "custom_polygon_smooth", "custom_polygon_split")
 LEGACY_ANGLES = {"auto_smooth": math.pi, "auto_angle": math.pi / 3,
                  "auto_zero": 0.0, "auto_boundary": math.pi / 2}
 
@@ -24,6 +24,14 @@ def add_mesh(name, points, faces, flat=(), sharp=()):
         edge.use_edge_sharp = tuple(sorted(edge.vertices)) in sharp
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.scene.collection.objects.link(obj)
+
+
+def set_custom_normals(mesh, directions):
+    normals = [
+        tuple(value / math.hypot(*direction) for value in direction) if any(direction) else direction
+        for direction in (directions[index % len(directions)] for index in range(len(mesh.loops)))
+    ]
+    mesh.normals_split_custom_set(normals)
 
 
 def make_polygon_mesh(group):
@@ -50,10 +58,19 @@ def make_polygon_mesh(group):
              (math.cos(angle), -0.6 * math.sin(angle), 0.8 * math.sin(angle))),
             ((0, 1, 2), (1, 0, 3)))
     flat = ()
-    if group == "polygon_split":
+    if group.endswith("_split"):
         flat = (len(faces),)
         add(((0, 0, 0), (1, 0, 0), (0, 1, 0)), ((0, 1, 2),))
-    add_mesh(group.capitalize(), points, faces, flat)
+    sharp = ((3, 4), (6, 7)) if group == "custom_polygon_split" else ()
+    add_mesh(group.capitalize(), points, faces, flat, sharp)
+    if group.startswith("custom"):
+        mesh = bpy.data.objects[group.capitalize()].data
+        set_custom_normals(mesh, ((1, 2, 3),))
+        pairs = ((0, 0), (16384, 32767), (-16384, -16384),
+                 (-32768, -32768), (10000, 5000), (-10001, -7001))
+        for corner, element in enumerate(mesh.attributes["custom_normal"].data):
+            element.value = pairs[corner % len(pairs)]
+        mesh.update()
 
 
 def make_scene(group):
@@ -127,11 +144,7 @@ def make_scene(group):
     elif group.startswith("custom"):
         mesh = bpy.data.objects[group.capitalize()].data
         directions = ((0, 0, 0), (1, 2, 3), (-2, 1, -3), (0, 0, -1)) if group == "custom" else ((1, 2, 3),)
-        normals = [
-            tuple(value / math.hypot(*direction) for value in direction) if any(direction) else direction
-            for direction in (directions[index % len(directions)] for index in range(len(mesh.loops)))
-        ]
-        mesh.normals_split_custom_set(normals)
+        set_custom_normals(mesh, directions)
         if group == "custom_angles":
             for element in mesh.attributes["custom_normal"].data:
                 element.value = (16384, 32767)

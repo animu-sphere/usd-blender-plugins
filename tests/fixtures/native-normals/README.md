@@ -129,6 +129,48 @@ composition and exact authored arrays in both build modes.
 Generation/check commands are in the
 [build guide](../../../docs/guides/building.md#saved-normal-oracles).
 
+## Blender 5.2 custom polygon fans
+
+Generated, saved and reopened on Windows on 2026-10-05 with Blender 5.2.2
+LTS, build `d13f752e3b9c`, using the same generator:
+
+| File | Bytes | SHA-256 |
+| --- | --- | --- |
+| `blender-5.2.2/custom_polygon_smooth.blend` | 500218 | `b9faabdb7f2bed6b0364133a160357c19e836db77101855c8e26c3a66da82e15` |
+| `blender-5.2.2/custom_polygon_split.blend` | 500326 | `10aeed08629644de1633c812dcf42ab320397fdc10d9c8e229f24e4e71d2b41e` |
+
+These reuse the polygon geometry above: 167 points / 80 faces / 246 corners
+and 170 points / 81 faces / 249 corners respectively. Both store packed
+corner custom normals, which always select connected fans rather than
+point-domain averaging. The split case additionally marks the shared concave
+and nonplanar-quad edges sharp and retains the disconnected flat triangle.
+After requesting uniform normalized `(1, 2, 3)` custom normals through RNA,
+the generator replaces saved pairs with a repeating sequence of `(0, 0)`,
+`(16384, 32767)`, `(-16384, -16384)`, `(-32768, -32768)`, `(10000, 5000)`
+and `(-10001, -7001)`. This exercises automatic values, both signed limits
+and mixed-pair integer averaging on nontriangular reference spaces.
+
+The version-2 oracles capture Blender's resulting corner normals and exact
+packed pairs after saving, then verify both after reopening.
+`blendScene.meshBoundaries` compares all 495 raw signed-short pairs to RNA,
+including their dense corner `AttributeArray` storage.
+`blendScene.polygonNormals` compares owning points, topology and every
+reconstructed normal at the unchanged absolute `2e-5` component threshold;
+the measured maximum error is `1.11984e-6`, and native normals are unit length
+within `1e-12`. Reversed-block reads retain every array exactly.
+
+`usdBlend.authoring` checks native-to-USD and metadata-only composition,
+repeat reads and reversed-block determinism in root and standalone builds.
+Registered-plugin tests compare the saved normal oracles and retain metadata,
+repeat reads and reference composition. Generator regressions check
+cross-process/path reproduction, absolute-path exclusion and non-destructive
+rejection of saved polygon-coordinate, shared sharp-edge and packed-pair
+mutations. Unlike ordinary polygon normals, a custom normal can hide a changed
+flat-face selector, so the custom split mutation targets its shared sharp edge.
+The original polygon and older-version fixtures remain unchanged.
+This extends fixture evidence without changing the decoder, normal policy or
+claiming general Blender 5.x Mesh completion.
+
 ## Legacy auto-smooth
 
 Four additional files were generated, saved and reopened on Windows on

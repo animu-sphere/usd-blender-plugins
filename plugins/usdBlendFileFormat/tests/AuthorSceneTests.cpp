@@ -440,7 +440,9 @@ void CheckFixture(const std::filesystem::path& path) {
   Require(Text(layer) == Text(Take(blend::AuthorScene(Decode(path, true)))),
       "Reversed native block enumeration authors an identical stage");
   if (path.stem() != "transforms") {
-    const auto singleNormal = path.stem().string().starts_with("auto_") || path.stem().string().starts_with("polygon_");
+    const auto singleNormal = path.stem().string().starts_with("auto_") ||
+                              path.stem().string().starts_with("polygon_") ||
+                              path.stem().string().starts_with("custom_polygon_");
     const auto objectCount = singleNormal ? 1 : path.stem() == "mesh"                               ? 5
                                             : path.stem() == "scene" || path.stem() == "evaluation" ? 7
                                             : path.stem() == "fallbacks"                            ? 11
@@ -757,7 +759,7 @@ int main(int argc, char** argv) {
       std::cout << "Blender-written multi-scale native-to-USD unit and ASCII naming policies passed\n";
       return 0;
     }
-    Require(argc == 17, "Expected transform, independent Mesh, integrated Scene, cube, legacy Mesh, auto-smooth, polygon, fallback and evaluation fixtures");
+    Require(argc == 19, "Expected transform, independent Mesh, integrated Scene, cube, legacy Mesh, auto-smooth, polygon, custom polygon, fallback and evaluation fixtures");
     CheckSynthetic();
     CheckFailures();
     for (int index = 1; index < argc; ++index) {

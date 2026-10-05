@@ -337,12 +337,12 @@ void RejectCollision(const Fixture& fixture) {
       "BLEND_POINTER_DUPLICATE", fixture, index);
 }
 
-void CheckCustom(const std::filesystem::path& path) {
+void CheckCustom(const std::filesystem::path& path, const std::string& expectedName = "Custom") {
   const Fixture fixture(path);
   const auto map = Take(blend::BuildPointerMap(fixture.blocks));
   const auto selected = Take(blend::SelectSceneObjectValues(
       fixture.bytes, fixture.blocks, fixture.schema, fixture.header, {10000, 64}));
-  Require(selected.objects.size() == 1 && selected.objects[0].sourceName == "Custom" &&
+  Require(selected.objects.size() == 1 && selected.objects[0].sourceName == expectedName &&
               selected.objects[0].dataBlockIndex.has_value(),
       "Custom normal fixture has one selected Mesh");
   const auto mesh = fixture.View(*selected.objects[0].dataBlockIndex);
@@ -412,7 +412,7 @@ void CheckCustom(const std::filesystem::path& path) {
   std::size_t objects = 0, points = 0, faces = 0, loops = 0;
   std::string name;
   Require(static_cast<bool>(oracle >> scale >> objects >> std::quoted(name) >> points >> faces >> loops) &&
-              scale == selected.scene.metadata.sourceUnitScale && objects == 1 && name == "Custom" &&
+              scale == selected.scene.metadata.sourceUnitScale && objects == 1 && name == expectedName &&
               loops == static_cast<std::size_t>(corners) &&
               points == static_cast<std::size_t>(Take(Take(mesh.Member("totvert")).SignedInteger())) &&
               faces == static_cast<std::size_t>(Take(Take(mesh.Member("totpoly")).SignedInteger())),
@@ -640,6 +640,8 @@ int main(int argc, char** argv) {
     for (const auto directory : {argv[1], argv[2]}) {
       CheckCustom(std::filesystem::path(directory) / "custom.blend");
     }
+    CheckCustom(std::filesystem::path(argv[2]) / "custom_polygon_smooth.blend", "Custom_polygon_smooth");
+    CheckCustom(std::filesystem::path(argv[2]) / "custom_polygon_split.blend", "Custom_polygon_split");
     CheckRepeatedAddresses(std::filesystem::path(argv[2]) / "multi.blend");
     CheckRepeatedAddresses(std::filesystem::path(argv[2]) / "constant.blend");
     return 0;
