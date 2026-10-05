@@ -19,13 +19,27 @@ const Value& Take(const Result<Value>& result, std::vector<Diagnostic>& diagnost
   return result.GetValue();
 }
 
+std::uint64_t BlockBound(std::uint64_t byteSize) {
+  return std::min<std::uint64_t>(byteSize / 20 + 1, std::numeric_limits<std::uint32_t>::max());
+}
+
 } // namespace
 
-Result<Scene> ReadScene(ByteSource& source) {
+Result<Scene> ReadScene(ByteSource& source, const CompressionLimits& compressionLimits) {
   try {
     std::vector<Diagnostic> diagnostics;
-    const auto blockResult = ReadBlocks(source,
-        std::min<std::uint64_t>(source.Size() / 20 + 1, std::numeric_limits<std::uint32_t>::max()));
+    auto blockResult = ReadBlocks(source, BlockBound(source.Size()));
+    const bool compressed = !blockResult.HasValue() && blockResult.GetError().code == "BLEND_BLOCK_COMPRESSED";
+    if (!blockResult.HasValue() && !compressed) {
+      return Result<Scene>(blockResult.GetError());
+    }
+    const auto byteResult = ReadFileBytes(source,
+        compressed ? compressionLimits : CompressionLimits{source.Size(), source.Size(), 1, 10});
+    const auto& bytes = Take(byteResult, diagnostics);
+    MemoryByteSource memory(bytes);
+    if (compressed) {
+      blockResult = ReadBlocks(memory, BlockBound(bytes.size()));
+    }
     const auto& blocks = Take(blockResult, diagnostics);
     const BlendBlock* dnaBlock = nullptr;
     for (const auto& block : blocks) {
@@ -41,10 +55,6 @@ Result<Scene> ReadScene(ByteSource& source) {
       return Result<Scene>(Diagnostic{"BLEND_DNA_BLOCK", Severity::Fatal,
           "Missing DNA1 block", {}, {}, {}, false});
     }
-    // ReadBlocks rejects compressed input before these exact, uncompressed byte budgets are used.
-    const auto byteResult = ReadFileBytes(source, {source.Size(), source.Size(), 1, 10});
-    const auto& bytes = Take(byteResult, diagnostics);
-    MemoryByteSource memory(bytes);
     const auto headerResult = ReadHeader(memory);
     const auto& header = Take(headerResult, diagnostics);
     if (dnaBlock->offset > bytes.size() || dnaBlock->length > bytes.size() - dnaBlock->offset) {

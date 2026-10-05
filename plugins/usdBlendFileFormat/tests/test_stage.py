@@ -21,6 +21,17 @@ LEGACY_NORMALS = [NATIVE / "native-normals" / "blender-3.3.21" / f"{group}.blend
                   for group in ("auto_smooth", "auto_angle", "auto_zero", "auto_boundary")]
 POLYGON_NORMALS = [NATIVE / "native-normals" / "blender-5.2.2" / f"{group}.blend"
                    for group in ("polygon_smooth", "polygon_split")]
+COMPRESSED_CORPUS = FIXTURES.parent / "corpus" / "blender-5.2.2" / "Untitled.blend"
+
+
+def raw_zstd_frame(data):
+    frame = bytearray(b"\x28\xb5\x2f\xfd\xa0" + len(data).to_bytes(4, "little"))
+    for offset in range(0, len(data), 128 * 1024):
+        block = data[offset:offset + 128 * 1024]
+        last = offset + len(block) == len(data)
+        frame.extend(((len(block) << 3) | last).to_bytes(3, "little"))
+        frame.extend(block)
+    return bytes(frame)
 
 
 def converted_vector(value, scale=1.0):
@@ -135,9 +146,27 @@ class StageContractTests(unittest.TestCase):
             (missing, "BLEND_DNA_BLOCK"),
             (data[:end_start] + data[dna_start:dna_payload + dna_length] + data[end_start:], "BLEND_DNA_BLOCK"),
             (malformed, "BLEND_DNA_SECTION"),
-            (gzip.compress(data), "BLEND_BLOCK_COMPRESSED"),
-            (b"\x28\xb5\x2f\xfd" + b"\x00" * 20, "BLEND_BLOCK_COMPRESSED"),
         ]
+        gzip_data = gzip.compress(data, mtime=0)
+        bad_crc = bytearray(gzip_data)
+        bad_crc[-8] ^= 1
+        zstd_data = raw_zstd_frame(data)
+        compressed = COMPRESSED_CORPUS.read_bytes()
+        cases.extend([
+            (gzip_data[:-1], "BLEND_COMPRESSION_TRUNCATED"),
+            (bad_crc, "BLEND_COMPRESSION_INVALID"),
+            (gzip_data + b"not-a-member", "BLEND_COMPRESSION_INVALID"),
+            (zstd_data[:-1], "BLEND_COMPRESSION_TRUNCATED"),
+            (zstd_data + b"x", "BLEND_COMPRESSION_INVALID"),
+            (compressed[:-1], "BLEND_COMPRESSION_TRUNCATED"),
+            (compressed + b"x", "BLEND_COMPRESSION_INVALID"),
+            (b"\x28\xb5\x2f\xfd\x00\x70" + zstd_data[9:], "BLEND_COMPRESSION_WINDOW_LIMIT"),
+            (b"\x28\xb5\x2f\xfd\xa0" + (262144).to_bytes(4, "little") +
+             (131072 << 3 | 2).to_bytes(3, "little") + b"\x00" +
+             (131072 << 3 | 3).to_bytes(3, "little") + b"\x00", "BLEND_COMPRESSION_RATIO_LIMIT"),
+        ])
+        cases.extend((encode(payload), code) for payload, code in list(cases[:5])
+                     for encode in (lambda payload: gzip.compress(payload, mtime=0), raw_zstd_frame))
         with TemporaryDirectory(prefix="blend-import-") as directory:
             for index, (payload, code) in enumerate(cases):
                 path = Path(directory) / f"invalid-{index}.blend"
@@ -149,6 +178,43 @@ class StageContractTests(unittest.TestCase):
                         self.assertIn(code, str(error.exception))
                         if code == "BLEND_DNA_SECTION":
                             self.assertIn(f"byte {dna_payload}", str(error.exception))
+
+    def test_compressed_scene_equivalence(self):
+        with TemporaryDirectory(prefix="blend-compressed-") as directory:
+            for fixture in [FIXTURES / "single_cube.blend", SCENES[1], FALLBACKS[0]]:
+                data = fixture.read_bytes()
+                encodings = [
+                    gzip.compress(data, mtime=0),
+                    raw_zstd_frame(data),
+                    gzip.compress(data[:5], mtime=0) + gzip.compress(data[5:], mtime=0),
+                    raw_zstd_frame(data[:5]) + raw_zstd_frame(data[5:]),
+                ]
+                end_start = list(cube_blocks(data))[-1][1]
+                dense = data[:end_start] + struct.pack("<4siQqq", b"TEST", 0, 0, 0, 0) * 6000 + data[end_start:]
+                encodings.append(gzip.compress(dense, mtime=0))
+                self.assertGreater(len(list(cube_blocks(dense))), len(encodings[-1]) // 20 + 1)
+                for index, payload in enumerate(encodings):
+                    path = Path(directory) / f"{fixture.stem}-{index}.blend"
+                    path.write_bytes(payload)
+                    with self.subTest(fixture=str(fixture), encoding=index):
+                        for metadata_only in (False, True):
+                            expected = Sdf.Layer.OpenAsAnonymous(str(fixture), metadataOnly=metadata_only)
+                            actual = Sdf.Layer.OpenAsAnonymous(str(path), metadataOnly=metadata_only)
+                            self.assertEqual(actual.ExportToString(), expected.ExportToString())
+                            self.assertEqual(actual.ExportToString(),
+                                             Sdf.Layer.OpenAsAnonymous(str(path), metadataOnly=metadata_only).ExportToString())
+                        stage = Usd.Stage.CreateInMemory()
+                        root = stage.DefinePrim("/Referenced")
+                        root.GetReferences().AddReference(str(path))
+                        self.assertEqual(root.GetCustomDataByKey("blend:stageContractVersion"), 1)
+                        self.assertTrue(any(prim.IsA(UsdGeom.Mesh) for prim in stage.Traverse()))
+            stage = Usd.Stage.Open(str(COMPRESSED_CORPUS))
+            self._assert_contract(stage, "5.2", "Scene")
+            for name in ("Camera", "Light"):
+                prim = stage.GetPrimAtPath(f"/Asset/geo/{name}")
+                self.assertEqual(prim.GetTypeName(), "Xform")
+                self.assertEqual(prim.GetChildren(), [])
+            self.assertTrue(stage.GetPrimAtPath("/Asset/geo/Cube/mesh").IsA(UsdGeom.Mesh))
 
     def test_recoverable_diagnostics(self):
         data = bytearray((FIXTURES / "single_cube.blend").read_bytes())
@@ -186,7 +252,7 @@ class StageContractTests(unittest.TestCase):
             self.assertTrue(all("byte " in line and "block " in line for line in warnings), result.stderr)
 
     def test_repeat_read_and_metadata(self):
-        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *FALLBACKS, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
+        for fixture in [FIXTURES / "single_cube.blend", COMPRESSED_CORPUS, *SCENES, *FALLBACKS, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
             with self.subTest(fixture=str(fixture)):
                 path = str(fixture)
                 first = Sdf.Layer.OpenAsAnonymous(path)
@@ -210,7 +276,7 @@ class StageContractTests(unittest.TestCase):
                                  Sdf.Layer.OpenAsAnonymous(path, metadataOnly=True).ExportToString())
 
     def test_contract_survives_reference(self):
-        for fixture in [FIXTURES / "single_cube.blend", *SCENES, *FALLBACKS, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
+        for fixture in [FIXTURES / "single_cube.blend", COMPRESSED_CORPUS, *SCENES, *FALLBACKS, *MESHES, *LEGACY_NORMALS, *POLYGON_NORMALS]:
             with self.subTest(fixture=str(fixture)):
                 stage = Usd.Stage.CreateInMemory()
                 root = stage.DefinePrim("/Referenced")

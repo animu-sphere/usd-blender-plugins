@@ -157,8 +157,9 @@ This API deliberately has no implicit defaults; callers supply every field.
 The [committed-input measurements](../../plugins/usdBlendFileFormat/tests/corpus/README.md#compression-measurements)
 pin exact byte, integer-ratio and decoder-window acceptance boundaries.
 The accepted standard policy is in §4.2, with separate large-input evidence.
-Existing unit-test budgets do not define that policy. Accepting it does not
-change the importer's uncompressed-only boundary.
+Existing unit-test budgets do not define that policy. The bundle selects it
+explicitly for compressed input under the
+[Scene importer boundary](DESIGN_POLICY.md#532-scene-importer-boundary).
 
 ### 4.2 Standard full-stream limit policy
 
@@ -201,9 +202,13 @@ concurrency limits; streaming/range optimizations remain later work.
 
 The policy is opt-in at the existing explicit-limit API and CLI boundaries.
 Zero-initialized `CompressionLimits` stay invalid, the CLI still requires all
-four options for compressed input, and the importer still rejects compressed
-containers. Wiring automatic defaults or compressed scene importing requires
-its own implementation and regressions; this decision does not imply either.
+four options for compressed input, and neither reader API selects defaults.
+The bundle's separate
+[Scene importer boundary](DESIGN_POLICY.md#532-scene-importer-boundary)
+explicitly selects the standard policy for gzip/Zstandard and allows all four
+overrides through its internal `ReadScene` helper. Its importer and
+registered-plugin regressions establish bounded compressed Mesh/Empty scene
+composition, not broader Blender-version or data-schema compatibility.
 
 ## 5. File header
 
@@ -337,10 +342,11 @@ diagnostic; its record remains in the block enumeration.
 and returns `Result<std::vector<BlendBlock>>`. A compressed source must first
 pass through `ReadFileBytes` (§4.1), then be wrapped in `MemoryByteSource`
 while the decoded bytes remain alive. No production defaults are selected
-by either API. The importer composes this boundary for uncompressed input
-under its [structural budgets](DESIGN_POLICY.md#532-uncompressed-importer-boundary);
-compressed scene imports remain outside that implemented boundary. The
-accepted full-stream policy in §4.2 does not wire compression into it.
+by either API. The importer composes this boundary for uncompressed and
+decoded gzip/Zstandard input under its
+[structural budgets](DESIGN_POLICY.md#532-scene-importer-boundary).
+It explicitly selects §4.2 for compressed byte reading; block-count budgets
+use decoded size rather than compressed stored size.
 
 `BlendBlock` normalizes both layouts as follows:
 
@@ -648,9 +654,11 @@ with a diagnostic. Evaluated data comes only from the Blender host backend
 - **BLEND-O5 (2026-10-05):** accept the caller-overridable standard
    full-stream budgets in §4.2, based on the linked large-mesh,
    high-compressibility and packed-asset measurements. Existing explicit-limit
-   APIs, CLI argument requirements, header probes and uncompressed importer
-   behavior remain unchanged. This resolves the policy question, not automatic
-   default selection or compressed scene importing.
+   APIs, CLI argument requirements and header probes remain unchanged.
+   The policy decision alone did not enable importer behavior; the separately
+   tested [Scene importer boundary](DESIGN_POLICY.md#532-scene-importer-boundary)
+   now explicitly selects these limits for compressed inputs while preserving
+   the uncompressed structural budgets.
 
 - **BLEND-O1 (2026-10-02):** format 1 uses the seventeen-byte file header
    in §5.2 and the 32-byte block header in §6.2. The Blender 5.0 release notes

@@ -69,7 +69,12 @@ The bundle's smoke and roundtrip pyramid uses this fixture.
 `/Asset/geo/Cube/mesh`, including exact polygon topology, normals, indexed `st`,
 extent and identity transform. `test_stage.py` additionally checks metadata,
 reference composition, repeat-read determinism, metadata-only output,
-container/SDNA failures, compressed rejection and recoverable diagnostics.
+container/SDNA failures, bounded gzip/Zstandard scene composition and
+recoverable diagnostics. Compressed test inputs are generated in temporary
+directories from committed Cube, integrated Scene and fallback bytes; no
+additional binary fixtures or codec dependencies are introduced. These tests
+also check concatenated members/frames splitting the header, corrupt/truncated
+streams, default ratio/window limits and decoded-size block bounds.
 Commands are in the [build guide](../../../../docs/guides/building.md#registered-cube-fixture).
 
 ### Cube milestone verification

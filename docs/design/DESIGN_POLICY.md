@@ -668,7 +668,7 @@ channels still define the result, including for parent-only Objects.
 An active Scene with empty Collections produces owning metadata and empty
 object/mesh vectors; the Scene-only library's null `curscene` remains an error.
 This is a library decoding boundary, not an `IBlendBackend`. The bundle
-composes it under [the importer boundary](#532-uncompressed-importer-boundary).
+composes it under [the importer boundary](#532-scene-importer-boundary).
 Transform oracle fixtures compare
 native world matrices, constructed parent-relative local matrices and
 converted parent/local composition against saved Blender values; that does not establish USD local-transform authoring or
@@ -959,32 +959,41 @@ freeze the Mesh/Empty unit and ASCII identifier policies through this boundary.
 Fixture-backed scope belongs in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#31-scene-ir-usd-authoring).
 
-### 5.3.2 Uncompressed importer boundary
+### 5.3.2 Scene importer boundary
 
 The bundle's internal `ReadScene(ByteSource&)` composes block enumeration,
-owning byte reading, one bounded DNA1 schema and native `DecodeScene`.
-It requires a complete uncompressed container and the saved active Scene;
+owning full-stream byte reading, one bounded DNA1 schema and native `DecodeScene`.
+It requires a complete container and the saved active Scene;
 header-only inputs and Scene-only libraries are not scene fallbacks.
-Compressed inputs fail with `BLEND_BLOCK_COMPRESSED` before full byte
-reading; the accepted
+For gzip and Zstandard inputs the bundle explicitly selects the accepted
 [full-stream limit policy](BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
-does not change this boundary or select defaults implicitly.
+through `DefaultSceneCompressionLimits`: 256 MiB stored input, 512 MiB decoded
+output, expansion ratio 4,096 and window log 23. The internal
+`ReadScene(source, compressionLimits)` argument permits all four caller
+overrides; the registered file format selects the standard value, not layer
+arguments. Limit failures retain their fatal `BLEND_COMPRESSION_*` code without
+retry or partial Scene publication. Complete members/frames and checksums
+are validated before block/SDNA/Scene decoding; concatenated streams share
+the same budgets. The explicit-limit reader API and CLI are unchanged.
 `CanRead` remains a bounded header-identification probe, not a guarantee
 that full scene decoding succeeds.
 
-The block budget is `min(storedSize / 20 + 1, UINT32_MAX)`, following the
-inspection tool's minimum block-header bound. Uncompressed byte budgets
-equal the stored size, with ratio 1; the required compression window field
-is unused on this path. Visited-node and active-depth budgets equal the
+The block budget is `min(decodedSize / 20 + 1, UINT32_MAX)`, following the
+inspection tool's minimum block-header bound. On the uncompressed path,
+decoded size equals stored size and byte budgets still equal that size,
+with ratio 1; the required compression window field is unused. Compressed
+policy overrides do not cap uncompressed assets. Visited-node and active-depth budgets equal the
 enumerated block count: every reached graph node occupies a distinct block.
 Cycles and invalid references still fail under the native graph contract.
-These structural bounds are not a new fixed-size production resource policy.
+These structural bounds are separate from the compressed-input resource policy.
 
 `SdfFileFormat::Read` passes `metadataOnly` to `AuthorScene` and transfers the
 temporary authored layer only after both boundaries succeed. Fatal
 diagnostics become `TF_RUNTIME_ERROR`; recoverable Warning and Unsupported
 diagnostics become `TF_WARN`, preserving byte, block and datablock context.
-DNA1-relative failure offsets are translated into input-file coordinates.
+DNA1-relative failure offsets are translated into decoded-file coordinates.
+Block, SDNA and Scene byte offsets refer to that decoded stream, not positions
+in the compressed envelope; compression errors retain their stored-input context.
 No Blender process, host fallback, second normalization or installed library
 is introduced. Fixture-backed scope belongs in the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#3-stage).

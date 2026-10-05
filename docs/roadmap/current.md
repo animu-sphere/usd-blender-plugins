@@ -48,14 +48,19 @@ complete general Scene coverage or introduce Camera/Light data schemas.
 Separate [multi-scale fixtures](../../tests/fixtures/native-units/README.md)
 establish the unit and ASCII identifier policies through native-to-USD
 composition and registered-plugin reads. Tasks 2.4 and 2.7 have landed for
-the supported uncompressed Mesh/Empty boundary. The importer composes native
-decoding and authoring; byte budgets use the stored size and graph budgets use
-the enumerated block count, not arbitrary production constants. `metadataOnly`
+the supported Mesh/Empty boundary. The importer composes native
+decoding and authoring for uncompressed, gzip and Zstandard inputs. Uncompressed
+byte budgets use the stored size; block budgets use decoded size and graph budgets
+use the enumerated block count. `metadataOnly`
 retains Object transforms and typed Mesh children without geometry attributes;
 lazy decoding remains Phase 8 scope.
-The accepted [full-stream limit policy](../design/BLEND_CONTRACT.md#42-standard-full-stream-limit-policy)
-does not broaden the importer's uncompressed-only boundary; compressed scene
-importing still requires separate implementation and evidence.
+Compressed importing explicitly selects the accepted
+[full-stream limit policy](../design/BLEND_CONTRACT.md#42-standard-full-stream-limit-policy).
+Blender-written 5.2.2 compressed corpus and generated gzip/Zstandard encodings
+of the existing Cube, integrated Scene and fallback oracles cover bounded
+importer composition, limits, corruption, metadata, repeats and references.
+This does not complete general 5.x Scene/Mesh coverage or add old Blender-written
+gzip evidence.
 
 ## Phase 8 — performance and robustness
 
