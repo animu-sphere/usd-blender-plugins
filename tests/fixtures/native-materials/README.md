@@ -49,6 +49,15 @@ independent-process/different-path semantic reproduction, home-path exclusion,
 non-destructive success/failure, changed-oracle rejection and saved constant,
 Object-slot and face-index mutations.
 
+Its Blender 5.2.2 Cycles CPU render test also reopens `Deferred`, confirms the
+saved Alpha 0.25 and Emission Strength 3, then varies those inputs and sets
+Emission Color to `(0.25, 0.5, 0.75)`. With a black Base Color and transparent
+film, it checks opaque strengths 0, 1 and 3 and alpha 0.25 and 0 at strength 3.
+The average 8×8 OpenEXR pixels have alpha equal to the socket value and
+premultiplied RGB equal to color × strength × alpha, within 0.02 and 0.03
+respectively. This is source-render evidence for those cases, not a USD renderer
+comparison, render-method/threshold decision, or implementation claim.
+
 [MaterialTests.cpp](../../../libs/blendScene/tests/MaterialTests.cpp) checks
 native constants, effective slots, shared Mesh identity, exact face indices,
 contextual diagnostics and malformed saved storage. The `usdBlend.materials`
