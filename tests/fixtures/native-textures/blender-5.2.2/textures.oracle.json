@@ -2,7 +2,8 @@
   "materials": {
     "Absolute": {
       "diagnostics": [
-        "BLEND_IMAGE_ABSOLUTE_PATH"
+        "BLEND_IMAGE_ABSOLUTE_PATH",
+        "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED"
       ],
       "diffuseColor": [
         0.20000000298023224,
@@ -22,7 +23,9 @@
       }
     },
     "ActiveUV": {
-      "diagnostics": [],
+      "diagnostics": [
+        "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED"
+      ],
       "diffuseColor": [
         0.20000000298023224,
         0.4000000059604645,
@@ -99,6 +102,7 @@
     },
     "Closest": {
       "diagnostics": [
+        "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED",
         "BLEND_IMAGE_INTERPOLATION_UNSUPPORTED"
       ],
       "diffuseColor": [
@@ -193,7 +197,9 @@
       }
     },
     "Mirror": {
-      "diagnostics": [],
+      "diagnostics": [
+        "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED"
+      ],
       "diffuseColor": [
         0.20000000298023224,
         0.4000000059604645,
@@ -267,7 +273,9 @@
       }
     },
     "NamedUV": {
-      "diagnostics": [],
+      "diagnostics": [
+        "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED"
+      ],
       "diffuseColor": [
         0.20000000298023224,
         0.4000000059604645,
@@ -372,7 +380,9 @@
       }
     },
     "Relative": {
-      "diagnostics": [],
+      "diagnostics": [
+        "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED"
+      ],
       "diffuseColor": [
         0.20000000298023224,
         0.4000000059604645,
@@ -416,7 +426,8 @@
     },
     "UNC": {
       "diagnostics": [
-        "BLEND_IMAGE_ABSOLUTE_PATH"
+        "BLEND_IMAGE_ABSOLUTE_PATH",
+        "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED"
       ],
       "diffuseColor": [
         0.20000000298023224,

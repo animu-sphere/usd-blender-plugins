@@ -197,7 +197,10 @@ This is a bounded step toward §5, not completion of that intended subset:
 - Image Texture **Color → Base Color** and **Alpha → Metallic, Roughness,
   IOR, Coat Weight or Coat Roughness** are translated. Color-to-scalar and
   Alpha-to-color coercions use diagnosed constants until their Blender
-  semantics can be reproduced without choosing an arbitrary channel.
+  semantics can be reproduced without choosing an arbitrary channel. In the
+  tested default Blender color configuration, Color-to-scalar uses luminance
+  and Alpha-to-color repeats the scalar across RGB; the core Preview Surface
+  nodes do not provide these operations.
 - Normal requires **Image Texture Color → Normal Map → Normal**, tangent
   space, OpenGL convention, displaced base, constant strength one and an
   unmuted graph. Other strengths/spaces/conventions/bases use diagnosed
@@ -216,6 +219,17 @@ This is a bounded step toward §5, not completion of that intended subset:
   diagnosed, never probed or machine-locally rewritten. Empty paths are missing
   images; paths that are neither Blender-relative nor absolute are diagnosed
   and omitted. Missing external files remain the asset resolver's concern.
+
+For an sRGB Image Color used by a supported Base Color or Normal texture,
+`BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED` is reported once per Material. Blender
+can alter Color based on image alpha and whether the Alpha output is used,
+while the Preview Surface texture does not reproduce that behavior. Since the
+decoder neither opens the image nor establishes all evaluated socket usage,
+the warning is conservative even for opaque images or a linked Alpha output.
+The warning itself does not omit a texture or change its Preview Surface
+network; a separate UV diagnostic may still omit it. Non-Color textures,
+Alpha-only textures and textures omitted by the native decoder do not receive
+this warning.
 
 Authoring keeps all shaders inside `preview`, with one `<Input>Texture` per
 destination and standard shader IDs only. Active-render UVs use `StReader`

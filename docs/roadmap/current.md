@@ -16,7 +16,7 @@ older-version compatibility is deferred to Phase 8 below.
 
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
-| 3.1 | [External image and normal-map subset](../design/MATERIAL_POLICY.md#5-supported-node-subset) | decode supported Image Texture/UV Map/Normal Map paths, author standard texture/primvar-reader shaders inside `preview`, verify relative/absolute paths and unsupported image diagnostics with Blender 5.x oracles and registered-plugin tests | 🚧 |
+| 3.1 | [External image and normal-map subset](../design/MATERIAL_POLICY.md#5-supported-node-subset) | decode supported Image Texture/UV Map/Normal Map paths, resolve cross-type coercions and sRGB image-alpha behavior without violating the Preview Surface contract, and verify paths and diagnostics with Blender 5.x oracles and registered-plugin tests | 🚧 |
 | 3.2 | [Alpha and Emission mapping](../design/MATERIAL_POLICY.md#9-open-questions) | resolve MAT-O1/MAT-O4 for the maintained version scope using fixtures/render evidence, replace deferred-input fallback with the agreed opacity/threshold/emissive inputs, preserve constants and binding regressions | ⬜ |
 | 3.3 | [Color attributes](../design/STAGE_CONTRACT.md#18-open-questions) | resolve STAGE-O3, choose and fixture-test color domains/types and active-render `displayColor` mapping, and update the capability matrix only for proven scope | ⬜ |
 | 3.4 | [Generic-renderer acceptance](../design/DESIGN_POLICY.md#14-phases) | verify base color, textures, alpha and normal maps in a generic renderer, every binding under `/Asset/mtl`, both build modes and hosted Windows/Linux gates | ⬜ |
@@ -26,8 +26,10 @@ and a [Blender 5.2.2 oracle](../../tests/fixtures/native-textures/README.md).
 Color-to-Base-Color, Alpha-to-scalar, UV Map selection and strength-one OpenGL
 tangent Normal Map networks have local native, authoring and registered-plugin
 evidence. Color-to-scalar and Alpha-to-color coercions remain diagnosed constant
-fallbacks, rather than guessed channel conversions; they still block the full
-§5 subset. Generic-renderer and hosted acceptance remain separate work.
+fallbacks, rather than guessed channel conversions. sRGB Image Color textures
+are retained with a conservative alpha-behavior warning. Both limitations
+block the full §5 subset. Generic-renderer and hosted acceptance remain
+separate work.
 
 ## Phase 8 — performance and robustness
 

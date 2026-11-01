@@ -165,6 +165,9 @@ class StageContractTests(unittest.TestCase):
                     self.assertEqual(len(warnings), 1, "\n".join(actual))
                     self.assertIn("[byte ", warnings[0])
                     self.assertIn("[block ", warnings[0])
+                    if code == "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED":
+                        self.assertIn("image alpha is not inspected", warnings[0])
+                        self.assertIn("this warning does not omit the texture", warnings[0])
 
     def _assert_contract(self, stage, source_version, source_scene):
         self.assertIsNotNone(stage)

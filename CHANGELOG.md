@@ -36,6 +36,13 @@ All notable changes to this project are recorded here. The format follows
     reading another primvar. Cross-type socket coercion, Alpha/Emission and
     generic-renderer acceptance remain incomplete Phase 3 work.
 
+### Changed
+
+- Supported sRGB Image Color textures now emit a conservative, contextual
+    alpha-approximation warning without changing Preview Surface authoring.
+    Blender Cycles socket-value checks and native/registered-plugin regressions
+    cover the warning and cross-type fallbacks.
+
 ## [0.1.0] - 2026-10-05
 
 ### Fixed
