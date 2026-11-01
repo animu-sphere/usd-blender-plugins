@@ -60,6 +60,17 @@ premultiplied RGB equal to color × strength × alpha, within 0.02 and 0.03
 respectively. This is source-render evidence for those cases, not a USD renderer
 comparison, render-method/threshold decision, or implementation claim.
 
+The separate [Eevee test](../test_material_alpha_eevee.py) checks Blender 5.2.2
+on Windows with GPU rendering. Starting from `DITHERED`, the deprecated
+`blend_method` setter maps `OPAQUE`, `CLIP` and `HASHED` to `DITHERED`, and
+`BLEND` to `BLENDED`. It also saves and reopens temporary fixture variations
+for both current render methods, thresholds 0.1 and 0.9 and constant Alpha
+0.25 and 0.75. With transparent film and the same black-base, emissive plane,
+8×8, 256-sample OpenEXR averages remain within 0.02 of the input Alpha and
+0.03 of premultiplied emission, even when the threshold crosses Alpha.
+The committed fixture is not modified. These are bounded source-render cases,
+not evidence about every material graph, Blender version or USD renderer.
+
 The registered-plugin [Storm check](../../../docs/guides/building.md#direct-emission-rendering-in-storm)
 uses this same saved `Deferred` binding and compares visible emission against
 session-only zero and non-white strength controls. It is not a linear-pixel

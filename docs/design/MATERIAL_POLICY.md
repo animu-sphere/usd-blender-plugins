@@ -279,6 +279,15 @@ MAT-O2. It is not scheduled by a Phase yet.
 
 ## 9. Open questions
 
+For MAT-O1, Blender 5.2.2's deprecated `blend_method` setter maps `CLIP` to
+`DITHERED` when starting from `DITHERED`, rather than retaining a clip mode.
+In bounded Eevee source-render tests, both `DITHERED` and `BLENDED` retain
+fractional opacity when the saved `alpha_threshold` is above or below the
+constant Alpha. See the [fixture evidence](../../tests/fixtures/native-materials/README.md#oracle-and-checks).
+Do not treat that threshold as a 5.2 clip threshold solely because it is
+present in saved settings. The USD mapping and broader 5.x behavior remain
+open pending renderer and implementation evidence.
+
 | Id | Question | Proposed answer | Blocks |
 | --- | --- | --- | --- |
 | MAT-O1 | How does Blender's alpha (blend, clip, hashed; and the 4.2+ render method) map to `opacity` and `opacityThreshold`? | Clip → `opacityThreshold` from the clip value; everything else → `opacity` with threshold 0. Confirm for the maintained Blender 5.x scope; older-version compatibility is deferred. | Phase 3 |
