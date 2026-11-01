@@ -1156,6 +1156,36 @@ equivalence is not established. Alpha and color attributes remain outside
 the supported scope; texture verification is below. See the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#3-stage).
 
+### Direct emission rendering in Storm
+
+The optional `lookdev` runtime and prerequisites are described under
+[direct usdview rendering](#direct-usdview-rendering). This local Windows
+command was run with the current lookdev bundle and OpenUSD 26.08:
+
+```powershell
+ost plugin build plugins\usdBlendFileFormat --target cy2026 --profile lookdev
+$usdBin = Join-Path $HOME '.ost\runtimes\openstrata-cy2026-windows-x86_64-py313-lookdev\bin'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile lookdev -- python -u "$usdBin\testusdview" tests\fixtures\native-materials\blender-5.2.2\materials.blend --renderer Storm --select /Asset/geo/Deferred/mesh --testScript plugins\usdBlendFileFormat\tests\test_emission_usdview.py
+```
+
+The harness opens the saved fixture through the registered plugin, verifies
+the `Deferred` binding and authored `(3,3,3)` emission, isolates its mesh and
+checks the center pick. In the session layer it sets black diffuse color and
+compares the saved emission with zero emission and non-white strength-one
+`(0.25,0.5,0.75)` and strength-three `(0.75,1.5,2.25)` controls.
+Both saved-versus-zero and strength-one-versus-three must change more than
+100 sampled pixels by over 10 on at least one 8-bit RGB channel; restoring the
+saved value must leave fewer than one quarter as many differences. The center
+pixel must preserve the strength-one channel order and brighten in each
+channel at strength three. The harness temporarily disconnects and reconnects
+the session-layer graph output after each constant edit to refresh Storm's
+material network; it does not test live constant-edit propagation or modify the
+fixture.
+
+This is a local visibility check, not a linear-pixel or renderer-equivalence
+comparison with the Cycles oracle. It does not resolve emission units or Alpha,
+and is not part of hosted CI.
+
 ## External-texture and normal-map oracles
 
 [native-textures](../../tests/fixtures/native-textures/README.md) records the
