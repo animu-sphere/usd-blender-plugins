@@ -1209,11 +1209,22 @@ The harness opens the `.blend` through the registered plugin, checks its
 relative image resolution, binding and UV/texture connections, and isolates
 the `Relative` object using the session layer. It checks Storm convergence,
 the center pick, and visible red and red/green texture regions. A session-only
-constant-color negative control must not reproduce those regions. It does not
-modify the fixture. The two intentionally nonexistent absolute/UNC fixture
-images may produce texture-loading warnings before isolation. Set
-`USD_BLEND_USDVIEW_SCREENSHOT` to retain the textured viewport capture.
+constant-color negative control must not reproduce those regions. It also
+isolates `Normal` and `NamedNormal` and checks their bound normal texture and
+UV-reader connections. For each, disconnecting the normal input must change
+more than 100 sampled pixels by over 10 on at least one 8-bit RGB channel;
+reconnecting it must restore the image within one quarter of that count.
+Although the fixture's UV maps initially have identical coordinates, the
+harness also shifts the named normal UV in the session layer. Its change must
+affect more than 100 sampled pixels, while shifting the unrelated `st`,
+shifting the named UV with the normal disconnected, and restoring both UVs
+must each change fewer than one quarter as many pixels. The uniform shift
+preserves UV gradients and does not establish tangent-frame correctness. The
+harness does not modify the fixture. The two intentionally nonexistent
+absolute/UNC fixture images may produce texture-loading warnings before
+isolation. Set `USD_BLEND_USDVIEW_SCREENSHOT` to retain the base-color textured
+viewport capture.
 
-This is a local texture visibility check, not pixel-equivalence evidence for
-Blender alpha/color behavior, normal maps or the complete Phase 3 renderer
-acceptance gate. It is not part of hosted CI.
+These are local visibility checks, not pixel-equivalence evidence for Blender
+alpha/color or normal-map behavior, nor the complete Phase 3 renderer acceptance
+gate. They are not part of hosted CI.

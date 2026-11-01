@@ -75,6 +75,12 @@ The supported surface is a **Principled BSDF** connected to the active
 | Coat Weight | `clearcoat` | |
 | Coat Roughness | `clearcoatRoughness` | |
 
+The initial Alpha/Emission compatibility target is constant opacity,
+Image Texture Alpha connected to opacity, and constant Emission Color
+multiplied by constant Emission Strength. Other linked combinations remain
+diagnosed fallbacks unless they are supported explicitly; their full
+translation is not a prerequisite for this compatibility path.
+
 `useSpecularWorkflow = 0` always. Inputs not in the table (subsurface,
 sheen, transmission, anisotropy, …) are not authored; a non-default value is
 reported with a diagnostic.
@@ -89,10 +95,17 @@ An input of the Principled BSDF is authored as:
 | Linked from | Authored as |
 | --- | --- |
 | nothing | the socket's constant value |
-| Image Texture (Color or Alpha output) | `UsdUVTexture` reading the image (§6), connected to the input |
+| Image Texture Color → Base Color | `UsdUVTexture` reading the image (§6), connected to `diffuseColor` |
+| Image Texture Alpha → supported scalar input | `UsdUVTexture` Alpha output connected to that input; opacity mapping is MAT-O1 |
 | Image Texture → Normal Map → Normal | `UsdUVTexture` with the bias and scale of §4 |
 | UV Map node into an Image Texture's Vector | the texture's `StReader` reads that UV map's primvar |
 | anything else | the socket's constant value, with `BLEND_MATERIAL_UNSUPPORTED_NODE` |
+
+Color-to-scalar and Alpha-to-color coercions are outside this compatibility
+subset: retain a diagnosed constant rather than choosing an arbitrary channel.
+The sRGB image-alpha approximation in §7.2 is also an explicit limitation, not
+an exact Blender-equivalence claim. Wider graph fidelity may be considered for
+MaterialX (§8); it is not required of the Preview Surface path.
 
 Image Texture settings:
 
@@ -192,12 +205,12 @@ references, typed storage, lists and strings fail without a partial Scene.
 Linked Images are diagnosed without following their Library; packed-image list
 framing is checked, but packed payloads are not decoded.
 
-This is a bounded step toward §5, not completion of that intended subset:
+The native external-texture boundary for the compatibility subset is:
 
 - Image Texture **Color → Base Color** and **Alpha → Metallic, Roughness,
   IOR, Coat Weight or Coat Roughness** are translated. Color-to-scalar and
-  Alpha-to-color coercions use diagnosed constants until their Blender
-  semantics can be reproduced without choosing an arbitrary channel. In the
+  Alpha-to-color coercions use diagnosed constants, rather than choosing an
+  arbitrary channel. In the
   tested default Blender color configuration, Color-to-scalar uses luminance
   and Alpha-to-color repeats the scalar across RGB; the core Preview Surface
   nodes do not provide these operations.
@@ -265,7 +278,7 @@ MAT-O2. It is not scheduled by a Phase yet.
 
 | Id | Question | Proposed answer | Blocks |
 | --- | --- | --- | --- |
-| MAT-O1 | How does Blender's alpha (blend, clip, hashed; and the 4.2+ render method) map to `opacity` and `opacityThreshold`? | Clip → `opacityThreshold` from the clip value; everything else → `opacity` with threshold 0. Confirm against 4.5 and 5.x fixtures. | Phase 3 |
+| MAT-O1 | How does Blender's alpha (blend, clip, hashed; and the 4.2+ render method) map to `opacity` and `opacityThreshold`? | Clip → `opacityThreshold` from the clip value; everything else → `opacity` with threshold 0. Confirm for the maintained Blender 5.x scope; older-version compatibility is deferred. | Phase 3 |
 | MAT-O2 | The MaterialX target node set and the Blender nodes it covers. | `open_pbr_surface` if the OpenUSD release in use renders it in Storm; otherwise `standard_surface`. | nothing (non-blocking) |
 | MAT-O3 | Packed images. | Report only, until a resolver serves them (§6). | nothing (non-blocking) |
 | MAT-O4 | Emission strength units against `emissiveColor`. | Multiply color by strength; confirm visually against a fixture. | Phase 3 |
