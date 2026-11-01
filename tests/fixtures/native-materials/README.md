@@ -60,6 +60,11 @@ premultiplied RGB equal to color × strength × alpha, within 0.02 and 0.03
 respectively. This is source-render evidence for those cases, not a USD renderer
 comparison, render-method/threshold decision, or implementation claim.
 
+The registered-plugin [Storm check](../../../docs/guides/building.md#direct-emission-rendering-in-storm)
+uses this same saved `Deferred` binding and compares visible emission against
+session-only zero and non-white strength controls. It is not a linear-pixel
+comparison with Cycles, and the fixture's Alpha remains deferred.
+
 [MaterialTests.cpp](../../../libs/blendScene/tests/MaterialTests.cpp) checks
 native constants, non-white and linked Emission mutations, effective slots,
 shared Mesh identity, exact face indices, contextual diagnostics and malformed

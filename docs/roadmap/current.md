@@ -53,8 +53,12 @@ Generic-renderer and hosted acceptance remain separate work.
 check](../../tests/fixtures/native-materials/README.md#oracle-and-checks) for
 constant Alpha and Emission. Constant Emission is now multiplied into
 `emissiveColor`, with diagnosed socket-constant fallback for linked inputs.
-Alpha mapping, linked Alpha, the render-method and threshold decision, and
-USD renderer acceptance of the Emission mapping remain open.
+The registered plugin also has a local Windows Storm
+[Emission visibility check](../guides/building.md#direct-emission-rendering-in-storm)
+with zero, strength-one and strength-three controls. This does not establish
+renderer equivalence or resolve emission units. Alpha mapping, linked Alpha,
+the render-method and threshold decision, and broader renderer acceptance
+remain open.
 
 3.4 has a local Windows Storm
 [texture and normal-map visibility check](../guides/building.md#direct-texture-rendering-in-storm)
