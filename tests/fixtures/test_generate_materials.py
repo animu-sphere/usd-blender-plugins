@@ -63,6 +63,57 @@ class MaterialFixtureTests(unittest.TestCase):
                 self.assertIn("Material oracle differs", self.run_generator(fixture, check=True, success=False))
                 self.assertEqual(fixture.read_bytes(), expected)
 
+    def test_principled_alpha_and_emission_render(self):
+        fixture = (Path(__file__).parent / "native-materials" / "blender-5.2.2" /
+                   "materials.blend")
+        with TemporaryDirectory(prefix="blend-material-render-") as directory:
+            bpy.ops.wm.open_mainfile(filepath=str(fixture), load_ui=False, use_scripts=False)
+            material = bpy.data.materials["Deferred"]
+            surface = material.node_tree.nodes.get("Principled BSDF")
+            self.assertAlmostEqual(surface.inputs["Alpha"].default_value, 0.25)
+            self.assertAlmostEqual(surface.inputs["Emission Strength"].default_value, 3.0)
+            scene = bpy.data.scenes.new("MaterialRenderOracle")
+            bpy.context.window.scene = scene
+            scene.render.engine = "CYCLES"
+            scene.cycles.device = "CPU"
+            scene.cycles.samples = 1024
+            scene.cycles.use_adaptive_sampling = False
+            scene.cycles.use_denoising = False
+            scene.render.resolution_x = 8
+            scene.render.resolution_y = 8
+            scene.render.resolution_percentage = 100
+            scene.render.image_settings.file_format = "OPEN_EXR"
+            scene.render.image_settings.color_mode = "RGBA"
+            scene.render.image_settings.color_depth = "32"
+            scene.render.film_transparent = True
+            scene.view_settings.view_transform = "Standard"
+            bpy.ops.object.camera_add(location=(0, 0, 3))
+            scene.camera = bpy.context.object
+            scene.camera.data.type = "ORTHO"
+            scene.camera.data.ortho_scale = 1
+            bpy.ops.mesh.primitive_plane_add(size=2)
+            bpy.context.object.data.materials.append(material)
+            surface.inputs["Base Color"].default_value = (0, 0, 0, 1)
+            surface.inputs["Emission Color"].default_value = (0.25, 0.5, 0.75, 1)
+            for alpha, strength in ((1.0, 0.0), (1.0, 1.0), (1.0, 3.0),
+                                    (0.25, 3.0), (0.0, 3.0)):
+                with self.subTest(alpha=alpha, strength=strength):
+                    surface.inputs["Alpha"].default_value = alpha
+                    surface.inputs["Emission Strength"].default_value = strength
+                    path = Path(directory) / f"{alpha}-{strength}.exr"
+                    scene.render.filepath = str(path)
+                    bpy.ops.render.render(write_still=True)
+                    rendered = bpy.data.images.load(str(path), check_existing=False)
+                    pixels = list(rendered.pixels)
+                    bpy.data.images.remove(rendered)
+                    average = [sum(pixels[channel::4]) / (len(pixels) // 4)
+                               for channel in range(4)]
+                    expected_rgb = (0.25 * strength * alpha, 0.5 * strength * alpha,
+                                    0.75 * strength * alpha)
+                    for actual, expected in zip(average[:3], expected_rgb):
+                        self.assertAlmostEqual(actual, expected, delta=0.03)
+                    self.assertAlmostEqual(average[3], alpha, delta=0.02)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[__file__])

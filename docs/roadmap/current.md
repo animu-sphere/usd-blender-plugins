@@ -33,7 +33,7 @@ and hosted acceptance with synthetic tests.
 | # | Task | Done when | Status |
 | --- | --- | --- | --- |
 | 3.1 | [External image and normal-map compatibility](../design/MATERIAL_POLICY.md#5-supported-node-subset) | confirm the documented supported Image Texture/UV Map/Normal Map paths and diagnosed fallbacks against existing Blender 5.x oracle and registered-plugin tests; retain the sRGB image-alpha warning rather than claiming exact equivalence | 🚧 |
-| 3.2 | [Alpha and Emission mapping](../design/MATERIAL_POLICY.md#9-open-questions) | resolve MAT-O1/MAT-O4 for the maintained version scope; support constant opacity and emission plus supported Image Alpha → opacity, diagnose unsupported linked cases, and verify agreed opacity/threshold/emissive inputs with focused source and render evidence while preserving constants and bindings | ⬜ |
+| 3.2 | [Alpha and Emission mapping](../design/MATERIAL_POLICY.md#9-open-questions) | resolve MAT-O1/MAT-O4 for the maintained version scope; support constant opacity and emission plus supported Image Alpha → opacity, diagnose unsupported linked cases, and verify agreed opacity/threshold/emissive inputs with focused source and render evidence while preserving constants and bindings | 🚧 |
 | 3.3 | [Color attributes](../design/STAGE_CONTRACT.md#18-open-questions) | resolve STAGE-O3, choose and fixture-test color domains/types and active-render `displayColor` mapping, and update the capability matrix only for proven scope | ⬜ |
 | 3.4 | [Generic-renderer acceptance](../design/DESIGN_POLICY.md#14-phases) | verify base color, textures, alpha and normal maps in a generic renderer, every binding under `/Asset/mtl`, both build modes and hosted Windows/Linux gates; report approximations without claiming pixel equivalence | 🚧 |
 
@@ -48,6 +48,11 @@ with a conservative alpha-behavior warning, not a claim of equivalence. The
 Cycles oracle checks two translucent pixels and an opaque pixel, with and
 without Alpha use; it does not establish USD renderer equivalence.
 Generic-renderer and hosted acceptance remain separate work.
+
+3.2 has a bounded [Blender 5.2.2 Cycles source-render
+check](../../tests/fixtures/native-materials/README.md#oracle-and-checks) for
+constant Alpha and Emission. The USD mapping, linked Alpha, render-method and
+threshold decision, and renderer acceptance remain open.
 
 3.4 has a local Windows Storm
 [texture and normal-map visibility check](../guides/building.md#direct-texture-rendering-in-storm)

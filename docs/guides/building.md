@@ -1123,6 +1123,9 @@ The generator's `--check` regenerates only in a temporary directory and
 reopens the committed file; it does not rewrite the fixture or its JSON
 oracle. The Blender regression runner verifies semantic reproduction and
 rejects saved constant, Object-slot and face-index changes.
+It also renders controlled constant Alpha and Emission variations from the
+saved `Deferred` material in Blender Cycles; see the fixture record for the
+measured scope and limitations. This is not a USD renderer comparison.
 
 ```powershell
 $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
