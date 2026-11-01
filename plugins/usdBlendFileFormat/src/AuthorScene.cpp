@@ -405,6 +405,7 @@ UsdShadeMaterial AuthorMaterial(const UsdStageRefPtr& stage, const SdfPath& path
   Check(material.CreateSurfaceOutput().ConnectToSource(graphOutput));
   if (!metadataOnly) {
     Check(surface.CreateInput(TfToken("diffuseColor"), SdfValueTypeNames->Color3f).Set(GfVec3f(FloatValue(source.diffuseColor[0], source.sourceName), FloatValue(source.diffuseColor[1], source.sourceName), FloatValue(source.diffuseColor[2], source.sourceName))));
+    Check(surface.CreateInput(TfToken("emissiveColor"), SdfValueTypeNames->Color3f).Set(GfVec3f(FloatValue(source.emissiveColor[0], source.sourceName), FloatValue(source.emissiveColor[1], source.sourceName), FloatValue(source.emissiveColor[2], source.sourceName))));
     for (const auto& [name, value] : {
              std::pair{"metallic", source.metallic}, {"roughness", source.roughness},
              {"ior", source.ior}, {"clearcoat", source.clearcoat},

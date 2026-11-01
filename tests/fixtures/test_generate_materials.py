@@ -47,13 +47,17 @@ class MaterialFixtureTests(unittest.TestCase):
             self.assertEqual(oracle.read_bytes(), modified)
 
     def test_check_inspects_saved_source(self):
-        for mutation in ("constant", "slot", "face"):
+        for mutation in ("constant", "emission_color", "emission_strength", "slot", "face"):
             with self.subTest(mutation=mutation), TemporaryDirectory(prefix="blend-material-source-") as directory:
                 fixture = Path(directory) / "changed.blend"
                 self.run_generator(fixture)
                 bpy.ops.wm.open_mainfile(filepath=str(fixture), load_ui=False, use_scripts=False)
                 if mutation == "constant":
                     bpy.data.materials["A_B"].node_tree.nodes["Renamed Surface"].inputs["Roughness"].default_value = 0.9
+                elif mutation == "emission_color":
+                    bpy.data.materials["Deferred"].node_tree.nodes["Principled BSDF"].inputs["Emission Color"].default_value = (0.25, 0.5, 0.75, 1)
+                elif mutation == "emission_strength":
+                    bpy.data.materials["Deferred"].node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value = 2
                 elif mutation == "slot":
                     bpy.data.objects["Override"].material_slots[0].material = bpy.data.materials["A/B"]
                 else:

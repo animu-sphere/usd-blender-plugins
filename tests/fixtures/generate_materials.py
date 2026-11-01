@@ -105,6 +105,7 @@ def oracle():
             "viewport": list(material.diffuse_color[:3]),
             "metallic": material.metallic, "roughness": material.roughness,
             "ior": 1.5, "clearcoat": 0.0, "clearcoatRoughness": 0.03,
+            "emissionColor": [0.0, 0.0, 0.0], "emissionStrength": 0.0,
             "diagnostics": [],
         }
         if material.node_tree:
@@ -121,11 +122,13 @@ def oracle():
                     ("Coat Weight", "clearcoat"), ("Coat Roughness", "clearcoatRoughness"),
                 ):
                     record[target] = surface.inputs[source].default_value
+                record["emissionColor"] = list(surface.inputs["Emission Color"].default_value[:3])
+                record["emissionStrength"] = surface.inputs["Emission Strength"].default_value
                 if surface.inputs["Base Color"].is_linked:
                     record["diagnostics"].append("BLEND_MATERIAL_UNSUPPORTED_NODE")
                 if surface.inputs["Transmission Weight"].default_value != 0:
                     record["diagnostics"].append("BLEND_MATERIAL_UNSUPPORTED_INPUT")
-                if surface.inputs["Alpha"].default_value != 1 or surface.inputs["Emission Strength"].default_value != 0:
+                if surface.inputs["Alpha"].default_value != 1:
                     record["diagnostics"].append("BLEND_MATERIAL_DEFERRED_INPUT")
         materials[material.name] = record
     objects = {

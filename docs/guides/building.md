@@ -1150,8 +1150,10 @@ ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest
 The standalone CTest directory above is the local Windows target directory;
 use the directory selected by your host/target on another platform. Root CMake
 uses the same material CTests alongside the existing geometry and dependency
-boundary tests. Alpha/Emission and color attributes remain outside
-this verification scope; texture verification is below. See the
+boundary tests. Constant Emission is checked against the saved fixture and
+targeted non-white, linked and invalid-value mutations; USD renderer
+equivalence is not established. Alpha and color attributes remain outside
+the supported scope; texture verification is below. See the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#3-stage).
 
 ## External-texture and normal-map oracles
@@ -1193,7 +1195,7 @@ Build the updated library/bundle with the commands in the preceding section
 before these checks. The companion stage-contract and release workflows select
 the new CTest alongside existing authoring tests. Local Windows checks do not
 establish hosted Windows/Linux success or generic-renderer equivalence.
-Color/scalar socket coercions, material Alpha/Emission and broader renderer
+Color/scalar socket coercions, material Alpha and broader renderer
 acceptance remain separate roadmap work.
 
 ### Direct texture rendering in Storm

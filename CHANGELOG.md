@@ -19,7 +19,7 @@ All notable changes to this project are recorded here. The format follows
     malformed-storage tests and registered-plugin checks for naming,
     repeat/reordered reads, reference composition and typed metadata-only
     hierarchy. Unsupported/muted surfaces use diagnosed viewport fallback,
-    linked inputs use diagnosed socket constants, and Alpha/Emission remain
+    linked inputs use diagnosed socket constants, and Alpha remains
     explicitly deferred. Full older-version support is not claimed.
 - Bounded Blender 5.x external-image networks below `preview`, using only
     `UsdUVTexture` and `UsdPrimvarReader_float2`: Color to Base Color, Alpha
@@ -33,8 +33,12 @@ All notable changes to this project are recorded here. The format follows
     PNG, native malformed-storage checks, root/standalone USD authoring and
     registered-plugin network, asset-resolution, metadata, repeat/reference
     checks. Shared-Material UV conflicts are diagnosed rather than silently
-    reading another primvar. Cross-type socket coercion, Alpha/Emission and
+    reading another primvar. Cross-type socket coercion, Alpha and
     generic-renderer acceptance remain incomplete Phase 3 work.
+- Constant Blender Principled Emission Color multiplied by Emission Strength
+    is authored as `emissiveColor`; linked Emission inputs retain diagnosed
+    socket-constant fallbacks. Source and authoring checks cover the saved
+    5.2.2 fixture and targeted mutations, not USD renderer equivalence.
 
 ### Changed
 

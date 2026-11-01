@@ -540,6 +540,8 @@ private:
     bool unsupported = false;
     bool deferred = false;
     bool linked = false;
+    Vector3 emissionColor = {0, 0, 0};
+    double emissionStrength = 0;
     const std::map<std::string_view, TextureInput> textureInputs = {
         {"Base Color", TextureInput::BaseColor}, {"Metallic", TextureInput::Metallic},
         {"Roughness", TextureInput::Roughness}, {"IOR", TextureInput::Ior},
@@ -560,16 +562,15 @@ private:
       } else {
         linked = linked || isLinked;
       }
-      deferred = deferred || (identifier == "Emission Color" && isLinked);
-      if (identifier == "Base Color") {
+      if (identifier == "Base Color" || identifier == "Emission Color") {
         const auto color = Take(Default(socket, "bNodeSocketValueRGBA").Member("value"));
         if (color.ArrayDimensions().size() != 1 || color.ArrayDimensions()[0] != 4) {
-          Fail("BLEND_MATERIAL_STORAGE_INVALID", "Base Color must contain four float components");
+          Fail("BLEND_MATERIAL_STORAGE_INVALID", "Color inputs must contain four float components");
         }
         for (std::size_t axis = 0; axis < 4; ++axis) {
           const auto value = Float(Take(color.Element(axis)));
           if (axis < 3) {
-            material.diffuseColor[axis] = value;
+            (identifier == "Base Color" ? material.diffuseColor : emissionColor)[axis] = value;
           }
         }
       } else if (identifier == "Metallic" || identifier == "Roughness" || identifier == "IOR" ||
@@ -587,7 +588,11 @@ private:
           material.clearcoatRoughness = value;
       } else if (identifier == "Alpha" || identifier == "Emission Strength") {
         const auto value = Float(Take(Default(socket, "bNodeSocketValueFloat").Member("value")));
-        deferred = deferred || isLinked || value != (identifier == "Alpha" ? 1 : 0);
+        if (identifier == "Alpha") {
+          deferred = deferred || isLinked || value != 1;
+        } else {
+          emissionStrength = value;
+        }
       } else if (Integer(socket, "type", "short") == 0) {
         const auto value = Float(Take(Default(socket, "bNodeSocketValueFloat").Member("value")));
         const auto expected = identifier == "Subsurface Scale"                                        ? 0.005f
@@ -610,9 +615,6 @@ private:
           }
           for (std::size_t axis = 0; axis < 4; ++axis) {
             const auto component = Float(Take(components.Element(axis)));
-            if (identifier == "Emission Color") {
-              continue;
-            }
             const auto expected = value.Type().name == "bNodeSocketValueRGBA" ? 1.0
                                   : identifier == "Subsurface Radius"         ? (axis == 0 ? 1.0 : axis == 1 ? static_cast<double>(0.2f)
                                                                                                : axis == 2   ? static_cast<double>(0.1f)
@@ -631,10 +633,13 @@ private:
         }
       }
     }
-    for (const auto required : {"Base Color", "Metallic", "Roughness", "IOR", "Coat Weight", "Coat Roughness", "Alpha", "Emission Strength"}) {
+    for (const auto required : {"Base Color", "Metallic", "Roughness", "IOR", "Coat Weight", "Coat Roughness", "Alpha", "Emission Color", "Emission Strength"}) {
       if (!found.contains(required)) {
         Fail("BLEND_MATERIAL_STORAGE_INVALID", "Principled BSDF is missing a required constant socket");
       }
+    }
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      material.emissiveColor[axis] = emissionColor[axis] * emissionStrength;
     }
     if (linked) {
       Warn("BLEND_MATERIAL_UNSUPPORTED_NODE", "Linked inputs outside the supported subset use socket constants");
@@ -643,7 +648,7 @@ private:
       Warn("BLEND_MATERIAL_UNSUPPORTED_INPUT", "Non-default unsupported Principled inputs are not authored");
     }
     if (deferred) {
-      Warn("BLEND_MATERIAL_DEFERRED_INPUT", "Alpha and Emission are deferred; an opaque non-emissive surface is authored");
+      Warn("BLEND_MATERIAL_DEFERRED_INPUT", "Alpha is deferred; an opaque surface is authored");
     }
     if (std::any_of(material.textures.begin(), material.textures.end(), [](const auto& texture) {
           return texture.colorSpace == TextureColorSpace::SRgb &&
