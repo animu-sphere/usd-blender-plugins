@@ -84,11 +84,16 @@ invalid IR and missing/shared-Material/tangent UV recovery.
 Both root and standalone builds run these tests without Blender.
 
 [test_texture_usdview.py](../../../plugins/usdBlendFileFormat/tests/test_texture_usdview.py)
-opens the `.blend` with the registered plugin and renders the `Relative`
-network in Storm. It verifies relative asset resolution, binding and UV
-connections, visible texture colors and a session-only constant-color negative
-control. The local Windows lookdev check does not establish Blender/Storm
-pixel equivalence or normal-map acceptance.
+opens the `.blend` with the registered plugin and renders the `Relative`,
+`Normal` and `NamedNormal` networks in Storm. It verifies relative asset
+resolution, bindings and UV connections, visible texture colors, and
+session-only constant-color and geometric-normal negative controls. Restoring
+the normal connection must restore the image. The fixture's UV maps initially
+have the same coordinates; a session-only uniform shift of the named UV tests
+its effect separately from the unrelated `st` and from geometric shading.
+The shift preserves UV gradients and does not prove tangent-frame correctness.
+The local Windows lookdev check does not establish Blender/Storm pixel
+equivalence or complete normal-map acceptance.
 
 Registered [test_stage.py](../../../plugins/usdBlendFileFormat/tests/test_stage.py)
 compares every network case to the JSON oracle, checks exact connections,
