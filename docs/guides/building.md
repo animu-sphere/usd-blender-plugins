@@ -1159,7 +1159,10 @@ and the original generated PNG. No Blender or image decoder is required by
 native/authoring tests. The generator checks its semantic oracle after reopening
 the saved file; `--check` only regenerates in temporary storage. Generator
 regressions check reproduction, home-path exclusion, non-destructive success/
-failure and saved path, wrap, UV, strength, Image and normal-space changes.
+failure and saved path, wrap, UV, strength, Image, normal-space and color-space
+changes. They also run Blender Cycles on the fixture PNG to check image alpha
+and cross-type socket values; this source-side check uses the CPU and does not
+establish USD renderer equivalence.
 
 ```powershell
 $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
@@ -1168,7 +1171,8 @@ $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.e
 ```
 
 `blendScene.textures` validates owning texture IR, saved graph/storage failures
-and contextual diagnostics. `usdBlend.textures` validates network authoring,
+and contextual diagnostics, including the conservative sRGB alpha warning and
+both cross-type fallbacks. `usdBlend.textures` validates network authoring,
 normal scale/bias/fallback, actual collision-allocated UV identifiers,
 metadata-only Shader hierarchy, material/block/texture permutations, invalid IR
 and missing/shared/tangent UV fallback. Registered `test_stage.py` compares

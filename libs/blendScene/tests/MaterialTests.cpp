@@ -208,17 +208,37 @@ std::uint32_t Node(const Fixture& fixture, std::string_view material, std::strin
   throw std::runtime_error("Missing fixture node");
 }
 
-blend::DnaValueView InputSocket(const Fixture& fixture, std::uint32_t node, std::string_view name) {
-  auto address = Take(Take(Take(fixture.View(node).Member("inputs")).Member("first")).Pointer());
+std::uint32_t SocketIndex(const Fixture& fixture, std::uint32_t node,
+    std::string_view direction, std::string_view name) {
+  auto address = Take(Take(Take(fixture.View(node).Member(direction)).Member("first")).Pointer());
   while (address != 0) {
-    const auto socket = fixture.View(fixture.Resolve(address));
+    const auto index = fixture.Resolve(address);
+    const auto socket = fixture.View(index);
     const auto identifier = Take(socket.Member("identifier")).Bytes();
     if (std::string_view(reinterpret_cast<const char*>(identifier.data())) == name) {
-      return socket;
+      return index;
     }
     address = Take(Take(socket.Member("next")).Pointer());
   }
   throw std::runtime_error("Missing fixture socket");
+}
+
+blend::DnaValueView InputSocket(const Fixture& fixture, std::uint32_t node, std::string_view name) {
+  return fixture.View(SocketIndex(fixture, node, "inputs", name));
+}
+
+blend::DnaValueView LinkTo(const Fixture& fixture, std::string_view material, std::uint32_t socket) {
+  const auto source = fixture.View(fixture.ids.at("MA" + std::string(material)));
+  const auto tree = fixture.View(fixture.Resolve(Take(Take(source.Member("nodetree")).Pointer())));
+  auto address = Take(Take(Take(tree.Member("links")).Member("first")).Pointer());
+  while (address != 0) {
+    const auto link = fixture.View(fixture.Resolve(address));
+    if (Take(Take(link.Member("tosock")).Pointer()) == fixture.blocks[socket].oldAddress) {
+      return link;
+    }
+    address = Take(Take(link.Member("next")).Pointer());
+  }
+  throw std::runtime_error("Missing fixture link");
 }
 
 void CheckTextures(const Fixture& fixture) {
@@ -261,6 +281,20 @@ void CheckTextures(const Fixture& fixture) {
   check("ClearcoatRoughnessAlpha", Input::ClearcoatRoughness, "./textures/color.png", Color::SRgb, Wrap::Repeat, "");
   check("Normal", Input::Normal, "./textures/color.png", Color::Raw, Wrap::Repeat, "");
   check("NamedNormal", Input::Normal, "./textures/color.png", Color::Raw, Wrap::Repeat, "Detail_UV");
+  for (const auto name : {"Relative", "NamedUV", "ActiveUV", "Mirror", "Closest", "Absolute", "UNC"}) {
+    const auto warnings = std::count_if(result.Diagnostics().begin(), result.Diagnostics().end(),
+        [&](const auto& diagnostic) {
+          return diagnostic.code == "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED" &&
+                 diagnostic.datablock == name && diagnostic.severity == blend::Severity::Unsupported;
+        });
+    Require(warnings == 1 && Has(result, "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED", name),
+        std::string("sRGB Color retains its texture with a contextual alpha warning: ") + name);
+  }
+  for (const auto name : {"Raw", "AlphaScalar", "MetallicAlpha", "IorAlpha", "ClearcoatAlpha",
+           "ClearcoatRoughnessAlpha", "Normal", "NamedNormal", "ColorScalar", "Missing", "Packed"}) {
+    Require(!Has(result, "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED", name),
+        std::string("Raw, alpha-only and omitted textures do not report the color warning: ") + name);
+  }
   for (const auto& [code, name] : {
            std::pair{"BLEND_IMAGE_PACKED", "Packed"}, {"BLEND_IMAGE_MISSING", "Missing"},
            {"BLEND_IMAGE_SOURCE_UNSUPPORTED", "Generated"}, {"BLEND_IMAGE_SOURCE_UNSUPPORTED", "Movie"},
@@ -275,6 +309,91 @@ void CheckTextures(const Fixture& fixture) {
               Has(result, "BLEND_IMAGE_ABSOLUTE_PATH", "Absolute") &&
               Has(result, "BLEND_IMAGE_ABSOLUTE_PATH", "UNC"),
       "Approximate filtering and absolute paths are contextual diagnostics");
+  const auto surfaceIndex = Node(fixture, "Relative", "ShaderNodeBsdfPrincipled");
+  const auto textureIndex = Node(fixture, "Relative", "ShaderNodeTexImage");
+  const auto baseSocket = SocketIndex(fixture, surfaceIndex, "inputs", "Base Color");
+  const auto alphaSocket = SocketIndex(fixture, textureIndex, "outputs", "Alpha");
+  const auto baseLink = LinkTo(fixture, "Relative", baseSocket);
+  Require(Take(Take(baseLink.Member("fromnode")).Pointer()) == fixture.blocks[textureIndex].oldAddress,
+      "Base Color is linked from the expected Image Texture");
+  auto alphaToColor = fixture.bytes;
+  fixture.Store(alphaToColor, Take(baseLink.Member("fromsock")), fixture.blocks[alphaSocket].oldAddress);
+  const auto alphaFallback = fixture.Decode(alphaToColor);
+  Require(alphaFallback.HasValue() && Has(alphaFallback, "BLEND_MATERIAL_UNSUPPORTED_NODE", "Relative") &&
+              !Has(alphaFallback, "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED", "Relative"),
+      "Alpha-to-Color coercion retains its diagnosed constant rather than a texture");
+  const auto alphaMaterial = std::find_if(alphaFallback.GetValue().materials.begin(),
+      alphaFallback.GetValue().materials.end(), [](const auto& material) { return material.sourceName == "Relative"; });
+  Require(alphaMaterial != alphaFallback.GetValue().materials.end() && alphaMaterial->textures.empty(),
+      "Alpha-to-Color fallback does not author an invalidly typed texture connection");
+  const auto namedTexture = Node(fixture, "NamedUV", "ShaderNodeTexImage");
+  const auto namedSurface = Node(fixture, "NamedUV", "ShaderNodeBsdfPrincipled");
+  const auto vectorSocket = SocketIndex(fixture, namedTexture, "inputs", "Vector");
+  const auto roughnessSocket = SocketIndex(fixture, namedSurface, "inputs", "Roughness");
+  const auto namedAlpha = SocketIndex(fixture, namedTexture, "outputs", "Alpha");
+  const auto vectorLink = LinkTo(fixture, "NamedUV", vectorSocket);
+  auto sharedColorAndAlpha = fixture.bytes;
+  for (const auto& [member, index] : {
+           std::pair{"fromnode", namedTexture}, {"fromsock", namedAlpha},
+           {"tonode", namedSurface}, {"tosock", roughnessSocket}}) {
+    fixture.Store(sharedColorAndAlpha, Take(vectorLink.Member(member)), fixture.blocks[index].oldAddress);
+  }
+  const auto sharedResult = fixture.Decode(sharedColorAndAlpha);
+  Require(sharedResult.HasValue() && Has(sharedResult, "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED", "NamedUV"),
+      "The alpha warning is conservative even when the Image Alpha output is connected");
+  const auto sharedMaterial = std::find_if(sharedResult.GetValue().materials.begin(),
+      sharedResult.GetValue().materials.end(), [](const auto& material) { return material.sourceName == "NamedUV"; });
+  Require(sharedMaterial != sharedResult.GetValue().materials.end() && sharedMaterial->textures.size() == 2 &&
+              std::count_if(sharedResult.Diagnostics().begin(), sharedResult.Diagnostics().end(),
+                  [](const auto& diagnostic) {
+                    return diagnostic.code == "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED" && diagnostic.datablock == "NamedUV";
+                  }) == 1,
+      "Shared Color and Alpha outputs retain both textures with one material-level warning");
+  const auto normalImage = fixture.View(fixture.ids.at("IMNormalImage"));
+  const auto normalColorSpace = Take(Take(normalImage.Member("colorspace_settings")).Member("name"));
+  auto srgbNormal = fixture.bytes;
+  for (std::size_t index = 0; index < 5; ++index) {
+    fixture.Store(srgbNormal, Take(normalColorSpace.Element(index)), "sRGB"[index]);
+  }
+  const auto normalResult = fixture.Decode(srgbNormal);
+  Require(normalResult.HasValue() && Has(normalResult, "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED", "Normal"),
+      "sRGB Normal Map Color textures receive the same contextual warning");
+  const auto srgbNormalMaterial = std::find_if(normalResult.GetValue().materials.begin(),
+      normalResult.GetValue().materials.end(), [](const auto& material) { return material.sourceName == "Normal"; });
+  Require(srgbNormalMaterial != normalResult.GetValue().materials.end() &&
+              srgbNormalMaterial->textures.size() == 1 &&
+              srgbNormalMaterial->textures.front().colorSpace == Color::SRgb,
+      "The sRGB Normal Map texture is retained despite its approximation warning");
+  const auto dualTexture = Node(fixture, "NamedNormal", "ShaderNodeTexImage");
+  const auto dualSurface = Node(fixture, "NamedNormal", "ShaderNodeBsdfPrincipled");
+  const auto dualVector = SocketIndex(fixture, dualTexture, "inputs", "Vector");
+  const auto dualColor = SocketIndex(fixture, dualTexture, "outputs", "Color");
+  const auto dualBase = SocketIndex(fixture, dualSurface, "inputs", "Base Color");
+  const auto dualLink = LinkTo(fixture, "NamedNormal", dualVector);
+  const auto dualImage = fixture.View(fixture.ids.at("IMNamedNormalImage"));
+  const auto dualColorSpace = Take(Take(dualImage.Member("colorspace_settings")).Member("name"));
+  auto colorAndNormal = fixture.bytes;
+  for (const auto& [member, index] : {
+           std::pair{"fromnode", dualTexture}, {"fromsock", dualColor},
+           {"tonode", dualSurface}, {"tosock", dualBase}}) {
+    fixture.Store(colorAndNormal, Take(dualLink.Member(member)), fixture.blocks[index].oldAddress);
+  }
+  for (std::size_t index = 0; index < 5; ++index) {
+    fixture.Store(colorAndNormal, Take(dualColorSpace.Element(index)), "sRGB"[index]);
+  }
+  const auto dualResult = fixture.Decode(colorAndNormal);
+  Require(dualResult.HasValue() && Has(dualResult, "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED", "NamedNormal"),
+      "A material with multiple sRGB Color textures is diagnosed");
+  const auto dualMaterial = std::find_if(dualResult.GetValue().materials.begin(),
+      dualResult.GetValue().materials.end(), [](const auto& material) { return material.sourceName == "NamedNormal"; });
+  Require(dualMaterial != dualResult.GetValue().materials.end() && dualMaterial->textures.size() == 2 &&
+              std::all_of(dualMaterial->textures.begin(), dualMaterial->textures.end(),
+                  [](const auto& texture) { return texture.colorSpace == blend::TextureColorSpace::SRgb; }) &&
+              std::count_if(dualResult.Diagnostics().begin(), dualResult.Diagnostics().end(),
+                  [](const auto& diagnostic) {
+                    return diagnostic.code == "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED" && diagnostic.datablock == "NamedNormal";
+                  }) == 1,
+      "Multiple sRGB Color textures receive exactly one material-level warning");
   auto blocks = fixture.blocks;
   std::reverse(blocks.begin(), blocks.end());
   const auto reversed = Take(blend::DecodeScene(fixture.bytes, blocks, fixture.schema, fixture.header, {1000, 100}));
@@ -331,6 +450,8 @@ void CheckTextures(const Fixture& fixture) {
         [&](const auto& material) { return material.sourceName == name; });
     Require(found != fallback.GetValue().materials.end() && found->textures.empty(),
         "Unsupported image settings do not author a success-shaped texture");
+    Require(!Has(fallback, "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED", name),
+        "Omitted textures do not report an approximation of an authored texture");
   };
   diagnose(Take(texture.Member("id")), 0, "BLEND_IMAGE_MISSING", "Relative");
   const auto colorSpace = Take(Take(image.Member("colorspace_settings")).Member("name"));

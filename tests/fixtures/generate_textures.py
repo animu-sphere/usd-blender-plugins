@@ -159,6 +159,8 @@ def oracle():
                     diagnostics.append("BLEND_IMAGE_INTERPOLATION_UNSUPPORTED")
                 if not image.filepath.startswith("//"):
                     diagnostics.append("BLEND_IMAGE_ABSOLUTE_PATH")
+                if image.colorspace_settings.name == "sRGB" and (normal or input_name == "Base Color"):
+                    diagnostics.append("BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED")
         record = {
             "diffuseColor": list(surface.inputs["Base Color"].default_value[:3]),
             "roughness": surface.inputs["Roughness"].default_value,

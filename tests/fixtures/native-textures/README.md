@@ -36,6 +36,8 @@ Supported network cases:
   named texture/tangent UV selections.
 - `Closest`: retains its texture with an unsupported-interpolation diagnostic.
 
+Supported sRGB Color textures also retain their networks with a conservative
+image-alpha approximation warning; raw and Alpha-only textures do not.
 Diagnosed fallback cases are Packed, Generated, Movie, Sequence, Tiled,
 Missing Image, Box projection, muted Image Texture, Mapping-to-Vector,
 Color-to-Roughness coercion, non-unit normal strength and Object-space normal
@@ -55,14 +57,22 @@ whole-file bytes are not claimed reproducible.
 [test_generate_textures.py](../test_generate_textures.py) verifies independent
 process/path semantic reproduction, home-path exclusion, non-destructive
 success/failure, changed-oracle rejection and saved path, wrapping, UV,
-normal-strength, Image and normal-space mutations.
+normal-strength, Image, normal-space and color-space mutations. Its CPU Cycles
+test samples the fixture's green pixel (alpha `128/255`) with Blender's default
+color configuration. In scene-linear output, sRGB Color alone is approximately
+`(0, 0.215861, 0)`, while connecting Alpha to emission strength gives
+`(0, 0.501961, 0)`. Non-Color remains `(0, 1, 0)`; Alpha-to-Color repeats
+`0.501961` across RGB, and Non-Color green-to-scalar is about `0.715168`.
+These checks use emission to isolate socket behavior, not a Principled
+render-equivalence claim.
 
 [MaterialTests.cpp](../../../libs/blendScene/tests/MaterialTests.cpp),
 run as `blendScene.textures`, checks owning native values, block-order
 independence, contextual warnings and malformed Image/node/storage/list/path
 references. Additional saved mutations cover nonfinite strength, unsupported
 color space, non-Straight alpha, linked Image, ambiguous paths, embedded
-texture/color mapping, nonfinite mapping scale and normal convention/base.
+texture/color mapping, nonfinite mapping scale, normal convention/base,
+Alpha-to-Color fallback, shared Color/Alpha outputs and sRGB Normal input.
 
 [AuthorSceneTests.cpp](../../../plugins/usdBlendFileFormat/tests/AuthorSceneTests.cpp),
 run as `usdBlend.textures`, checks standard texture/reader shader IDs and
@@ -90,8 +100,9 @@ acceptance.
 
 This is 64-bit little-endian Blender 5.2.2 storage/network evidence, not
 release-wide Blender 5.x certification or full older-version support.
-No renderer is exercised here: named-UV tangent-frame and filtering equivalence
-still need generic-renderer acceptance. Color/scalar cross-type coercions,
+The source-side Cycles checks do not exercise a USD renderer; named-UV
+tangent-frame and filtering equivalence still need generic-renderer acceptance.
+Color/scalar cross-type coercions,
 material Alpha/Emission, nonstandard color spaces/alpha interpretations,
 non-default embedded texture/color mappings, image extraction, UDIM,
 linked assets and richer shader graphs are not claimed supported.

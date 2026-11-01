@@ -645,6 +645,13 @@ private:
     if (deferred) {
       Warn("BLEND_MATERIAL_DEFERRED_INPUT", "Alpha and Emission are deferred; an opaque non-emissive surface is authored");
     }
+    if (std::any_of(material.textures.begin(), material.textures.end(), [](const auto& texture) {
+          return texture.colorSpace == TextureColorSpace::SRgb &&
+                 (texture.input == TextureInput::BaseColor || texture.input == TextureInput::Normal);
+        })) {
+      Warn("BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED",
+          "sRGB Color textures may differ from Blender for transparent pixels when the Image Alpha output is unused; image alpha is not inspected and this warning does not omit the texture");
+    }
     return material;
   }
 
