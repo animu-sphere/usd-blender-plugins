@@ -19,7 +19,7 @@ older-version compatibility is deferred to Phase 8 below.
 | 3.1 | [External image and normal-map subset](../design/MATERIAL_POLICY.md#5-supported-node-subset) | decode supported Image Texture/UV Map/Normal Map paths, resolve cross-type coercions and sRGB image-alpha behavior without violating the Preview Surface contract, and verify paths and diagnostics with Blender 5.x oracles and registered-plugin tests | 🚧 |
 | 3.2 | [Alpha and Emission mapping](../design/MATERIAL_POLICY.md#9-open-questions) | resolve MAT-O1/MAT-O4 for the maintained version scope using fixtures/render evidence, replace deferred-input fallback with the agreed opacity/threshold/emissive inputs, preserve constants and binding regressions | ⬜ |
 | 3.3 | [Color attributes](../design/STAGE_CONTRACT.md#18-open-questions) | resolve STAGE-O3, choose and fixture-test color domains/types and active-render `displayColor` mapping, and update the capability matrix only for proven scope | ⬜ |
-| 3.4 | [Generic-renderer acceptance](../design/DESIGN_POLICY.md#14-phases) | verify base color, textures, alpha and normal maps in a generic renderer, every binding under `/Asset/mtl`, both build modes and hosted Windows/Linux gates | ⬜ |
+| 3.4 | [Generic-renderer acceptance](../design/DESIGN_POLICY.md#14-phases) | verify base color, textures, alpha and normal maps in a generic renderer, every binding under `/Asset/mtl`, both build modes and hosted Windows/Linux gates | 🚧 |
 
 3.1 has a bounded [native texture boundary](../design/MATERIAL_POLICY.md#72-native-external-texture-boundary)
 and a [Blender 5.2.2 oracle](../../tests/fixtures/native-textures/README.md).
@@ -28,8 +28,16 @@ tangent Normal Map networks have local native, authoring and registered-plugin
 evidence. Color-to-scalar and Alpha-to-color coercions remain diagnosed constant
 fallbacks, rather than guessed channel conversions. sRGB Image Color textures
 are retained with a conservative alpha-behavior warning. Both limitations
-block the full §5 subset. Generic-renderer and hosted acceptance remain
-separate work.
+block the full §5 subset. The Cycles oracle now checks two translucent pixels
+and an opaque pixel, with and without Alpha use; it does not establish USD
+renderer equivalence. Generic-renderer and hosted acceptance remain separate
+work.
+
+3.4 has a local Windows Storm
+[texture visibility check](../guides/building.md#direct-texture-rendering-in-storm)
+against the registered plugin, including a constant-color negative control.
+It does not establish alpha or normal-map equivalence, other renderer cases,
+or hosted gate results.
 
 ## Phase 8 — performance and robustness
 

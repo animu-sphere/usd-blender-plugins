@@ -58,13 +58,15 @@ whole-file bytes are not claimed reproducible.
 process/path semantic reproduction, home-path exclusion, non-destructive
 success/failure, changed-oracle rejection and saved path, wrapping, UV,
 normal-strength, Image, normal-space and color-space mutations. Its CPU Cycles
-test samples the fixture's green pixel (alpha `128/255`) with Blender's default
-color configuration. In scene-linear output, sRGB Color alone is approximately
-`(0, 0.215861, 0)`, while connecting Alpha to emission strength gives
-`(0, 0.501961, 0)`. Non-Color remains `(0, 1, 0)`; Alpha-to-Color repeats
-`0.501961` across RGB, and Non-Color green-to-scalar is about `0.715168`.
-These checks use emission to isolate socket behavior, not a Principled
-render-equivalence claim.
+test samples the fixture's green (alpha `128/255`), blue (alpha `64/255`)
+and opaque red pixels with Blender's default color configuration. In
+scene-linear output, sRGB Color alone is approximately `(0, 0.215861, 0)`
+for green and `(0, 0, 0.051269)` for blue. Connecting Alpha to emission
+strength instead gives `(0, 0.501961, 0)` and `(0, 0, 0.250980)`.
+Non-Color retains the unattenuated green and blue; Alpha-to-Color repeats each
+alpha across RGB, and Non-Color green-to-scalar is about `0.715168`. Opaque
+red remains `(1, 0, 0)` with or without the Alpha connection. These checks use
+emission to isolate socket behavior, not a Principled render-equivalence claim.
 
 [MaterialTests.cpp](../../../libs/blendScene/tests/MaterialTests.cpp),
 run as `blendScene.textures`, checks owning native values, block-order
@@ -80,6 +82,13 @@ normal scale/bias/fallback, UV collision mapping, metadata-only typed hierarchy,
 block/material/texture-vector determinism, multiple inputs sharing `st`,
 invalid IR and missing/shared-Material/tangent UV recovery.
 Both root and standalone builds run these tests without Blender.
+
+[test_texture_usdview.py](../../../plugins/usdBlendFileFormat/tests/test_texture_usdview.py)
+opens the `.blend` with the registered plugin and renders the `Relative`
+network in Storm. It verifies relative asset resolution, binding and UV
+connections, visible texture colors and a session-only constant-color negative
+control. The local Windows lookdev check does not establish Blender/Storm
+pixel equivalence or normal-map acceptance.
 
 Registered [test_stage.py](../../../plugins/usdBlendFileFormat/tests/test_stage.py)
 compares every network case to the JSON oracle, checks exact connections,
