@@ -1192,3 +1192,28 @@ the new CTest alongside existing authoring tests. Local Windows checks do not
 establish hosted Windows/Linux success or generic-renderer equivalence.
 Color/scalar socket coercions, material Alpha/Emission and broader renderer
 acceptance remain separate roadmap work.
+
+### Direct texture rendering in Storm
+
+The optional `lookdev` runtime and prerequisites are described under
+[direct usdview rendering](#direct-usdview-rendering). This local Windows
+command was run with the current lookdev bundle and OpenUSD 26.08:
+
+```powershell
+ost plugin build plugins\usdBlendFileFormat --target cy2026 --profile lookdev
+$usdBin = Join-Path $HOME '.ost\runtimes\openstrata-cy2026-windows-x86_64-py313-lookdev\bin'
+ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile lookdev -- python "$usdBin\testusdview" tests\fixtures\native-textures\blender-5.2.2\textures.blend --renderer Storm --select /Asset/geo/Relative/mesh --testScript plugins\usdBlendFileFormat\tests\test_texture_usdview.py
+```
+
+The harness opens the `.blend` through the registered plugin, checks its
+relative image resolution, binding and UV/texture connections, and isolates
+the `Relative` object using the session layer. It checks Storm convergence,
+the center pick, and visible red and red/green texture regions. A session-only
+constant-color negative control must not reproduce those regions. It does not
+modify the fixture. The two intentionally nonexistent absolute/UNC fixture
+images may produce texture-loading warnings before isolation. Set
+`USD_BLEND_USDVIEW_SCREENSHOT` to retain the textured viewport capture.
+
+This is a local texture visibility check, not pixel-equivalence evidence for
+Blender alpha/color behavior, normal maps or the complete Phase 3 renderer
+acceptance gate. It is not part of hosted CI.

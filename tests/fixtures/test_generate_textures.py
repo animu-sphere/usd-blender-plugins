@@ -115,8 +115,6 @@ class TextureFixtureTests(unittest.TestCase):
             texture.image = image
             texture.interpolation = "Linear"
             coordinates = nodes.new("ShaderNodeCombineXYZ")
-            coordinates.inputs["X"].default_value = 0.75
-            coordinates.inputs["Y"].default_value = 0.25
             emission = nodes.new("ShaderNodeEmission")
             output = nodes.new("ShaderNodeOutputMaterial")
             links = material.node_tree.links
@@ -124,15 +122,25 @@ class TextureFixtureTests(unittest.TestCase):
             links.new(emission.outputs["Emission"], output.inputs["Surface"])
             alpha = 128 / 255
             linear_alpha = ((alpha + 0.055) / 1.055) ** 2.4
+            blue_alpha = 64 / 255
+            linear_blue_alpha = ((blue_alpha + 0.055) / 1.055) ** 2.4
             cases = (
-                ("srgb_color", "sRGB", (("Color", "Color"),), (0, linear_alpha, 0)),
-                ("srgb_color_and_alpha", "sRGB", (("Color", "Color"), ("Alpha", "Strength")), (0, alpha, 0)),
-                ("raw_color", "Non-Color", (("Color", "Color"),), (0, 1, 0)),
-                ("alpha_to_color", "Non-Color", (("Alpha", "Color"),), (alpha, alpha, alpha)),
-                ("color_to_scalar", "Non-Color", (("Color", "Strength"),), (0.7151684,) * 3),
+                ("srgb_green", (0.75, 0.25), "sRGB", (("Color", "Color"),), (0, linear_alpha, 0)),
+                ("srgb_green_alpha", (0.75, 0.25), "sRGB", (("Color", "Color"), ("Alpha", "Strength")), (0, alpha, 0)),
+                ("raw_green", (0.75, 0.25), "Non-Color", (("Color", "Color"),), (0, 1, 0)),
+                ("alpha_to_color_green", (0.75, 0.25), "Non-Color", (("Alpha", "Color"),), (alpha,) * 3),
+                ("color_to_scalar_green", (0.75, 0.25), "Non-Color", (("Color", "Strength"),), (0.7151684,) * 3),
+                ("srgb_blue", (0.25, 0.75), "sRGB", (("Color", "Color"),), (0, 0, linear_blue_alpha)),
+                ("srgb_blue_alpha", (0.25, 0.75), "sRGB", (("Color", "Color"), ("Alpha", "Strength")), (0, 0, blue_alpha)),
+                ("raw_blue", (0.25, 0.75), "Non-Color", (("Color", "Color"),), (0, 0, 1)),
+                ("alpha_to_color_blue", (0.25, 0.75), "Non-Color", (("Alpha", "Color"),), (blue_alpha,) * 3),
+                ("srgb_opaque_red", (0.25, 0.25), "sRGB", (("Color", "Color"),), (1, 0, 0)),
+                ("srgb_opaque_red_alpha", (0.25, 0.25), "sRGB", (("Color", "Color"), ("Alpha", "Strength")), (1, 0, 0)),
             )
-            for name, colorspace, connections, expected in cases:
+            for name, uv, colorspace, connections, expected in cases:
                 with self.subTest(case=name):
+                    coordinates.inputs["X"].default_value = uv[0]
+                    coordinates.inputs["Y"].default_value = uv[1]
                     image.colorspace_settings.name = colorspace
                     for socket in emission.inputs:
                         for link in list(socket.links):
