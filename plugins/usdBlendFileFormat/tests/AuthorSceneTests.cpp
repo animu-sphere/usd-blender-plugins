@@ -771,6 +771,9 @@ void CheckMaterials(const std::filesystem::path& path) {
       "Material connects through the encapsulated preview output");
   Require(std::abs(Get<float>(shader.GetInput(TfToken("metallic")).GetAttr()) - 0.8f) < 1e-7f,
       "Material scalar values match saved socket constants");
+  const auto emissive = UsdShadeShader(stage->GetPrimAtPath(SdfPath("/Asset/mtl/Deferred/preview/Surface")));
+  Require(Get<GfVec3f>(emissive.GetInput(TfToken("emissiveColor")).GetAttr()) == GfVec3f(3, 3, 3),
+      "Emission color and strength are multiplied into emissiveColor");
   const auto single = stage->GetPrimAtPath(SdfPath("/Asset/geo/Single/mesh"));
   Require(UsdShadeMaterialBindingAPI(single).ComputeBoundMaterial().GetPath() == SdfPath("/Asset/mtl/A_B"),
       "One effective slot binds on the Mesh");
@@ -801,6 +804,15 @@ void CheckMaterials(const std::filesystem::path& path) {
           "Metadata omits geometry, material networks and bindings");
     }
   }
+  auto nonWhite = scene;
+  const auto changedMaterial = std::find_if(nonWhite.materials.begin(), nonWhite.materials.end(),
+      [](const auto& value) { return value.sourceName == "Deferred"; });
+  Require(changedMaterial != nonWhite.materials.end(), "Emission test material exists");
+  changedMaterial->emissiveColor = {0.75, 1.5, 2.25};
+  const auto changedStage = UsdStage::Open(Take(blend::AuthorScene(nonWhite)));
+  const auto changedShader = UsdShadeShader(changedStage->GetPrimAtPath(SdfPath("/Asset/mtl/Deferred/preview/Surface")));
+  Require(Get<GfVec3f>(changedShader.GetInput(TfToken("emissiveColor")).GetAttr()) == GfVec3f(0.75f, 1.5f, 2.25f),
+      "Non-white emissive IR is authored without channel changes");
   scene = Decode(path);
   scene.objects.front().materialSlots = {scene.materials.size()};
   Failure(scene, "BLEND_USD_MATERIAL_INVALID", scene.objects.front().sourceName);
@@ -809,6 +821,12 @@ void CheckMaterials(const std::filesystem::path& path) {
   Failure(scene, "BLEND_USD_MATERIAL_INVALID", scene.meshes.front().sourceName);
   scene = Decode(path);
   scene.materials.front().roughness = std::numeric_limits<double>::quiet_NaN();
+  Failure(scene, "BLEND_USD_VALUE_INVALID", scene.materials.front().sourceName);
+  scene = Decode(path);
+  scene.materials.front().emissiveColor[0] = std::numeric_limits<double>::infinity();
+  Failure(scene, "BLEND_USD_VALUE_INVALID", scene.materials.front().sourceName);
+  scene = Decode(path);
+  scene.materials.front().emissiveColor[1] = static_cast<double>(std::numeric_limits<float>::max()) * 2;
   Failure(scene, "BLEND_USD_VALUE_INVALID", scene.materials.front().sourceName);
   scene = Decode(path);
   scene.materials[1].sourceName = scene.materials[0].sourceName;

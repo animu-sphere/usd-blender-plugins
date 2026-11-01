@@ -51,8 +51,10 @@ Generic-renderer and hosted acceptance remain separate work.
 
 3.2 has a bounded [Blender 5.2.2 Cycles source-render
 check](../../tests/fixtures/native-materials/README.md#oracle-and-checks) for
-constant Alpha and Emission. The USD mapping, linked Alpha, render-method and
-threshold decision, and renderer acceptance remain open.
+constant Alpha and Emission. Constant Emission is now multiplied into
+`emissiveColor`, with diagnosed socket-constant fallback for linked inputs.
+Alpha mapping, linked Alpha, the render-method and threshold decision, and
+USD renderer acceptance of the Emission mapping remain open.
 
 3.4 has a local Windows Storm
 [texture and normal-map visibility check](../guides/building.md#direct-texture-rendering-in-storm)

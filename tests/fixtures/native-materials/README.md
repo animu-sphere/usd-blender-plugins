@@ -28,7 +28,8 @@ effective Materials:
 - `Fallback` uses Diffuse BSDF, `Muted` mutes Principled and `MutedLink`
   mutes the Surface link; all use diagnosed saved viewport constants.
 - `Unsupported` has nonzero Transmission Weight. `Deferred` has Alpha
-  0.25 and Emission Strength 3; those inputs are diagnosed, not authored.
+  0.25 and white Emission Color with Strength 3; Alpha is diagnosed and
+  Emission is authored as `(3, 3, 3)`.
 
 Blender 5.2.2 creates node trees even when its deprecated `use_nodes` setter
 receives false. The non-node decoder branch is therefore tested with a saved
@@ -37,7 +38,7 @@ flag mutation, not claimed as a Blender-written non-node fixture.
 ## Oracle and checks
 
 The adjacent `materials.oracle.json` records Blender's saved version/Scene,
-constant inputs or viewport fallback, expected diagnostic families,
+constant inputs including Emission Color and Strength or viewport fallback, expected diagnostic families,
 effective Object slots, shared Mesh names and exact face material indices.
 Generation checks the oracle again after reopening the saved file.
 `--check` regenerates only in a temporary directory and then reopens the
@@ -47,6 +48,7 @@ bytes and saved addresses are not claimed reproducible.
 [test_generate_materials.py](../test_generate_materials.py) checks
 independent-process/different-path semantic reproduction, home-path exclusion,
 non-destructive success/failure, changed-oracle rejection and saved constant,
+Emission Color and Strength,
 Object-slot and face-index mutations.
 
 Its Blender 5.2.2 Cycles CPU render test also reopens `Deferred`, confirms the
@@ -59,8 +61,9 @@ respectively. This is source-render evidence for those cases, not a USD renderer
 comparison, render-method/threshold decision, or implementation claim.
 
 [MaterialTests.cpp](../../../libs/blendScene/tests/MaterialTests.cpp) checks
-native constants, effective slots, shared Mesh identity, exact face indices,
-contextual diagnostics and malformed saved storage. The `usdBlend.materials`
+native constants, non-white and linked Emission mutations, effective slots,
+shared Mesh identity, exact face indices, contextual diagnostics and malformed
+saved storage. The `usdBlend.materials`
 CTest checks USD authoring, material/block permutations, invalid IR and
 partial invalid-face recovery. Registered
 [test_stage.py](../../../plugins/usdBlendFileFormat/tests/test_stage.py)

@@ -176,7 +176,10 @@ or absent surface graphs use viewport constants with a diagnostic. Linked
 Principled inputs outside §7.2 use saved socket constants with a diagnostic.
 Muted links do not enter the effective graph; invalid links use diagnosed
 viewport fallback.
-Non-default unsupported inputs and deferred Alpha/Emission are reported.
+Non-default unsupported inputs and deferred Alpha are reported. Constant
+Emission Color and Strength are multiplied into `emissiveColor`; linked
+Emission inputs use their saved socket constants with an unsupported-node
+diagnostic. Unsupported surface graphs retain non-emissive viewport fallback.
 Older node-tree layouts use diagnosed viewport fallback; this is not expanded
 older-version compatibility.
 
@@ -262,7 +265,7 @@ Texture input order is canonical, independent of the IR vector and saved block
 order. Normal textures use §4's scale/bias and a flat encoded-normal fallback
 `(0.5, 0.5, 1, 1)`; other texture fallbacks retain the socket constants.
 Metadata-only reads retain typed texture/reader children without shader IDs,
-inputs, asset references or connections. Alpha/Emission remain deferred.
+inputs, asset references or connections. Alpha remains deferred.
 The [5.2.2 fixture record](../../tests/fixtures/native-textures/README.md)
 owns provenance and limitations; shader-network evidence is not renderer
 equivalence or release-wide Blender compatibility.

@@ -117,7 +117,7 @@ release-wide Blender 5.x certification or full older-version support.
 The source-side Cycles checks do not exercise a USD renderer; named-UV
 tangent-frame and filtering equivalence still need generic-renderer acceptance.
 Color/scalar cross-type coercions,
-material Alpha/Emission, nonstandard color spaces/alpha interpretations,
+material Alpha and linked Emission, nonstandard color spaces/alpha interpretations,
 non-default embedded texture/color mappings, image extraction, UDIM,
 linked assets and richer shader graphs are not claimed supported.
 The decoder does not probe whether external files exist; the registered test

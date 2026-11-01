@@ -241,6 +241,62 @@ blend::DnaValueView LinkTo(const Fixture& fixture, std::string_view material, st
   throw std::runtime_error("Missing fixture link");
 }
 
+void CheckEmission(const Fixture& fixture) {
+  const auto find = [](const blend::Scene& scene, std::string_view name) -> const blend::Material& {
+    const auto material = std::find_if(scene.materials.begin(), scene.materials.end(),
+        [&](const auto& value) { return value.sourceName == name; });
+    Require(material != scene.materials.end(), "Emission test material exists");
+    return *material;
+  };
+  const auto original = Take(fixture.Decode(fixture.bytes));
+  Require(find(original, "Deferred").emissiveColor == blend::Vector3{3, 3, 3} &&
+              find(original, "Fallback").emissiveColor == blend::Vector3{0, 0, 0},
+      "Saved emission constants and viewport fallback are decoded");
+
+  const auto node = Node(fixture, "Linked", "ShaderNodeBsdfPrincipled");
+  const auto colorSocket = InputSocket(fixture, node, "Emission Color");
+  const auto strengthSocket = InputSocket(fixture, node, "Emission Strength");
+  const auto colorDefault = fixture.View(fixture.Resolve(Take(Take(colorSocket.Member("default_value")).Pointer())));
+  const auto color = Take(colorDefault.Member("value"));
+  const auto strengthDefault = fixture.View(fixture.Resolve(Take(Take(strengthSocket.Member("default_value")).Pointer())));
+  const auto strength = Take(strengthDefault.Member("value"));
+  auto changed = fixture.bytes;
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    fixture.Store(changed, Take(color.Element(axis)),
+        std::bit_cast<std::uint32_t>(std::array{0.25f, 0.5f, 0.75f}[axis]));
+  }
+  fixture.Store(changed, strength, std::bit_cast<std::uint32_t>(3.0f));
+  const auto link = LinkTo(fixture, "Linked", SocketIndex(fixture, node, "inputs", "Base Color"));
+  for (const auto target : {"Emission Color", "Emission Strength"}) {
+    auto linked = changed;
+    fixture.Store(linked, Take(link.Member("tosock")),
+        fixture.blocks[SocketIndex(fixture, node, "inputs", target)].oldAddress);
+    const auto result = fixture.Decode(linked);
+    const auto scene = Take(result);
+    Require(find(scene, "Linked").emissiveColor == blend::Vector3{0.75, 1.5, 2.25} &&
+                Has(result, "BLEND_MATERIAL_UNSUPPORTED_NODE", "Linked") &&
+                !Has(result, "BLEND_MATERIAL_DEFERRED_INPUT", "Linked"),
+        "Linked emission uses diagnosed saved socket constants");
+  }
+  fixture.Store(changed, strength, std::bit_cast<std::uint32_t>(0.0f));
+  const auto zero = Take(fixture.Decode(changed));
+  Require(find(zero, "Linked").emissiveColor == blend::Vector3{0, 0, 0},
+      "Zero strength suppresses emission");
+  for (const auto& invalid : {Take(color.Element(3)), strength}) {
+    auto bad = fixture.bytes;
+    fixture.Store(bad, invalid, std::bit_cast<std::uint32_t>(std::numeric_limits<float>::quiet_NaN()));
+    const auto result = fixture.Decode(bad);
+    Require(!result.HasValue() && result.GetError().code == "BLEND_MATERIAL_VALUE_INVALID",
+        "Nonfinite emission defaults fail explicitly");
+  }
+  auto wrongType = fixture.bytes;
+  fixture.Store(wrongType, Take(colorSocket.Member("default_value")),
+      Take(Take(strengthSocket.Member("default_value")).Pointer()));
+  const auto invalid = fixture.Decode(wrongType);
+  Require(!invalid.HasValue() && invalid.GetError().code == "BLEND_MATERIAL_STORAGE_INVALID",
+      "Emission color requires an RGBA default");
+}
+
 void CheckTextures(const Fixture& fixture) {
   const auto result = fixture.Decode(fixture.bytes);
   const auto scene = Take(result);
@@ -486,6 +542,7 @@ int main(int argc, char** argv) {
     const Fixture fixture(argv[1]);
     Check(fixture);
     Boundaries(fixture);
+    CheckEmission(fixture);
     std::cout << "Material constants, effective slots and storage boundaries passed\n";
     return 0;
   } catch (const std::exception& error) {

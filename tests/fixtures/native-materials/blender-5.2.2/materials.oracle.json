@@ -4,6 +4,12 @@
       "clearcoat": 0.0,
       "clearcoatRoughness": 0.029999999329447746,
       "diagnostics": [],
+      "emissionColor": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "emissionStrength": 0.0,
       "ior": 1.5,
       "metallic": 0.25,
       "roughness": 0.75,
@@ -17,6 +23,12 @@
       "clearcoat": 0.4000000059604645,
       "clearcoatRoughness": 0.10000000149011612,
       "diagnostics": [],
+      "emissionColor": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "emissionStrength": 0.0,
       "ior": 1.7000000476837158,
       "metallic": 0.800000011920929,
       "roughness": 0.20000000298023224,
@@ -32,6 +44,12 @@
       "diagnostics": [
         "BLEND_MATERIAL_DEFERRED_INPUT"
       ],
+      "emissionColor": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "emissionStrength": 3.0,
       "ior": 1.5,
       "metallic": 0.0,
       "roughness": 0.5,
@@ -47,6 +65,12 @@
       "diagnostics": [
         "BLEND_MATERIAL_UNSUPPORTED_NODE"
       ],
+      "emissionColor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "emissionStrength": 0.0,
       "ior": 1.5,
       "metallic": 0.25,
       "roughness": 0.75,
@@ -62,6 +86,12 @@
       "diagnostics": [
         "BLEND_MATERIAL_UNSUPPORTED_NODE"
       ],
+      "emissionColor": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "emissionStrength": 0.0,
       "ior": 1.5,
       "metallic": 0.0,
       "roughness": 0.5,
@@ -77,6 +107,12 @@
       "diagnostics": [
         "BLEND_MATERIAL_UNSUPPORTED_NODE"
       ],
+      "emissionColor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "emissionStrength": 0.0,
       "ior": 1.5,
       "metallic": 0.25,
       "roughness": 0.75,
@@ -92,6 +128,12 @@
       "diagnostics": [
         "BLEND_MATERIAL_UNSUPPORTED_NODE"
       ],
+      "emissionColor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "emissionStrength": 0.0,
       "ior": 1.5,
       "metallic": 0.25,
       "roughness": 0.75,
@@ -107,6 +149,12 @@
       "diagnostics": [
         "BLEND_MATERIAL_UNSUPPORTED_INPUT"
       ],
+      "emissionColor": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "emissionStrength": 0.0,
       "ior": 1.5,
       "metallic": 0.0,
       "roughness": 0.5,
