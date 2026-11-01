@@ -1133,6 +1133,16 @@ $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.e
 & $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests\fixtures\test_generate_materials.py
 ```
 
+For the separate GPU-dependent 5.2.2 Eevee render-method and threshold check,
+run the following local Windows command. It writes and reopens temporary
+fixture variations without modifying the committed fixture; its bounded
+results and limitations are in the fixture record.
+
+```powershell
+$blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.exe'
+& $blender --background --factory-startup --disable-autoexec --python-exit-code 1 --python tests\fixtures\test_material_alpha_eevee.py
+```
+
 Root and standalone builds run `blendScene.materials` and
 `usdBlend.materials` without Blender. Registered `test_stage.py` compares the
 saved JSON oracle to constant shader values, NodeGraph output connections,

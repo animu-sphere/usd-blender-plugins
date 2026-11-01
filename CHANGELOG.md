@@ -39,6 +39,9 @@ All notable changes to this project are recorded here. The format follows
     is authored as `emissiveColor`; linked Emission inputs retain diagnosed
     socket-constant fallbacks. Source and authoring checks cover the saved
     5.2.2 fixture and targeted mutations, not USD renderer equivalence.
+- A bounded Blender 5.2.2 Eevee source-render check for saved render methods,
+    fractional Alpha and thresholds, plus the deprecated blend-method setter.
+    It does not implement Alpha mapping or establish USD renderer equivalence.
 
 ### Changed
 
