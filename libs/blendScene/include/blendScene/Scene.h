@@ -75,6 +75,7 @@ struct Material {
   double clearcoat = 0;
   double clearcoatRoughness = 0.03;
   Vector3 emissiveColor = {0, 0, 0};
+  double opacity = 1;
   std::vector<MaterialTexture> textures;
 };
 

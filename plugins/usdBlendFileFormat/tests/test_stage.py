@@ -247,9 +247,9 @@ class StageContractTests(unittest.TestCase):
                     self._assert_close(shader.GetInput("emissiveColor").Get(),
                                        [component * expected["emissionStrength"]
                                         for component in expected["emissionColor"]])
+                    self._assert_close([shader.GetInput("opacity").Get()], [expected["alpha"]], 1e-7)
                     self.assertEqual(shader.GetInput("useSpecularWorkflow").Get(), 0)
-                for deferred in ("opacity", "opacityThreshold"):
-                    self.assertFalse(shader.GetInput(deferred))
+                self.assertFalse(shader.GetInput("opacityThreshold"))
             for name, expected in oracle["objects"].items():
                 mesh = UsdGeom.Mesh(stage.GetPrimAtPath(f"/Asset/geo/{name}/mesh"))
                 api = UsdShade.MaterialBindingAPI(mesh)

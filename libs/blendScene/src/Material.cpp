@@ -538,7 +538,6 @@ private:
     }
     std::set<std::string> found;
     bool unsupported = false;
-    bool deferred = false;
     bool linked = false;
     Vector3 emissionColor = {0, 0, 0};
     double emissionStrength = 0;
@@ -589,7 +588,7 @@ private:
       } else if (identifier == "Alpha" || identifier == "Emission Strength") {
         const auto value = Float(Take(Default(socket, "bNodeSocketValueFloat").Member("value")));
         if (identifier == "Alpha") {
-          deferred = deferred || isLinked || value != 1;
+          material.opacity = value;
         } else {
           emissionStrength = value;
         }
@@ -646,9 +645,6 @@ private:
     }
     if (unsupported) {
       Warn("BLEND_MATERIAL_UNSUPPORTED_INPUT", "Non-default unsupported Principled inputs are not authored");
-    }
-    if (deferred) {
-      Warn("BLEND_MATERIAL_DEFERRED_INPUT", "Alpha is deferred; an opaque surface is authored");
     }
     if (std::any_of(material.textures.begin(), material.textures.end(), [](const auto& texture) {
           return texture.colorSpace == TextureColorSpace::SRgb &&

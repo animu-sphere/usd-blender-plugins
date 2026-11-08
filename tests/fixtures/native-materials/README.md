@@ -28,8 +28,9 @@ effective Materials:
 - `Fallback` uses Diffuse BSDF, `Muted` mutes Principled and `MutedLink`
   mutes the Surface link; all use diagnosed saved viewport constants.
 - `Unsupported` has nonzero Transmission Weight. `Deferred` has Alpha
-  0.25 and white Emission Color with Strength 3; Alpha is diagnosed and
-  Emission is authored as `(3, 3, 3)`.
+  0.25 and white Emission Color with Strength 3; Alpha is authored as
+  `opacity` 0.25 without `opacityThreshold`, and Emission as `(3, 3, 3)`.
+  The name predates both mappings and is kept with the saved fixture.
 
 Blender 5.2.2 creates node trees even when its deprecated `use_nodes` setter
 receives false. The non-node decoder branch is therefore tested with a saved
@@ -38,7 +39,7 @@ flag mutation, not claimed as a Blender-written non-node fixture.
 ## Oracle and checks
 
 The adjacent `materials.oracle.json` records Blender's saved version/Scene,
-constant inputs including Emission Color and Strength or viewport fallback, expected diagnostic families,
+constant inputs including Alpha, Emission Color and Strength or viewport fallback, expected diagnostic families,
 effective Object slots, shared Mesh names and exact face material indices.
 Generation checks the oracle again after reopening the saved file.
 `--check` regenerates only in a temporary directory and then reopens the
@@ -48,7 +49,7 @@ bytes and saved addresses are not claimed reproducible.
 [test_generate_materials.py](../test_generate_materials.py) checks
 independent-process/different-path semantic reproduction, home-path exclusion,
 non-destructive success/failure, changed-oracle rejection and saved constant,
-Emission Color and Strength,
+Alpha, Emission Color and Strength,
 Object-slot and face-index mutations.
 
 Its Blender 5.2.2 Cycles CPU render test also reopens `Deferred`, confirms the
@@ -73,11 +74,12 @@ not evidence about every material graph, Blender version or USD renderer.
 
 The registered-plugin [Storm check](../../../docs/guides/building.md#direct-emission-rendering-in-storm)
 uses this same saved `Deferred` binding and compares visible emission against
-session-only zero and non-white strength controls. It is not a linear-pixel
-comparison with Cycles, and the fixture's Alpha remains deferred.
+session-only zero and non-white strength controls. It sets session-only
+unit opacity so that the check isolates emission; it is not a linear-pixel
+comparison with Cycles and does not test Alpha visibility.
 
 [MaterialTests.cpp](../../../libs/blendScene/tests/MaterialTests.cpp) checks
-native constants, non-white and linked Emission mutations, effective slots,
+native constants, Alpha and non-white/linked Emission mutations, effective slots,
 shared Mesh identity, exact face indices, contextual diagnostics and malformed
 saved storage. The `usdBlend.materials`
 CTest checks USD authoring, material/block permutations, invalid IR and

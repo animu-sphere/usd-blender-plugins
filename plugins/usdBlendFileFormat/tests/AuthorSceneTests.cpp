@@ -774,6 +774,11 @@ void CheckMaterials(const std::filesystem::path& path) {
   const auto emissive = UsdShadeShader(stage->GetPrimAtPath(SdfPath("/Asset/mtl/Deferred/preview/Surface")));
   Require(Get<GfVec3f>(emissive.GetInput(TfToken("emissiveColor")).GetAttr()) == GfVec3f(3, 3, 3),
       "Emission color and strength are multiplied into emissiveColor");
+  Require(Get<float>(emissive.GetInput(TfToken("opacity")).GetAttr()) == 0.25f &&
+              !emissive.GetInput(TfToken("opacityThreshold")),
+      "Constant Alpha is authored as opacity without a clip threshold");
+  Require(Get<float>(shader.GetInput(TfToken("opacity")).GetAttr()) == 1.0f,
+      "Opaque materials author unit opacity");
   const auto single = stage->GetPrimAtPath(SdfPath("/Asset/geo/Single/mesh"));
   Require(UsdShadeMaterialBindingAPI(single).ComputeBoundMaterial().GetPath() == SdfPath("/Asset/mtl/A_B"),
       "One effective slot binds on the Mesh");
@@ -809,10 +814,13 @@ void CheckMaterials(const std::filesystem::path& path) {
       [](const auto& value) { return value.sourceName == "Deferred"; });
   Require(changedMaterial != nonWhite.materials.end(), "Emission test material exists");
   changedMaterial->emissiveColor = {0.75, 1.5, 2.25};
+  changedMaterial->opacity = 0;
   const auto changedStage = UsdStage::Open(Take(blend::AuthorScene(nonWhite)));
   const auto changedShader = UsdShadeShader(changedStage->GetPrimAtPath(SdfPath("/Asset/mtl/Deferred/preview/Surface")));
   Require(Get<GfVec3f>(changedShader.GetInput(TfToken("emissiveColor")).GetAttr()) == GfVec3f(0.75f, 1.5f, 2.25f),
       "Non-white emissive IR is authored without channel changes");
+  Require(Get<float>(changedShader.GetInput(TfToken("opacity")).GetAttr()) == 0.0f,
+      "Fully transparent opacity IR is authored unchanged");
   scene = Decode(path);
   scene.objects.front().materialSlots = {scene.materials.size()};
   Failure(scene, "BLEND_USD_MATERIAL_INVALID", scene.objects.front().sourceName);
@@ -827,6 +835,9 @@ void CheckMaterials(const std::filesystem::path& path) {
   Failure(scene, "BLEND_USD_VALUE_INVALID", scene.materials.front().sourceName);
   scene = Decode(path);
   scene.materials.front().emissiveColor[1] = static_cast<double>(std::numeric_limits<float>::max()) * 2;
+  Failure(scene, "BLEND_USD_VALUE_INVALID", scene.materials.front().sourceName);
+  scene = Decode(path);
+  scene.materials.front().opacity = std::numeric_limits<double>::quiet_NaN();
   Failure(scene, "BLEND_USD_VALUE_INVALID", scene.materials.front().sourceName);
   scene = Decode(path);
   scene.materials[1].sourceName = scene.materials[0].sourceName;
