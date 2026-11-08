@@ -120,10 +120,13 @@ void Check(const Fixture& fixture) {
            std::pair{"BLEND_MATERIAL_UNSUPPORTED_NODE", "Linked"}, {"BLEND_MATERIAL_UNSUPPORTED_NODE", "Fallback"},
            {"BLEND_MATERIAL_UNSUPPORTED_NODE", "Muted"},
            {"BLEND_MATERIAL_UNSUPPORTED_NODE", "MutedLink"},
-           {"BLEND_MATERIAL_UNSUPPORTED_INPUT", "Unsupported"}, {"BLEND_MATERIAL_DEFERRED_INPUT", "Deferred"},
+           {"BLEND_MATERIAL_UNSUPPORTED_INPUT", "Unsupported"},
            {"BLEND_MATERIAL_SLOT_EMPTY", "EmptySlot"}, {"BLEND_MATERIAL_SLOT_EMPTY", "Override"}}) {
     Require(Has(result, code, name), "Expected contextual recoverable material diagnostic");
   }
+  Require(!std::any_of(result.Diagnostics().begin(), result.Diagnostics().end(),
+              [](const auto& diagnostic) { return diagnostic.code == "BLEND_MATERIAL_DEFERRED_INPUT"; }),
+      "Saved node Alpha is no longer deferred");
 }
 
 void Boundaries(const Fixture& fixture) {
@@ -188,8 +191,15 @@ void Boundaries(const Fixture& fixture) {
   const auto found = std::find_if(viewport.materials.begin(), viewport.materials.end(),
       [](const auto& value) { return value.sourceName == "A_B"; });
   Require(found != viewport.materials.end() && found->diffuseColor == blend::Vector3{0.125, 0.25, 0.5} &&
-              found->metallic == 0.25 && found->roughness == 0.75,
+              found->metallic == 0.25 && found->roughness == 0.75 && found->opacity == 1,
       "Synthetic non-node flag selects saved viewport constants without requiring a graph");
+  fixture.Store(changed, Take(material.Member("a")), std::bit_cast<std::uint32_t>(0.5f));
+  const auto viewportAlpha = fixture.Decode(changed);
+  const auto alphaFound = std::find_if(viewportAlpha.GetValue().materials.begin(), viewportAlpha.GetValue().materials.end(),
+      [](const auto& value) { return value.sourceName == "A_B"; });
+  Require(alphaFound != viewportAlpha.GetValue().materials.end() && alphaFound->opacity == 1 &&
+              Has(viewportAlpha, "BLEND_MATERIAL_DEFERRED_INPUT", "A_B"),
+      "Non-node viewport Alpha remains deferred and opaque");
 }
 
 std::uint32_t Node(const Fixture& fixture, std::string_view material, std::string_view type) {
@@ -295,6 +305,48 @@ void CheckEmission(const Fixture& fixture) {
   const auto invalid = fixture.Decode(wrongType);
   Require(!invalid.HasValue() && invalid.GetError().code == "BLEND_MATERIAL_STORAGE_INVALID",
       "Emission color requires an RGBA default");
+}
+
+void CheckAlpha(const Fixture& fixture) {
+  const auto find = [](const blend::Scene& scene, std::string_view name) -> const blend::Material& {
+    const auto material = std::find_if(scene.materials.begin(), scene.materials.end(),
+        [&](const auto& value) { return value.sourceName == name; });
+    Require(material != scene.materials.end(), "Alpha test material exists");
+    return *material;
+  };
+  const auto original = fixture.Decode(fixture.bytes);
+  Require(find(original.GetValue(), "Deferred").opacity == 0.25 &&
+              find(original.GetValue(), "A_B").opacity == 1 &&
+              find(original.GetValue(), "Fallback").opacity == 1 &&
+              !Has(original, "BLEND_MATERIAL_DEFERRED_INPUT", "Deferred"),
+      "Saved constant Alpha is decoded; opaque and viewport-fallback surfaces keep unit opacity");
+
+  const auto node = Node(fixture, "Linked", "ShaderNodeBsdfPrincipled");
+  const auto alphaSocket = InputSocket(fixture, node, "Alpha");
+  const auto alphaDefault = fixture.View(fixture.Resolve(Take(Take(alphaSocket.Member("default_value")).Pointer())));
+  const auto alpha = Take(alphaDefault.Member("value"));
+  for (const auto value : {0.0f, 0.75f}) {
+    auto changed = fixture.bytes;
+    fixture.Store(changed, alpha, std::bit_cast<std::uint32_t>(value));
+    const auto scene = Take(fixture.Decode(changed));
+    Require(find(scene, "Linked").opacity == static_cast<double>(value),
+        "Constant Alpha mutations are decoded without remapping");
+  }
+  auto linked = fixture.bytes;
+  fixture.Store(linked, alpha, std::bit_cast<std::uint32_t>(0.5f));
+  const auto link = LinkTo(fixture, "Linked", SocketIndex(fixture, node, "inputs", "Base Color"));
+  fixture.Store(linked, Take(link.Member("tosock")),
+      fixture.blocks[SocketIndex(fixture, node, "inputs", "Alpha")].oldAddress);
+  const auto linkedResult = fixture.Decode(linked);
+  Require(find(linkedResult.GetValue(), "Linked").opacity == 0.5 &&
+              Has(linkedResult, "BLEND_MATERIAL_UNSUPPORTED_NODE", "Linked") &&
+              !Has(linkedResult, "BLEND_MATERIAL_DEFERRED_INPUT", "Linked"),
+      "Linked Alpha outside the texture subset uses its diagnosed saved socket constant");
+  auto bad = fixture.bytes;
+  fixture.Store(bad, alpha, std::bit_cast<std::uint32_t>(std::numeric_limits<float>::infinity()));
+  const auto invalid = fixture.Decode(bad);
+  Require(!invalid.HasValue() && invalid.GetError().code == "BLEND_MATERIAL_VALUE_INVALID",
+      "Nonfinite Alpha defaults fail explicitly");
 }
 
 void CheckTextures(const Fixture& fixture) {
@@ -543,6 +595,7 @@ int main(int argc, char** argv) {
     Check(fixture);
     Boundaries(fixture);
     CheckEmission(fixture);
+    CheckAlpha(fixture);
     std::cout << "Material constants, effective slots and storage boundaries passed\n";
     return 0;
   } catch (const std::exception& error) {

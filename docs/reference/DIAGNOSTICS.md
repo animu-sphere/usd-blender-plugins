@@ -149,7 +149,7 @@ Fixture paths are relative to
 | `BLEND_MATERIAL_VALUE_INVALID` | Fatal | no | a material constant is nonfinite | infinite viewport roughness and NaN socket color in `blendScene.materials` |
 | `BLEND_MATERIAL_UNSUPPORTED_NODE` | Unsupported | yes | a surface/input graph is outside the Principled/image/UV/tangent-normal subset or a link is invalid | Diffuse BSDF, linked RGB, muted Principled and muted Surface link in the 5.2.2 material fixture; texture coercion/mapping/projection/mute/normal-setting cases in `blendScene.textures`; invalid-link fallback unverified |
 | `BLEND_MATERIAL_UNSUPPORTED_INPUT` | Unsupported | yes | a non-default unsupported Principled input or socket type is omitted | nonzero Transmission Weight in the 5.2.2 material fixture |
-| `BLEND_MATERIAL_DEFERRED_INPUT` | Unsupported | yes | non-default or linked Alpha is omitted pending the mapping decision | Alpha 0.25 in the 5.2.2 material fixture |
+| `BLEND_MATERIAL_DEFERRED_INPUT` | Unsupported | yes | a non-node Material's non-default viewport Alpha is omitted; an opaque surface is authored | synthetic `use_nodes = 0` viewport-alpha mutation in `blendScene.materials` |
 | `BLEND_MATERIAL_SLOT_EMPTY` | Unsupported | yes | an effective saved material slot is null; its faces stay unbound | empty Mesh slot and null Object override in the 5.2.2 material fixture |
 | `BLEND_MATERIAL_SLOT_INVALID` | Unsupported | yes | a face material index is outside the effective slots; those faces stay unbound | invalid face index in `usdBlend.materials` |
 | `BLEND_MATERIAL_LINKED_UNSUPPORTED` | Unsupported | yes | a reached Material has nonzero ID.lib; it is not followed or bound | implemented; fixture unverified |

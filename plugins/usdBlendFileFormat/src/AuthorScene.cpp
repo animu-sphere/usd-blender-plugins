@@ -409,7 +409,7 @@ UsdShadeMaterial AuthorMaterial(const UsdStageRefPtr& stage, const SdfPath& path
     for (const auto& [name, value] : {
              std::pair{"metallic", source.metallic}, {"roughness", source.roughness},
              {"ior", source.ior}, {"clearcoat", source.clearcoat},
-             {"clearcoatRoughness", source.clearcoatRoughness}}) {
+             {"clearcoatRoughness", source.clearcoatRoughness}, {"opacity", source.opacity}}) {
       Check(surface.CreateInput(TfToken(name), SdfValueTypeNames->Float).Set(FloatValue(value, source.sourceName)));
     }
     Check(surface.CreateInput(TfToken("useSpecularWorkflow"), SdfValueTypeNames->Int).Set(0));

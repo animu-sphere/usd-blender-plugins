@@ -1160,10 +1160,11 @@ ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile usd -- ctest
 The standalone CTest directory above is the local Windows target directory;
 use the directory selected by your host/target on another platform. Root CMake
 uses the same material CTests alongside the existing geometry and dependency
-boundary tests. Constant Emission is checked against the saved fixture and
-targeted non-white, linked and invalid-value mutations; USD renderer
-equivalence is not established. Alpha and color attributes remain outside
-the supported scope; texture verification is below. See the
+boundary tests. Constant Alpha and Emission are checked against the saved
+fixture and targeted zero, fractional, non-white, linked and invalid-value
+mutations; USD renderer equivalence is not established. Image Alpha → opacity
+and color attributes remain outside the supported scope; texture verification
+is below. See the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#3-stage).
 
 ### Direct emission rendering in Storm
@@ -1181,6 +1182,7 @@ ost plugin run plugins\usdBlendFileFormat --target cy2026 --profile lookdev -- p
 The harness opens the saved fixture through the registered plugin, verifies
 the `Deferred` binding and authored `(3,3,3)` emission, isolates its mesh and
 checks the center pick. In the session layer it sets black diffuse color and
+unit opacity, isolating emission from the saved translucent Alpha, and
 compares the saved emission with zero emission and non-white strength-one
 `(0.25,0.5,0.75)` and strength-three `(0.75,1.5,2.25)` controls.
 Both saved-versus-zero and strength-one-versus-three must change more than
@@ -1193,7 +1195,7 @@ material network; it does not test live constant-edit propagation or modify the
 fixture.
 
 This is a local visibility check, not a linear-pixel or renderer-equivalence
-comparison with the Cycles oracle. It does not resolve emission units or Alpha,
+comparison with the Cycles oracle. It does not resolve emission units or test Alpha,
 and is not part of hosted CI.
 
 ## External-texture and normal-map oracles
@@ -1235,7 +1237,7 @@ Build the updated library/bundle with the commands in the preceding section
 before these checks. The companion stage-contract and release workflows select
 the new CTest alongside existing authoring tests. Local Windows checks do not
 establish hosted Windows/Linux success or generic-renderer equivalence.
-Color/scalar socket coercions, material Alpha and broader renderer
+Color/scalar socket coercions, Image Alpha → opacity and broader renderer
 acceptance remain separate roadmap work.
 
 ### Direct texture rendering in Storm

@@ -30,6 +30,7 @@ def _verify_emission(appController):
     check.assertEqual(surface.GetIdAttr().Get(), "UsdPreviewSurface")
     emission = surface.GetInput("emissiveColor")
     check.assertEqual(emission.Get(), Gf.Vec3f(3, 3, 3))
+    check.assertEqual(surface.GetInput("opacity").Get(), 0.25)
     graph_output = UsdShade.NodeGraph(stage.GetPrimAtPath("/Asset/mtl/Deferred/preview")).GetOutput("surface")
     check.assertEqual(graph_output.GetAttr().GetConnections(),
                       [surface.GetOutput("surface").GetAttr().GetPath()])
@@ -39,6 +40,8 @@ def _verify_emission(appController):
         if obj.GetName() != "Deferred":
             check.assertTrue(obj.SetActive(False))
     check.assertTrue(surface.GetInput("diffuseColor").Set(Gf.Vec3f(0, 0, 0)))
+    # Keep this an emission-only check; the saved Alpha is translucent.
+    check.assertTrue(surface.GetInput("opacity").Set(1.0))
 
     view = appController._stageView
     check.assertIsNotNone(view, "A rendered viewport is required; do not use --norender")

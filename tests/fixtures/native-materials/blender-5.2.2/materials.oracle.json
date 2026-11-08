@@ -1,6 +1,7 @@
 {
   "materials": {
     "A/B": {
+      "alpha": 1.0,
       "clearcoat": 0.0,
       "clearcoatRoughness": 0.029999999329447746,
       "diagnostics": [],
@@ -20,6 +21,7 @@
       ]
     },
     "A_B": {
+      "alpha": 1.0,
       "clearcoat": 0.4000000059604645,
       "clearcoatRoughness": 0.10000000149011612,
       "diagnostics": [],
@@ -39,11 +41,10 @@
       ]
     },
     "Deferred": {
+      "alpha": 0.25,
       "clearcoat": 0.0,
       "clearcoatRoughness": 0.029999999329447746,
-      "diagnostics": [
-        "BLEND_MATERIAL_DEFERRED_INPUT"
-      ],
+      "diagnostics": [],
       "emissionColor": [
         1.0,
         1.0,
@@ -60,6 +61,7 @@
       ]
     },
     "Fallback": {
+      "alpha": 1.0,
       "clearcoat": 0.0,
       "clearcoatRoughness": 0.03,
       "diagnostics": [
@@ -81,6 +83,7 @@
       ]
     },
     "Linked": {
+      "alpha": 1.0,
       "clearcoat": 0.0,
       "clearcoatRoughness": 0.029999999329447746,
       "diagnostics": [
@@ -102,6 +105,7 @@
       ]
     },
     "Muted": {
+      "alpha": 1.0,
       "clearcoat": 0.0,
       "clearcoatRoughness": 0.03,
       "diagnostics": [
@@ -123,6 +127,7 @@
       ]
     },
     "MutedLink": {
+      "alpha": 1.0,
       "clearcoat": 0.0,
       "clearcoatRoughness": 0.03,
       "diagnostics": [
@@ -144,6 +149,7 @@
       ]
     },
     "Unsupported": {
+      "alpha": 1.0,
       "clearcoat": 0.0,
       "clearcoatRoughness": 0.029999999329447746,
       "diagnostics": [

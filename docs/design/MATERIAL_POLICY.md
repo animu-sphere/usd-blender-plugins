@@ -69,7 +69,7 @@ The supported surface is a **Principled BSDF** connected to the active
 | Metallic | `metallic` | |
 | Roughness | `roughness` | |
 | IOR | `ior` | |
-| Alpha | `opacity` | the mode is MAT-O1 |
+| Alpha | `opacity` | no `opacityThreshold` for either 5.x render method (MAT-O1, §9.1) |
 | Normal (through a Normal Map node) | `normal` | tangent space; texture `scale = (2,2,2,1)`, `bias = (-1,-1,-1,0)`; Normal Map strength other than 1 is a diagnostic |
 | Emission Color × Emission Strength | `emissiveColor` | the strength scale is MAT-O4 |
 | Coat Weight | `clearcoat` | |
@@ -96,7 +96,7 @@ An input of the Principled BSDF is authored as:
 | --- | --- |
 | nothing | the socket's constant value |
 | Image Texture Color → Base Color | `UsdUVTexture` reading the image (§6), connected to `diffuseColor` |
-| Image Texture Alpha → supported scalar input | `UsdUVTexture` Alpha output connected to that input; opacity mapping is MAT-O1 |
+| Image Texture Alpha → supported scalar input | `UsdUVTexture` Alpha output connected to that input; for Alpha it feeds `opacity` with no threshold (§9.1) |
 | Image Texture → Normal Map → Normal | `UsdUVTexture` with the bias and scale of §4 |
 | UV Map node into an Image Texture's Vector | the texture's `StReader` reads that UV map's primvar |
 | anything else | the socket's constant value, with `BLEND_MATERIAL_UNSUPPORTED_NODE` |
@@ -176,10 +176,13 @@ or absent surface graphs use viewport constants with a diagnostic. Linked
 Principled inputs outside §7.2 use saved socket constants with a diagnostic.
 Muted links do not enter the effective graph; invalid links use diagnosed
 viewport fallback.
-Non-default unsupported inputs and deferred Alpha are reported. Constant
+Non-default unsupported inputs are reported. Constant Alpha is authored as
+`opacity` without `opacityThreshold` (§9.1); linked Alpha outside §7.2 uses
+its saved socket constant with an unsupported-node diagnostic. Constant
 Emission Color and Strength are multiplied into `emissiveColor`; linked
 Emission inputs use their saved socket constants with an unsupported-node
-diagnostic. Unsupported surface graphs retain non-emissive viewport fallback.
+diagnostic. Unsupported surface graphs retain non-emissive, opaque viewport
+fallback; non-node viewport Alpha remains deferred and diagnosed.
 Older node-tree layouts use diagnosed viewport fallback; this is not expanded
 older-version compatibility.
 
@@ -265,7 +268,9 @@ Texture input order is canonical, independent of the IR vector and saved block
 order. Normal textures use §4's scale/bias and a flat encoded-normal fallback
 `(0.5, 0.5, 1, 1)`; other texture fallbacks retain the socket constants.
 Metadata-only reads retain typed texture/reader children without shader IDs,
-inputs, asset references or connections. Alpha remains deferred.
+inputs, asset references or connections. Image Texture Alpha → Alpha is
+not yet part of this boundary; it uses the saved Alpha constant with an
+unsupported-node diagnostic.
 The [5.2.2 fixture record](../../tests/fixtures/native-textures/README.md)
 owns provenance and limitations; shader-network evidence is not renderer
 equivalence or release-wide Blender compatibility.
@@ -279,18 +284,25 @@ MAT-O2. It is not scheduled by a Phase yet.
 
 ## 9. Open questions
 
-For MAT-O1, Blender 5.2.2's deprecated `blend_method` setter maps `CLIP` to
-`DITHERED` when starting from `DITHERED`, rather than retaining a clip mode.
-In bounded Eevee source-render tests, both `DITHERED` and `BLENDED` retain
-fractional opacity when the saved `alpha_threshold` is above or below the
-constant Alpha. See the [fixture evidence](../../tests/fixtures/native-materials/README.md#oracle-and-checks).
-Do not treat that threshold as a 5.2 clip threshold solely because it is
-present in saved settings. The USD mapping and broader 5.x behavior remain
-open pending renderer and implementation evidence.
-
 | Id | Question | Proposed answer | Blocks |
 | --- | --- | --- | --- |
-| MAT-O1 | How does Blender's alpha (blend, clip, hashed; and the 4.2+ render method) map to `opacity` and `opacityThreshold`? | Clip → `opacityThreshold` from the clip value; everything else → `opacity` with threshold 0. Confirm for the maintained Blender 5.x scope; older-version compatibility is deferred. | Phase 3 |
 | MAT-O2 | The MaterialX target node set and the Blender nodes it covers. | `open_pbr_surface` if the OpenUSD release in use renders it in Storm; otherwise `standard_surface`. | nothing (non-blocking) |
 | MAT-O3 | Packed images. | Report only, until a resolver serves them (§6). | nothing (non-blocking) |
 | MAT-O4 | Emission strength units against `emissiveColor`. | Multiply color by strength; confirm visually against a fixture. | Phase 3 |
+
+### 9.1 Resolved decisions
+
+- **MAT-O1 (2026-11-08):** for the maintained Blender 5.x scope, the
+   Principled Alpha socket maps to `opacity` and `opacityThreshold` is not
+   authored, so it keeps the Preview Surface default of 0. This applies to
+   both saved surface render methods, `DITHERED` and `BLENDED`; neither the
+   render method nor the saved `alpha_threshold` is read. Blender 5.x has no
+   clip mode: in 5.2.2 the deprecated `blend_method` setter maps `CLIP` to
+   `DITHERED`, and bounded Eevee renders retain fractional opacity with the
+   threshold on either side of a constant Alpha. See the
+   [fixture evidence](../../tests/fixtures/native-materials/README.md#oracle-and-checks).
+   Clipping built in the node graph is a linked Alpha outside the supported
+   subset and uses the diagnosed socket constant. Dithered versus blended
+   sorting, shadow and depth behavior is not represented, and no renderer
+   equivalence is claimed. Clip modes of older Blender versions belong to the
+   deferred older-version work.

@@ -63,7 +63,6 @@ schedules them.
 | Id | Question | Owner | Blocks |
 | --- | --- | --- | --- |
 | STAGE-O3 | Color attributes and `displayColor` | [STAGE §18](../design/STAGE_CONTRACT.md#18-open-questions) | Phase 3 |
-| MAT-O1 | Alpha mode mapping | [MATERIAL §9](../design/MATERIAL_POLICY.md#9-open-questions) | Phase 3 |
 | MAT-O4 | Emission strength | [MATERIAL §9](../design/MATERIAL_POLICY.md#9-open-questions) | Phase 3 |
 | STAGE-O4 | Parenting across scopes | [STAGE §18](../design/STAGE_CONTRACT.md#18-open-questions) | Phase 4 |
 | STAGE-O6 | Light intensity conversion | [STAGE §18](../design/STAGE_CONTRACT.md#18-open-questions) | Phase 4 |
