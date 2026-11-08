@@ -214,7 +214,9 @@ framing is checked, but packed payloads are not decoded.
 The native external-texture boundary for the compatibility subset is:
 
 - Image Texture **Color → Base Color** and **Alpha → Metallic, Roughness,
-  IOR, Coat Weight or Coat Roughness** are translated. Color-to-scalar and
+  IOR, Coat Weight, Coat Roughness or Alpha** are translated; Alpha feeds
+  `opacity` with no `opacityThreshold` (§9.1) and the saved Alpha constant
+  as the texture fallback. Color-to-scalar and
   Alpha-to-color coercions use diagnosed constants, rather than choosing an
   arbitrary channel. In the
   tested default Blender color configuration, Color-to-scalar uses luminance
@@ -268,9 +270,7 @@ Texture input order is canonical, independent of the IR vector and saved block
 order. Normal textures use §4's scale/bias and a flat encoded-normal fallback
 `(0.5, 0.5, 1, 1)`; other texture fallbacks retain the socket constants.
 Metadata-only reads retain typed texture/reader children without shader IDs,
-inputs, asset references or connections. Image Texture Alpha → Alpha is
-not yet part of this boundary; it uses the saved Alpha constant with an
-unsupported-node diagnostic.
+inputs, asset references or connections.
 The [5.2.2 fixture record](../../tests/fixtures/native-textures/README.md)
 owns provenance and limitations; shader-network evidence is not renderer
 equivalence or release-wide Blender compatibility.

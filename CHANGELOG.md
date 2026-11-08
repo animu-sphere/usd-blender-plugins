@@ -47,6 +47,12 @@ All notable changes to this project are recorded here. The format follows
     Linked Alpha uses its diagnosed saved socket constant. Source, authoring
     and registered-plugin checks cover the saved 5.2.2 fixture and targeted
     mutations, not USD renderer equivalence.
+- Blender 5.x Image Texture Alpha linked to Principled Alpha is authored as
+    an `OpacityTexture` whose `a` output feeds `opacity`, with the saved Alpha
+    constant as fallback and no `opacityThreshold`. Image Color → Alpha
+    remains a diagnosed constant fallback. Evidence is a targeted relink of
+    the saved 5.2.2 texture fixture and synthetic authoring, not a
+    Blender-written case or USD renderer check.
 
 ### Changed
 

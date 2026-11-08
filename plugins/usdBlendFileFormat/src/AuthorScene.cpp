@@ -244,6 +244,8 @@ TextureNames Names(const Material& material, TextureInput input) {
     return {"ClearcoatRoughness", "clearcoatRoughness", material.clearcoatRoughness};
   case TextureInput::Normal:
     return {"Normal", "normal"};
+  case TextureInput::Opacity:
+    return {"Opacity", "opacity", material.opacity};
   }
   Fail("BLEND_USD_MATERIAL_INVALID", "Texture has an unknown target input", material.sourceName);
 }
