@@ -63,9 +63,13 @@ fractional constant Alpha. In those cases the threshold does not clip the
 render; the deprecated Clip setter maps to `DITHERED` when starting there.
 On that evidence [MAT-O1 is resolved](../design/MATERIAL_POLICY.md#91-resolved-decisions)
 for 5.x: constant Alpha is authored as `opacity` without `opacityThreshold`,
-and linked Alpha uses its diagnosed socket constant. Image Alpha → opacity,
-Alpha visibility in a USD renderer, emission units and broader renderer
-acceptance remain open.
+and linked Alpha outside the texture subset uses its diagnosed socket
+constant. Image Texture Alpha → Principled Alpha is translated as an
+`opacity` texture with no threshold. It has native-relink and synthetic
+authoring evidence only, so it is unverified in the
+[capability matrix](../reference/CAPABILITY_MATRIX.md#3-stage). A
+Blender-written source case, Alpha visibility in a USD renderer, emission
+units and broader renderer acceptance remain open.
 
 3.4 has a local Windows Storm
 [texture and normal-map visibility check](../guides/building.md#direct-texture-rendering-in-storm)

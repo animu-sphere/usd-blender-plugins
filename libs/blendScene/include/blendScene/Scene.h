@@ -47,7 +47,8 @@ enum class TextureInput { BaseColor,
   Ior,
   Clearcoat,
   ClearcoatRoughness,
-  Normal };
+  Normal,
+  Opacity };
 enum class TextureColorSpace { SRgb,
   Raw };
 enum class TextureWrap { Repeat,

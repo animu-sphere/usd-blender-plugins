@@ -434,6 +434,33 @@ void CheckTextures(const Fixture& fixture) {
       alphaFallback.GetValue().materials.end(), [](const auto& material) { return material.sourceName == "Relative"; });
   Require(alphaMaterial != alphaFallback.GetValue().materials.end() && alphaMaterial->textures.empty(),
       "Alpha-to-Color fallback does not author an invalidly typed texture connection");
+  const auto findIn = [](const blend::Scene& value, std::string_view name) {
+    const auto material = std::find_if(value.materials.begin(), value.materials.end(),
+        [&](const auto& item) { return item.sourceName == name; });
+    Require(material != value.materials.end(), "Texture mutation material exists");
+    return *material;
+  };
+  const auto scalarSurface = Node(fixture, "AlphaScalar", "ShaderNodeBsdfPrincipled");
+  const auto scalarAlpha = SocketIndex(fixture, scalarSurface, "inputs", "Alpha");
+  const auto scalarLink = LinkTo(fixture, "AlphaScalar", SocketIndex(fixture, scalarSurface, "inputs", "Roughness"));
+  auto imageAlpha = fixture.bytes;
+  fixture.Store(imageAlpha, Take(scalarLink.Member("tosock")), fixture.blocks[scalarAlpha].oldAddress);
+  const auto opacityResult = fixture.Decode(imageAlpha);
+  const auto opacityMaterial = findIn(opacityResult.GetValue(), "AlphaScalar");
+  Require(opacityMaterial.textures.size() == 1 &&
+              opacityMaterial.textures.front() == blend::MaterialTexture{Input::Opacity, "./textures/color.png", Color::SRgb, Wrap::Repeat, "", ""} &&
+              opacityMaterial.opacity == 1 && std::abs(opacityMaterial.roughness - 0.3) < 1e-6 &&
+              !Has(opacityResult, "BLEND_MATERIAL_UNSUPPORTED_NODE", "AlphaScalar") &&
+              !Has(opacityResult, "BLEND_IMAGE_ALPHA_COLOR_APPROXIMATED", "AlphaScalar"),
+      "Image Alpha to Principled Alpha becomes an opacity texture with saved constant fallbacks");
+  auto colorAlpha = fixture.bytes;
+  fixture.Store(colorAlpha, Take(baseLink.Member("tosock")),
+      fixture.blocks[SocketIndex(fixture, surfaceIndex, "inputs", "Alpha")].oldAddress);
+  const auto colorAlphaResult = fixture.Decode(colorAlpha);
+  const auto colorAlphaMaterial = findIn(colorAlphaResult.GetValue(), "Relative");
+  Require(colorAlphaMaterial.textures.empty() && colorAlphaMaterial.opacity == 1 &&
+              Has(colorAlphaResult, "BLEND_MATERIAL_UNSUPPORTED_NODE", "Relative"),
+      "Image Color to Alpha coercion retains the diagnosed saved Alpha constant");
   const auto namedTexture = Node(fixture, "NamedUV", "ShaderNodeTexImage");
   const auto namedSurface = Node(fixture, "NamedUV", "ShaderNodeBsdfPrincipled");
   const auto vectorSocket = SocketIndex(fixture, namedTexture, "inputs", "Vector");

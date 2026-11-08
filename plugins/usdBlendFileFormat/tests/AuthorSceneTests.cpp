@@ -914,7 +914,7 @@ void CheckTextures(const std::filesystem::path& path) {
   auto& material = findMaterial(scene, "Relative");
   const auto original = material.textures.front();
   for (const auto input : {blend::TextureInput::Metallic, blend::TextureInput::Roughness, blend::TextureInput::Ior,
-           blend::TextureInput::Clearcoat, blend::TextureInput::ClearcoatRoughness}) {
+           blend::TextureInput::Clearcoat, blend::TextureInput::ClearcoatRoughness, blend::TextureInput::Opacity}) {
     auto texture = original;
     texture.input = input;
     material.textures.push_back(texture);
@@ -923,6 +923,25 @@ void CheckTextures(const std::filesystem::path& path) {
   std::reverse(material.textures.begin(), material.textures.end());
   Require(Text(many) == Text(Take(blend::AuthorScene(scene))),
       "Texture-vector permutations and shared st readers have deterministic networks");
+  auto opacityScene = Decode(path);
+  auto& opacitySource = findMaterial(opacityScene, "AlphaScalar");
+  opacitySource.textures.front().input = blend::TextureInput::Opacity;
+  opacitySource.opacity = 0.25;
+  const auto opacityStage = UsdStage::Open(Take(blend::AuthorScene(opacityScene)));
+  const auto opacityTexture = UsdShadeShader(opacityStage->GetPrimAtPath(SdfPath("/Asset/mtl/AlphaScalar/preview/OpacityTexture")));
+  const auto opacitySurface = UsdShadeShader(opacityStage->GetPrimAtPath(SdfPath("/Asset/mtl/AlphaScalar/preview/Surface")));
+  const auto opacitySources = opacitySurface ? opacitySurface.GetInput(TfToken("opacity")).GetConnectedSources()
+                                             : UsdShadeSourceInfoVector{};
+  Require(opacityTexture && opacitySurface &&
+              Get<TfToken>(opacityTexture.GetIdAttr()) == TfToken("UsdUVTexture") &&
+              Get<GfVec4f>(opacityTexture.GetInput(TfToken("fallback")).GetAttr()) == GfVec4f(0.25f) &&
+              opacitySources.size() == 1 && opacitySources.front().source.GetPath() == opacityTexture.GetPath() &&
+              opacitySources.front().sourceName == TfToken("a") &&
+              opacitySurface.GetInput(TfToken("opacity")).GetTypeName() == SdfValueTypeNames->Float &&
+              Get<float>(opacitySurface.GetInput(TfToken("opacity")).GetAttr()) == 0.25f &&
+              !opacitySurface.GetInput(TfToken("opacityThreshold")) &&
+              !opacitySurface.GetInput(TfToken("roughness")).HasConnectedSource(),
+      "Image Alpha opacity textures connect the alpha output to opacity with no threshold and keep constant fallbacks");
   const auto missingUv = [&](const char* name, auto mutation) {
     auto changed = Decode(path);
     mutation(changed, findMaterial(changed, name));

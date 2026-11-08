@@ -545,7 +545,7 @@ private:
         {"Base Color", TextureInput::BaseColor}, {"Metallic", TextureInput::Metallic},
         {"Roughness", TextureInput::Roughness}, {"IOR", TextureInput::Ior},
         {"Coat Weight", TextureInput::Clearcoat}, {"Coat Roughness", TextureInput::ClearcoatRoughness},
-        {"Normal", TextureInput::Normal}};
+        {"Alpha", TextureInput::Opacity}, {"Normal", TextureInput::Normal}};
     for (const auto socketIndex : inputs.at(*surface)) {
       const auto socket = View(socketIndex, "bNodeSocket");
       const auto identifier = String(Take(socket.Member("identifier")));

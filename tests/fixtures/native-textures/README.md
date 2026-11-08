@@ -75,6 +75,10 @@ references. Additional saved mutations cover nonfinite strength, unsupported
 color space, non-Straight alpha, linked Image, ambiguous paths, embedded
 texture/color mapping, nonfinite mapping scale, normal convention/base,
 Alpha-to-Color fallback, shared Color/Alpha outputs and sRGB Normal input.
+Relinking `AlphaScalar` from Roughness to Principled Alpha checks the
+`Opacity` texture input; relinking `Relative` Color to Alpha checks the
+diagnosed Color-to-Alpha constant fallback. These saved mutations are not a
+Blender-written Image Alpha → opacity case.
 
 [AuthorSceneTests.cpp](../../../plugins/usdBlendFileFormat/tests/AuthorSceneTests.cpp),
 run as `usdBlend.textures`, checks standard texture/reader shader IDs and

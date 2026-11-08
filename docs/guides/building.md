@@ -1163,8 +1163,8 @@ uses the same material CTests alongside the existing geometry and dependency
 boundary tests. Constant Alpha and Emission are checked against the saved
 fixture and targeted zero, fractional, non-white, linked and invalid-value
 mutations; USD renderer equivalence is not established. Image Alpha → opacity
-and color attributes remain outside the supported scope; texture verification
-is below. See the
+is covered with the textures below; color attributes remain outside the
+supported scope. See the
 [capability matrix](../reference/CAPABILITY_MATRIX.md#3-stage).
 
 ### Direct emission rendering in Storm
@@ -1218,8 +1218,9 @@ $blender = Join-Path $env:ProgramFiles 'Blender Foundation\Blender 5.2\blender.e
 ```
 
 `blendScene.textures` validates owning texture IR, saved graph/storage failures
-and contextual diagnostics, including the conservative sRGB alpha warning and
-both cross-type fallbacks. `usdBlend.textures` validates network authoring,
+and contextual diagnostics, including the conservative sRGB alpha warning,
+both cross-type fallbacks and a relinked Image Alpha → Principled Alpha
+opacity texture. `usdBlend.textures` validates network authoring,
 normal scale/bias/fallback, actual collision-allocated UV identifiers,
 metadata-only Shader hierarchy, material/block/texture permutations, invalid IR
 and missing/shared/tangent UV fallback. Registered `test_stage.py` compares
@@ -1237,8 +1238,9 @@ Build the updated library/bundle with the commands in the preceding section
 before these checks. The companion stage-contract and release workflows select
 the new CTest alongside existing authoring tests. Local Windows checks do not
 establish hosted Windows/Linux success or generic-renderer equivalence.
-Color/scalar socket coercions, Image Alpha → opacity and broader renderer
-acceptance remain separate roadmap work.
+Color/scalar socket coercions, Blender-written and renderer evidence for
+Image Alpha → opacity, and broader renderer acceptance remain separate roadmap
+work.
 
 ### Direct texture rendering in Storm
 
